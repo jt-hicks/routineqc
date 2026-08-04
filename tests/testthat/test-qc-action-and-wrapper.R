@@ -36,7 +36,9 @@ testthat::test_that("wrapper returns expected objects and preserves row count", 
   )
 
   testthat::expect_true(is.list(out))
-  testthat::expect_true(all(c("data_flagged", "model", "summaries") %in% names(out)))
+  testthat::expect_true(all(c('data_flagged', 'model', 'summaries', 'config') %in% names(out)))
+  testthat::expect_s3_class(out$config, 'routineqc_config')
+  testthat::expect_identical(out$config$profile, 'recommended')
   testthat::expect_equal(nrow(out$data_flagged), nrow(sim))
   testthat::expect_true(all(c("by_region", "by_month", "by_facility", "by_council", "by_district") %in% names(out$summaries)))
 })

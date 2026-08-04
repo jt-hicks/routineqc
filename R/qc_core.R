@@ -324,6 +324,8 @@ add_prevalence_predictions <- function(data, model) {
 #' @param all_positive_min_tested Minimum tested count for an all-positive flag.
 #' @param large_change_threshold Absolute month-to-month prevalence change threshold.
 #' @param large_change_min_tested Minimum tested count required in both adjacent months.
+#' @param large_change_require_adjacent Whether large-change comparisons require
+#'   consecutive calendar months.
 #' @param prevalence_low_extreme Lower bound for extreme observed prevalence.
 #' @param prevalence_high_extreme Upper bound for extreme observed prevalence.
 #' @param use_prevalence_bounds Whether raw prevalence bounds contribute to
@@ -340,6 +342,7 @@ add_prevalence_qc_flags <- function(data,
                                     all_positive_min_tested = 30,
                                     large_change_threshold = 0.5,
                                     large_change_min_tested = 20,
+                                    large_change_require_adjacent = TRUE,
                                     prevalence_low_extreme = 0.001,
                                     prevalence_high_extreme = 0.999,
                                     use_prevalence_bounds = FALSE) {
@@ -368,7 +371,8 @@ add_prevalence_qc_flags <- function(data,
       flag_all_negative_large_n = tested >= all_negative_min_tested & positive == 0,
       flag_all_positive_large_n = tested >= all_positive_min_tested & positive == tested,
       flag_large_monthly_prevalence_change = !is.na(monthly_prev_change) &
-        previous_month_is_adjacent & tested >= large_change_min_tested &
+        (!large_change_require_adjacent | previous_month_is_adjacent) &
+        tested >= large_change_min_tested &
         tested_lag >= large_change_min_tested & monthly_prev_change > large_change_threshold,
       flag_raw_prevalence_bound = use_prevalence_bounds & !is.na(prevalence) &
         (prevalence <= prevalence_low_extreme | prevalence >= prevalence_high_extreme),
@@ -948,10 +952,12 @@ plot_qc_summary_by_region <- function(summary_data) {
 #'   `attending_var`.
 #' @param council_var Optional council column.
 #' @param district_var Optional district column.
+#' @param config A validated configuration created by [qc_config()].
 #' @param nthreads Threads passed to [fit_prevalence_gam()].
 #' @param ... Additional arguments reserved for future extensions.
 #'
-#' @return A list with `data_flagged`, `model`, and `summaries`.
+#' @return A list with `data_flagged`, `model`, `summaries`, and the validated
+#'   `config` snapshot used for the run.
 #' @export
 run_routine_qc <- function(raw_data,
                            facility_var,
@@ -963,8 +969,11 @@ run_routine_qc <- function(raw_data,
                            attendance_definition = NULL,
                            council_var = NULL,
                            district_var = NULL,
+                           config = qc_config(),
                            nthreads = 1,
                            ...) {
+  validate_qc_config(config)
+
   prepared <- prepare_qc_data(
     data = raw_data,
     facility_var = facility_var,
@@ -985,12 +994,11 @@ run_routine_qc <- function(raw_data,
 
   model <- fit_prevalence_gam(dat, nthreads = nthreads)
 
-  dat <- dat %>%
-    add_prevalence_predictions(model = model) %>%
-    add_prevalence_qc_flags() %>%
-    add_tested_volume_qc() %>%
-    add_temporal_qc_flags() %>%
-    assign_qc_action()
+  dat <- add_prevalence_predictions(dat, model = model)
+  dat <- do.call(add_prevalence_qc_flags, c(list(data = dat), config$prevalence))
+  dat <- do.call(add_tested_volume_qc, c(list(data = dat), config$tested_volume))
+  dat <- do.call(add_temporal_qc_flags, c(list(data = dat), config$temporal))
+  dat <- assign_qc_action(dat)
 
   summaries <- list(by_region = summarise_qc_by_region(dat))
 
@@ -1008,6 +1016,7 @@ run_routine_qc <- function(raw_data,
   list(
     data_flagged = dat,
     model = model,
-    summaries = summaries
+    summaries = summaries,
+    config = config
   )
 }

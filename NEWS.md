@@ -10,3 +10,7 @@
 - Added plotting helpers and a Quarto report template.
 - Added unit tests for logical flags, prevalence calculation, tested rolling QC,
 	action priority, simulated errors, row-retention behavior, and wrapper output.
+- Added validated `recommended` and `permissive_sensitivity` configuration profiles;
+  `run_routine_qc()` now returns the exact configuration snapshot used.
+- Reconciled optional attendance, prevalence thresholds, adjacent-month change
+  rules, and temporal-context flags with synthetic boundary tests.

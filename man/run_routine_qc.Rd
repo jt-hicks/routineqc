@@ -15,6 +15,7 @@ run_routine_qc(
   attendance_definition = NULL,
   council_var = NULL,
   district_var = NULL,
+  config = qc_config(),
   nthreads = 1,
   ...
 )
@@ -41,12 +42,15 @@ run_routine_qc(
 
 \item{district_var}{Optional district column.}
 
+\item{config}{A validated configuration created by \code{\link[=qc_config]{qc_config()}}.}
+
 \item{nthreads}{Threads passed to \code{\link[=fit_prevalence_gam]{fit_prevalence_gam()}}.}
 
 \item{...}{Additional arguments reserved for future extensions.}
 }
 \value{
-A list with \code{data_flagged}, \code{model}, and \code{summaries}.
+A list with \code{data_flagged}, \code{model}, \code{summaries}, and the validated
+\code{config} snapshot used for the run.
 }
 \description{
 Main user-facing wrapper that prepares data, fits prevalence model, applies QC

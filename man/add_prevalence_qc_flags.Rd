@@ -14,6 +14,7 @@ add_prevalence_qc_flags(
   all_positive_min_tested = 30,
   large_change_threshold = 0.5,
   large_change_min_tested = 20,
+  large_change_require_adjacent = TRUE,
   prevalence_low_extreme = 0.001,
   prevalence_high_extreme = 0.999,
   use_prevalence_bounds = FALSE
@@ -39,6 +40,9 @@ least \code{resid_large_n}.}
 \item{large_change_threshold}{Absolute month-to-month prevalence change threshold.}
 
 \item{large_change_min_tested}{Minimum tested count required in both adjacent months.}
+
+\item{large_change_require_adjacent}{Whether large-change comparisons require
+consecutive calendar months.}
 
 \item{prevalence_low_extreme}{Lower bound for extreme observed prevalence.}
 

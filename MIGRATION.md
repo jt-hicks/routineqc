@@ -12,7 +12,7 @@ This package is the independent home for the reusable QC engine originally proto
 | 4. Extract | Reconcile reusable logical, temporal, statistical, volume, summary, and plotting behavior | In progress |
 | 5. Test | Synthetic tests cover critical rules and edge cases | In progress |
 | 6. Orchestrate | Stable `run_routine_qc()` API and QC run object | Prototype |
-| 7. Provenance | Configuration, manifests, input identifiers, and persistence | Not started |
+| 7. Provenance | Configuration, manifests, input identifiers, and persistence | In progress |
 | 8. Application | Shiny app consumes selectable QC run objects | Not started |
 | 9. Demonstrate | Generic adapter and synthetic end-to-end vignette | Not started |
 | 10. Release | CI, documentation, checks, and experimental `0.1.0` | Not started |
@@ -20,9 +20,9 @@ This package is the independent home for the reusable QC engine originally proto
 
 ## Immediate next steps
 
-1. Add named configuration profiles before changing tested-volume or action policy.
-2. Reconcile retrospective and prospective tested-volume modes.
-3. Reconcile action policy only after all underlying facts have stable tests.
+1. Reconcile retrospective and prospective tested-volume modes using named configuration.
+2. Reconcile action policy only after all underlying facts have stable tests.
+3. Add run manifests, input identifiers, and persistence around the captured configuration.
 
 ## Repository and licence
 
