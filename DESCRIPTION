@@ -1,0 +1,32 @@
+Package: routineqc
+Title: Reusable Quality Control For Routine Surveillance Data
+Version: 0.0.0.9000
+Authors@R: 
+    person("First", "Last", , "first.last@example.com", role = c("aut", "cre"))
+Description: Reusable tools for identifying likely data-entry anomalies in
+    routine health facility-month surveillance data, including ANC malaria
+    testing examples. The package prepares data, fits prevalence models,
+    flags logical and temporal anomalies, and produces summaries for review
+    and sensitivity analyses.
+License: MIT + file LICENSE
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.3
+Depends:
+    R (>= 4.1)
+Suggests: 
+    rmarkdown,
+    testthat
+Config/testthat/edition: 3
+Imports: 
+    dplyr,
+    ggplot2,
+    lubridate,
+    magrittr,
+    mgcv,
+    purrr,
+    readr,
+    rlang,
+    slider,
+    stringr,
+    tidyr

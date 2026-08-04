@@ -1,0 +1,150 @@
+---
+title: "Routine Surveillance QC Report"
+format:
+  html:
+    toc: true
+    code-fold: true
+execute:
+  echo: false
+---
+
+```{r}
+library(routineqc)
+library(dplyr)
+library(ggplot2)
+
+# Expected object names in environment:
+# raw_data: raw facility-month dataset
+# qc_result: output from run_routine_qc(raw_data, ...)
+```
+
+## Dataset Overview
+
+```{r}
+if (!exists("qc_result")) {
+  stop("Please provide qc_result <- run_routine_qc(...) before rendering report.")
+}
+
+cat("Rows:", nrow(qc_result$data_flagged), "\n")
+cat("Facilities:", dplyr::n_distinct(qc_result$data_flagged$facility_id), "\n")
+cat("Months:", dplyr::n_distinct(qc_result$data_flagged$month_date), "\n")
+cat("Regions:", dplyr::n_distinct(qc_result$data_flagged$region), "\n")
+```
+
+## QC Protocol Summary
+
+The routineqc workflow applies:
+
+1. Data preparation and standardisation.
+2. Logical consistency checks for tested/positive counts.
+3. GAM-based prevalence expectation modeling.
+4. Residual and prevalence anomaly flags.
+5. Tested volume anomaly flags from rolling median/MAD.
+6. Temporal isolation checks for prevalence extremes.
+7. Hierarchical action assignment.
+
+## Logical Errors
+
+```{r}
+qc_result$data_flagged %>%
+  summarise(
+    invalid_logical_rows = sum(flag_invalid_logical, na.rm = TRUE),
+    pct_invalid = 100 * mean(flag_invalid_logical, na.rm = TRUE)
+  )
+```
+
+## Prevalence Anomalies
+
+```{r}
+qc_result$data_flagged %>%
+  summarise(
+    resid_extreme = sum(flag_resid_extreme, na.rm = TRUE),
+    prevalence_extreme = sum(flag_prevalence_extreme, na.rm = TRUE),
+    isolated_extreme = sum(flag_isolated_extreme, na.rm = TRUE)
+  )
+
+plot_prevalence_residuals(qc_result$data_flagged)
+```
+
+## Tested Volume Anomalies
+
+```{r}
+qc_result$data_flagged %>%
+  summarise(
+    tested_volume_extreme = sum(flag_tested_volume_extreme, na.rm = TRUE),
+    tested_jump = sum(flag_tested_large_jump, na.rm = TRUE),
+    tested_drop = sum(flag_tested_large_drop, na.rm = TRUE)
+  )
+
+plot_tested_robust_z(qc_result$data_flagged)
+```
+
+## Combined QC Actions
+
+```{r}
+qc_result$data_flagged %>%
+  count(qc_action, sort = TRUE)
+```
+
+## Region QC Summary
+
+```{r}
+qc_result$summaries$by_region
+plot_qc_summary_by_region(qc_result$summaries$by_region)
+```
+
+## Council QC Summary
+
+```{r}
+if ("by_council" %in% names(qc_result$summaries)) {
+  qc_result$summaries$by_council
+} else {
+  cat("Council field not available in this dataset.")
+}
+```
+
+## District QC Summary
+
+```{r}
+if ("by_district" %in% names(qc_result$summaries)) {
+  qc_result$summaries$by_district
+} else {
+  cat("District field not available in this dataset.")
+}
+```
+
+## Before/After Summaries
+
+```{r}
+summarise_before_after_qc(qc_result$data_flagged, by = "region")
+plot_before_after_prevalence(qc_result$data_flagged)
+```
+
+## Threshold Sensitivity
+
+```{r}
+run_threshold_sensitivity(qc_result$data_flagged, by = "region")
+```
+
+## Facility Audit
+
+```{r}
+qc_result$summaries$by_facility %>%
+  arrange(desc(pct_any_qc_issue)) %>%
+  head(20)
+```
+
+## Example Flagged Facility Plots
+
+```{r}
+flagged_facility <- qc_result$data_flagged %>%
+  group_by(facility_id) %>%
+  summarise(any_qc = any(flag_any_qc_issue, na.rm = TRUE), .groups = "drop") %>%
+  filter(any_qc) %>%
+  slice_head(n = 1) %>%
+  pull(facility_id)
+
+if (length(flagged_facility) == 1) {
+  plot_facility_timeseries(qc_result$data_flagged, flagged_facility)
+}
+```

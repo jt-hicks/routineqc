@@ -1,0 +1,14 @@
+.Rhistory
+.RData
+.Ruserdata
+.Rproj.user/
+*.Rproj
+*.Rcheck/
+check/
+revdep/
+docs/
+Meta/
+src/*.o
+src/*.so
+src/*.dll
+README.html
