@@ -1,5 +1,7 @@
 testthat::test_that("qc_action priority order is respected", {
   dat <- tibble::tibble(
+    tested = c(10, 10, 0, 10),
+    positive = c(1, 1, 0, 1),
     flag_invalid_logical = c(TRUE, FALSE, FALSE, FALSE),
     flag_resid_extreme = c(FALSE, TRUE, FALSE, FALSE),
     flag_all_negative_large_n = c(FALSE, FALSE, FALSE, FALSE),

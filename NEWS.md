@@ -10,6 +10,3 @@
 - Added plotting helpers and a Quarto report template.
 - Added unit tests for logical flags, prevalence calculation, tested rolling QC,
 	action priority, simulated errors, row-retention behavior, and wrapper output.
-# routineqc (development version)
-
-* Initial CRAN submission.

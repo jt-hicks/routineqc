@@ -25,8 +25,6 @@ Imports:
     magrittr,
     mgcv,
     purrr,
-    readr,
     rlang,
     slider,
-    stringr,
     tidyr

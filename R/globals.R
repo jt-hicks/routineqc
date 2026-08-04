@@ -1,0 +1,23 @@
+utils::globalVariables(c(
+  'council', 'district', 'expected_positive', 'facility', 'facility_id',
+  'flag_all_negative_large_n', 'flag_all_positive_large_n',
+  'flag_any_qc_issue', 'flag_combined_tested_prevalence_issue',
+  'flag_invalid_logical', 'flag_isolated_extreme',
+  'flag_large_monthly_prevalence_change', 'flag_missing_tested_or_positive',
+  'flag_positive_gt_tested', 'flag_positive_negative',
+  'flag_prevalence_extreme', 'flag_prevalence_only_issue',
+  'flag_remove_primary', 'flag_resid_extreme', 'flag_sensitivity',
+  'flag_tested_extreme_high', 'flag_tested_extreme_low',
+  'flag_tested_large_drop', 'flag_tested_large_jump', 'flag_tested_negative',
+  'flag_tested_only_issue', 'flag_tested_volume_extreme',
+  'flag_tested_zero_unusual', 'flag_zero_tested_positive', 'injected_error',
+  'lp', 'month', 'month_date', 'month_num', 'monthly_prev_change',
+  'n_any_qc_issue', 'n_month', 'next_extreme', 'p', 'p_hat',
+  'pct_any_qc_issue', 'pearson_resid', 'plausibility_issue', 'positive',
+  'prev_extreme', 'prev_lag', 'prevalence', 'prevalence_issue', 'qc_action',
+  'region', 'season', 'state', 'tested', 'tested_issue', 'tested_prev',
+  'tested_robust_z', 'tested_roll_mad', 'tested_roll_median',
+  'tested_to_prev_ratio', 'tested_to_roll_ratio', 'time_index',
+  'total_positive_after_primary_qc', 'total_positive_before_qc', 'total_rows',
+  'total_tested_after_primary_qc', 'total_tested_before_qc'
+))
