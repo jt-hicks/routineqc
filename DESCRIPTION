@@ -2,7 +2,7 @@ Package: routineqc
 Title: Reusable Quality Control For Routine Surveillance Data
 Version: 0.0.0.9000
 Authors@R: 
-    person("First", "Last", , "first.last@example.com", role = c("aut", "cre"))
+    person("Joseph T", "Hicks", , "jthicks@imperial.ac.uk", role = c("aut", "cre"))
 Description: Reusable tools for identifying likely data-entry anomalies in
     routine health facility-month surveillance data, including ANC malaria
     testing examples. The package prepares data, fits prevalence models,

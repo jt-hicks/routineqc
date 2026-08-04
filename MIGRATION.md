@@ -20,10 +20,15 @@ This package is the independent home for the reusable QC engine originally proto
 
 ## Immediate next steps
 
-1. Finalise maintainer identity and licence metadata.
-2. Formalise and test the canonical input contract, including missingness and duplicate keys.
-3. Compare this package's existing QC behavior with the earlier prototype and migrate only justified differences.
-4. Add reproducible configuration and QC run manifests.
+1. Formalise and test the canonical input contract, including missingness and duplicate keys.
+2. Compare this package's existing QC behavior with the earlier prototype and migrate only justified differences.
+3. Add reproducible configuration and QC run manifests.
+
+## Repository and licence
+
+- Maintainer: Joseph T Hicks (`jthicks@imperial.ac.uk`).
+- Visibility: private during development.
+- Licence: MIT.
 
 ## Canonical minimum input
 
