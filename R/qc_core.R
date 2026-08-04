@@ -314,41 +314,74 @@ add_prevalence_predictions <- function(data, model) {
 #' Adds prevalence-based anomaly flags using residuals and simple temporal rules.
 #'
 #' @param data A data frame with prevalence and prediction columns.
-#' @param resid_threshold Absolute Pearson residual threshold.
-#' @param large_n_threshold Minimum tested count for all-negative/all-positive rules.
+#' @param resid_threshold Optional single absolute residual threshold overriding
+#'   the size-dependent thresholds. Intended for sensitivity analysis.
+#' @param resid_threshold_large Absolute residual threshold when tested is at
+#'   least `resid_large_n`.
+#' @param resid_threshold_small Absolute residual threshold below `resid_large_n`.
+#' @param resid_large_n Tested-count boundary for residual thresholds.
+#' @param all_negative_min_tested Minimum tested count for an all-negative flag.
+#' @param all_positive_min_tested Minimum tested count for an all-positive flag.
 #' @param large_change_threshold Absolute month-to-month prevalence change threshold.
+#' @param large_change_min_tested Minimum tested count required in both adjacent months.
 #' @param prevalence_low_extreme Lower bound for extreme observed prevalence.
 #' @param prevalence_high_extreme Upper bound for extreme observed prevalence.
+#' @param use_prevalence_bounds Whether raw prevalence bounds contribute to
+#'   `flag_prevalence_extreme`. Disabled in the compatibility default.
 #'
 #' @return Data with prevalence QC flags appended.
 #' @export
 add_prevalence_qc_flags <- function(data,
-                                    resid_threshold = 4,
-                                    large_n_threshold = 30,
-                                    large_change_threshold = 0.35,
+                                    resid_threshold = NULL,
+                                    resid_threshold_large = 4,
+                                    resid_threshold_small = 5,
+                                    resid_large_n = 20,
+                                    all_negative_min_tested = 50,
+                                    all_positive_min_tested = 30,
+                                    large_change_threshold = 0.5,
+                                    large_change_min_tested = 20,
                                     prevalence_low_extreme = 0.001,
-                                    prevalence_high_extreme = 0.999) {
+                                    prevalence_high_extreme = 0.999,
+                                    use_prevalence_bounds = FALSE) {
   .validate_required_columns(data, c("facility_id", "month_date", "tested", "positive", "prevalence", "pearson_resid"))
+
+  if (!is.null(resid_threshold)) {
+    resid_threshold_large <- resid_threshold
+    resid_threshold_small <- resid_threshold
+  }
 
   out <- dplyr::as_tibble(data) %>%
     dplyr::group_by(facility_id) %>%
     dplyr::arrange(month_date, .by_group = TRUE) %>%
     dplyr::mutate(
       prev_lag = dplyr::lag(prevalence),
+      tested_lag = dplyr::lag(tested),
+      month_lag = dplyr::lag(month_date),
       monthly_prev_change = abs(prevalence - prev_lag),
-      flag_resid_extreme = abs(pearson_resid) >= resid_threshold,
-      flag_all_negative_large_n = tested >= large_n_threshold & positive == 0,
-      flag_all_positive_large_n = tested >= large_n_threshold & positive == tested,
-      flag_large_monthly_prevalence_change = !is.na(monthly_prev_change) & monthly_prev_change >= large_change_threshold,
+      previous_month_is_adjacent = !is.na(month_lag) &
+        (lubridate::year(month_date) * 12L + lubridate::month(month_date)) -
+        (lubridate::year(month_lag) * 12L + lubridate::month(month_lag)) == 1L,
+      residual_cutoff = dplyr::if_else(
+        tested >= resid_large_n, resid_threshold_large, resid_threshold_small
+      ),
+      flag_resid_extreme = !is.na(pearson_resid) & abs(pearson_resid) > residual_cutoff,
+      flag_all_negative_large_n = tested >= all_negative_min_tested & positive == 0,
+      flag_all_positive_large_n = tested >= all_positive_min_tested & positive == tested,
+      flag_large_monthly_prevalence_change = !is.na(monthly_prev_change) &
+        previous_month_is_adjacent & tested >= large_change_min_tested &
+        tested_lag >= large_change_min_tested & monthly_prev_change > large_change_threshold,
+      flag_raw_prevalence_bound = use_prevalence_bounds & !is.na(prevalence) &
+        (prevalence <= prevalence_low_extreme | prevalence >= prevalence_high_extreme),
       flag_prevalence_extreme = (
-        (!is.na(prevalence) & (prevalence <= prevalence_low_extreme | prevalence >= prevalence_high_extreme)) |
+        flag_raw_prevalence_bound |
           flag_resid_extreme |
           flag_all_negative_large_n |
           flag_all_positive_large_n
       ) %>% dplyr::coalesce(FALSE)
     ) %>%
     dplyr::ungroup() %>%
-    dplyr::select(-prev_lag, -monthly_prev_change)
+    dplyr::select(-prev_lag, -tested_lag, -month_lag, -previous_month_is_adjacent,
+                  -residual_cutoff, -monthly_prev_change)
 
   out
 }
@@ -428,25 +461,39 @@ add_tested_volume_qc <- function(data,
 
 #' Add Temporal QC Flags
 #'
-#' Identifies isolated extreme prevalence points within each facility time series.
+#' Identifies isolated statistical extremes within each facility time series.
 #'
-#' @param data A data frame with prevalence QC flags.
+#' @param data A data frame with statistical residual flags.
+#' @param require_adjacent_months Whether both surrounding observations must be
+#'   actual adjacent calendar months. The safer default is `TRUE`.
 #'
 #' @return Data with `flag_isolated_extreme` appended.
 #' @export
-add_temporal_qc_flags <- function(data) {
-  .validate_required_columns(data, c("facility_id", "month_date", "flag_prevalence_extreme"))
+add_temporal_qc_flags <- function(data, require_adjacent_months = TRUE) {
+  .validate_required_columns(data, c('facility_id', 'month_date', 'flag_resid_extreme'))
 
   dplyr::as_tibble(data) %>%
     dplyr::group_by(facility_id) %>%
     dplyr::arrange(month_date, .by_group = TRUE) %>%
     dplyr::mutate(
-      prev_extreme = dplyr::lag(flag_prevalence_extreme, default = FALSE),
-      next_extreme = dplyr::lead(flag_prevalence_extreme, default = FALSE),
-      flag_isolated_extreme = flag_prevalence_extreme & !prev_extreme & !next_extreme
+      prev_extreme = dplyr::lag(flag_resid_extreme, default = FALSE),
+      next_extreme = dplyr::lead(flag_resid_extreme, default = FALSE),
+      prev_month_date = dplyr::lag(month_date),
+      next_month_date = dplyr::lead(month_date),
+      prev_month_is_adjacent = !is.na(prev_month_date) &
+        (lubridate::year(month_date) * 12L + lubridate::month(month_date)) -
+        (lubridate::year(prev_month_date) * 12L + lubridate::month(prev_month_date)) == 1L,
+      next_month_is_adjacent = !is.na(next_month_date) &
+        (lubridate::year(next_month_date) * 12L + lubridate::month(next_month_date)) -
+        (lubridate::year(month_date) * 12L + lubridate::month(month_date)) == 1L,
+      flag_temporal_context_insufficient = flag_resid_extreme &
+        !(prev_month_is_adjacent & next_month_is_adjacent),
+      flag_isolated_extreme = flag_resid_extreme & !prev_extreme & !next_extreme &
+        (!require_adjacent_months | (prev_month_is_adjacent & next_month_is_adjacent))
     ) %>%
     dplyr::ungroup() %>%
-    dplyr::select(-prev_extreme, -next_extreme)
+    dplyr::select(-prev_extreme, -next_extreme, -prev_month_date, -next_month_date,
+                  -prev_month_is_adjacent, -next_month_is_adjacent)
 }
 
 #' Assign QC Action

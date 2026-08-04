@@ -20,9 +20,9 @@ This package is the independent home for the reusable QC engine originally proto
 
 ## Immediate next steps
 
-1. Reconcile prevalence and temporal facts against `docs/PROTOTYPE_COMPARISON.md`.
-2. Add named configuration profiles before changing tested-volume or action policy.
-3. Reconcile tested-volume modes and action policy in separate tested changes.
+1. Add named configuration profiles before changing tested-volume or action policy.
+2. Reconcile retrospective and prospective tested-volume modes.
+3. Reconcile action policy only after all underlying facts have stable tests.
 
 ## Repository and licence
 

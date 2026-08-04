@@ -6,25 +6,46 @@
 \usage{
 add_prevalence_qc_flags(
   data,
-  resid_threshold = 4,
-  large_n_threshold = 30,
-  large_change_threshold = 0.35,
+  resid_threshold = NULL,
+  resid_threshold_large = 4,
+  resid_threshold_small = 5,
+  resid_large_n = 20,
+  all_negative_min_tested = 50,
+  all_positive_min_tested = 30,
+  large_change_threshold = 0.5,
+  large_change_min_tested = 20,
   prevalence_low_extreme = 0.001,
-  prevalence_high_extreme = 0.999
+  prevalence_high_extreme = 0.999,
+  use_prevalence_bounds = FALSE
 )
 }
 \arguments{
 \item{data}{A data frame with prevalence and prediction columns.}
 
-\item{resid_threshold}{Absolute Pearson residual threshold.}
+\item{resid_threshold}{Optional single absolute residual threshold overriding
+the size-dependent thresholds. Intended for sensitivity analysis.}
 
-\item{large_n_threshold}{Minimum tested count for all-negative/all-positive rules.}
+\item{resid_threshold_large}{Absolute residual threshold when tested is at
+least \code{resid_large_n}.}
+
+\item{resid_threshold_small}{Absolute residual threshold below \code{resid_large_n}.}
+
+\item{resid_large_n}{Tested-count boundary for residual thresholds.}
+
+\item{all_negative_min_tested}{Minimum tested count for an all-negative flag.}
+
+\item{all_positive_min_tested}{Minimum tested count for an all-positive flag.}
 
 \item{large_change_threshold}{Absolute month-to-month prevalence change threshold.}
+
+\item{large_change_min_tested}{Minimum tested count required in both adjacent months.}
 
 \item{prevalence_low_extreme}{Lower bound for extreme observed prevalence.}
 
 \item{prevalence_high_extreme}{Upper bound for extreme observed prevalence.}
+
+\item{use_prevalence_bounds}{Whether raw prevalence bounds contribute to
+\code{flag_prevalence_extreme}. Disabled in the compatibility default.}
 }
 \value{
 Data with prevalence QC flags appended.

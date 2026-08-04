@@ -4,14 +4,17 @@
 \alias{add_temporal_qc_flags}
 \title{Add Temporal QC Flags}
 \usage{
-add_temporal_qc_flags(data)
+add_temporal_qc_flags(data, require_adjacent_months = TRUE)
 }
 \arguments{
-\item{data}{A data frame with prevalence QC flags.}
+\item{data}{A data frame with statistical residual flags.}
+
+\item{require_adjacent_months}{Whether both surrounding observations must be
+actual adjacent calendar months. The safer default is \code{TRUE}.}
 }
 \value{
 Data with \code{flag_isolated_extreme} appended.
 }
 \description{
-Identifies isolated extreme prevalence points within each facility time series.
+Identifies isolated statistical extremes within each facility time series.
 }

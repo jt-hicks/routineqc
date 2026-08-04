@@ -30,7 +30,7 @@ treated as a replacement for the prototype.
 | All-positive rule | Tested >= 30 | Tested >= 30 | Equivalent |
 | Large prevalence change | Change > 0.5, both months tested >= 20, and months contiguous | Change >= 0.35 without denominator or adjacency guards | Restore prototype guards/default; expose configuration |
 | Raw prevalence bounds | No separate near-zero/near-one rule | <= 0.001 or >= 0.999 contributes to prevalence extreme | Do not silently use as a primary compatibility rule; retain only as an optional sensitivity rule |
-| Isolated extreme | Based on statistical residual extreme; optional adjacency requirement | Based on broad prevalence extreme and ignores calendar gaps | Restore statistical basis and add an explicit adjacency option; default remains compatibility mode until domain review |
+| Isolated extreme | Based on statistical residual extreme; optional adjacency requirement | Based on broad prevalence extreme and ignores calendar gaps | Use the statistical basis and require adjacent calendar months by default; expose insufficient temporal context |
 | Tested rolling baseline | Centered 13-month window excluding current observation; at least six valid neighbors | Previous six observations only | Defer selection to configuration; label centered mode as retrospective and trailing mode as prospective |
 | Tested high/low rule | Requires robust-z and ratio conditions plus minimum-volume guards | Robust-z or ratio condition, without equivalent guards | Restore prototype compatibility mode; retain alternative only as an explicit sensitivity mode |
 | Tested jump/drop | Strict thresholds with minimum current/previous counts | Inclusive thresholds with only previous count > 0 | Restore prototype guards/defaults |
@@ -61,11 +61,14 @@ treated as a replacement for the prototype.
 6. Run a separate upstream adapter comparison on non-committed data before any
    production integration.
 
+## Resolved domain decisions
+
+- Isolated-extreme classification requires actual adjacent calendar months by
+  default. A residual extreme without both adjacent months is marked as having
+  insufficient temporal context rather than isolated.
+
 ## Open domain decisions
 
-- Whether isolated-extreme classification must require actual adjacent calendar
-  months. Requiring adjacency is safer when reports are missing, but differs
-  from the prototype default.
 - Whether a QC run intended for operational use may use future observations in
   a centered tested-volume baseline, or must use a trailing baseline.
 - Which review categories, if any, are authorized for automatic exclusion.
