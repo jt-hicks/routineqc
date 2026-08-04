@@ -7,7 +7,7 @@ This package is the independent home for the reusable QC engine originally proto
 | Phase | Deliverable | Status |
 |---|---|---|
 | 1. Preserve | Existing package scaffold and QC prototype preserved in Git | Done |
-| 2. Charter | Package scope, ownership boundary, licence, and input contract | In progress |
+| 2. Charter | Package scope, ownership boundary, licence, and input contract | Done |
 | 3. Scaffold | Installable R package passing `R CMD check` | Done |
 | 4. Extract | Reconcile reusable logical, temporal, statistical, volume, summary, and plotting behavior | Not started |
 | 5. Test | Synthetic tests cover critical rules and edge cases | In progress |
@@ -20,9 +20,9 @@ This package is the independent home for the reusable QC engine originally proto
 
 ## Immediate next steps
 
-1. Formalise and test the canonical input contract, including missingness and duplicate keys.
-2. Compare this package's existing QC behavior with the earlier prototype and migrate only justified differences.
-3. Add reproducible configuration and QC run manifests.
+1. Compare this package's existing QC behavior with the earlier prototype and migrate only justified differences.
+2. Add reproducible configuration and QC run manifests.
+3. Define adapter guidance for mapping pipeline-specific fields into the canonical input.
 
 ## Repository and licence
 
@@ -32,6 +32,8 @@ This package is the independent home for the reusable QC engine originally proto
 
 ## Canonical minimum input
 
-Required fields after adapter mapping are `facility_id`, `month_date`, `tested`, and `positive`. Geographic labels are optional. Attendance is optional and may only enable logical rules when accompanied by an explicit, approved `attendance_definition`. Missing attendance must never be replaced with `tested`.
+Required fields after adapter mapping are `facility_id`, `month_date`, `region`, `tested`, and `positive`. `month_date` must be a first-of-month `Date`, facility-month keys must be unique, and count fields must be numeric. Illogical count values remain admissible at this structural gate so the QC rules can flag them rather than silently remove them.
+
+Attendance is optional and may only enable logical rules when accompanied by an explicit, approved `attendance_definition`. Missing attendance must never be replaced with `tested`.
 
 Real or confidential facility data must not be committed; tests and examples use synthetic fixtures.

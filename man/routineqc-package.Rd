@@ -11,7 +11,7 @@ data, fitting prevalence models, flagging potential anomalies, and producing
 summaries and plots for QC review.
 }
 \author{
-\strong{Maintainer}: First Last \email{first.last@example.com}
+\strong{Maintainer}: Joseph T Hicks \email{jthicks@imperial.ac.uk}
 
 }
 \keyword{internal}

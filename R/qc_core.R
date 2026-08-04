@@ -894,6 +894,8 @@ run_routine_qc <- function(raw_data,
     district_var = district_var
   )
 
+  validate_qc_input(prepared)
+
   dat <- prepared %>%
     flag_logical_errors()
 
