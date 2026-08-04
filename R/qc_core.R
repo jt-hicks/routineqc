@@ -77,6 +77,10 @@
 #' @param month_var Month/date column.
 #' @param tested_var Tested count column.
 #' @param positive_var Positive count column.
+#' @param attending_var Optional attendance denominator column. When supplied,
+#'   `attendance_definition` must describe its meaning and source.
+#' @param attendance_definition A non-empty scalar definition required with
+#'   `attending_var`.
 #' @param council_var Optional council column.
 #' @param district_var Optional district column.
 #'
@@ -88,6 +92,8 @@ prepare_qc_data <- function(data,
                             month_var,
                             tested_var,
                             positive_var,
+                            attending_var = NULL,
+                            attendance_definition = NULL,
                             council_var = NULL,
                             district_var = NULL) {
   facility_var <- .resolve_col(facility_var)
@@ -95,11 +101,18 @@ prepare_qc_data <- function(data,
   month_var <- .resolve_col(month_var)
   tested_var <- .resolve_col(tested_var)
   positive_var <- .resolve_col(positive_var)
+  attending_var <- .resolve_col(attending_var)
   council_var <- .resolve_col(council_var)
   district_var <- .resolve_col(district_var)
 
-  required <- c(facility_var, region_var, month_var, tested_var, positive_var)
+  required <- c(facility_var, region_var, month_var, tested_var, positive_var, attending_var)
   .validate_required_columns(data, required)
+
+  if (!is.null(attending_var) &&
+      (!is.character(attendance_definition) || length(attendance_definition) != 1L ||
+       is.na(attendance_definition) || trimws(attendance_definition) == '')) {
+    rlang::abort('`attendance_definition` must be a non-empty string when `attending_var` is supplied.')
+  }
 
   out <- dplyr::as_tibble(data) %>%
     dplyr::mutate(
@@ -116,6 +129,14 @@ prepare_qc_data <- function(data,
 
   if (!is.null(district_var) && district_var %in% names(out)) {
     out <- dplyr::mutate(out, district = as.character(.data[[district_var]]))
+  }
+
+  if (!is.null(attending_var)) {
+    out <- dplyr::mutate(
+      out,
+      attending = suppressWarnings(as.numeric(.data[[attending_var]])),
+      attendance_definition = attendance_definition
+    )
   }
 
   unique_months <- sort(unique(out$month_date))
@@ -140,19 +161,28 @@ prepare_qc_data <- function(data,
 flag_logical_errors <- function(data) {
   .validate_required_columns(data, c("tested", "positive"))
 
-  dplyr::as_tibble(data) %>%
+  out <- dplyr::as_tibble(data)
+  if (!'attending' %in% names(out)) {
+    out$attending <- NA_real_
+  }
+
+  out %>%
     dplyr::mutate(
       flag_positive_gt_tested = positive > tested,
       flag_tested_negative = tested < 0,
       flag_positive_negative = positive < 0,
       flag_zero_tested_positive = tested == 0 & positive > 0,
       flag_missing_tested_or_positive = is.na(tested) | is.na(positive),
+      flag_tested_gt_attending = !is.na(tested) & !is.na(attending) & tested > attending,
+      flag_attending_negative = !is.na(attending) & attending < 0,
+      flag_attendance_issue = flag_tested_gt_attending | flag_attending_negative,
       flag_invalid_logical = (
         flag_positive_gt_tested |
           flag_tested_negative |
           flag_positive_negative |
           flag_zero_tested_positive |
-          flag_missing_tested_or_positive
+          flag_missing_tested_or_positive |
+          flag_attendance_issue
       ) %>%
         dplyr::coalesce(FALSE)
     )
@@ -866,6 +896,9 @@ plot_qc_summary_by_region <- function(summary_data) {
 #' @param month_var Month/date column.
 #' @param tested_var Tested count column.
 #' @param positive_var Positive count column.
+#' @param attending_var Optional attendance denominator column.
+#' @param attendance_definition A non-empty scalar definition required with
+#'   `attending_var`.
 #' @param council_var Optional council column.
 #' @param district_var Optional district column.
 #' @param nthreads Threads passed to [fit_prevalence_gam()].
@@ -879,6 +912,8 @@ run_routine_qc <- function(raw_data,
                            month_var,
                            tested_var,
                            positive_var,
+                           attending_var = NULL,
+                           attendance_definition = NULL,
                            council_var = NULL,
                            district_var = NULL,
                            nthreads = 1,
@@ -890,6 +925,8 @@ run_routine_qc <- function(raw_data,
     month_var = month_var,
     tested_var = tested_var,
     positive_var = positive_var,
+    attending_var = attending_var,
+    attendance_definition = attendance_definition,
     council_var = council_var,
     district_var = district_var
   )

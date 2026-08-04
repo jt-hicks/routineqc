@@ -1,6 +1,7 @@
 utils::globalVariables(c(
-  'council', 'district', 'expected_positive', 'facility', 'facility_id',
+  'attending', 'council', 'district', 'expected_positive', 'facility', 'facility_id',
   'flag_all_negative_large_n', 'flag_all_positive_large_n',
+  'flag_attendance_issue', 'flag_attending_negative',
   'flag_any_qc_issue', 'flag_combined_tested_prevalence_issue',
   'flag_invalid_logical', 'flag_isolated_extreme',
   'flag_large_monthly_prevalence_change', 'flag_missing_tested_or_positive',
@@ -8,7 +9,7 @@ utils::globalVariables(c(
   'flag_prevalence_extreme', 'flag_prevalence_only_issue',
   'flag_remove_primary', 'flag_resid_extreme', 'flag_sensitivity',
   'flag_tested_extreme_high', 'flag_tested_extreme_low',
-  'flag_tested_large_drop', 'flag_tested_large_jump', 'flag_tested_negative',
+  'flag_tested_gt_attending', 'flag_tested_large_drop', 'flag_tested_large_jump', 'flag_tested_negative',
   'flag_tested_only_issue', 'flag_tested_volume_extreme',
   'flag_tested_zero_unusual', 'flag_zero_tested_positive', 'injected_error',
   'lp', 'month', 'month_date', 'month_num', 'monthly_prev_change',

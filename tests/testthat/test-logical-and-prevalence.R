@@ -46,3 +46,35 @@ testthat::test_that("prepare_qc_data computes prevalence correctly", {
   testthat::expect_true(is.na(out$prevalence[2]))
   testthat::expect_true(all(c("council", "district") %in% names(out)))
 })
+
+testthat::test_that('approved attendance enables attendance logical rules', {
+  raw <- tibble::tibble(
+    fac = c('A', 'B', 'C'), reg = 'R', month = '2024-01-01',
+    attending = c(8, -1, NA), tested = c(10, 1, 4), positive = c(2, 0, 1)
+  )
+  prepared <- routineqc::prepare_qc_data(
+    raw, facility_var = 'fac', region_var = 'reg', month_var = 'month',
+    tested_var = 'tested', positive_var = 'positive',
+    attending_var = 'attending',
+    attendance_definition = 'Eligible ANC attendees from the adapter source'
+  )
+  testthat::expect_invisible(routineqc::validate_qc_input(prepared))
+  out <- routineqc::flag_logical_errors(prepared)
+  testthat::expect_true(out$flag_tested_gt_attending[1])
+  testthat::expect_true(out$flag_attending_negative[2])
+  testthat::expect_false(out$flag_invalid_logical[3])
+})
+
+testthat::test_that('attendance mapping requires an explicit definition', {
+  raw <- tibble::tibble(
+    fac = 'A', reg = 'R', month = '2024-01-01',
+    attending = 10, tested = 8, positive = 1
+  )
+  testthat::expect_error(
+    routineqc::prepare_qc_data(
+      raw, facility_var = 'fac', region_var = 'reg', month_var = 'month',
+      tested_var = 'tested', positive_var = 'positive', attending_var = 'attending'
+    ),
+    'attendance_definition'
+  )
+})

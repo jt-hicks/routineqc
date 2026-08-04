@@ -11,6 +11,8 @@ prepare_qc_data(
   month_var,
   tested_var,
   positive_var,
+  attending_var = NULL,
+  attendance_definition = NULL,
   council_var = NULL,
   district_var = NULL
 )
@@ -27,6 +29,12 @@ prepare_qc_data(
 \item{tested_var}{Tested count column.}
 
 \item{positive_var}{Positive count column.}
+
+\item{attending_var}{Optional attendance denominator column. When supplied,
+\code{attendance_definition} must describe its meaning and source.}
+
+\item{attendance_definition}{A non-empty scalar definition required with
+\code{attending_var}.}
 
 \item{council_var}{Optional council column.}
 

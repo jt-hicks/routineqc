@@ -9,7 +9,7 @@ This package is the independent home for the reusable QC engine originally proto
 | 1. Preserve | Existing package scaffold and QC prototype preserved in Git | Done |
 | 2. Charter | Package scope, ownership boundary, licence, and input contract | Done |
 | 3. Scaffold | Installable R package passing `R CMD check` | Done |
-| 4. Extract | Reconcile reusable logical, temporal, statistical, volume, summary, and plotting behavior | Not started |
+| 4. Extract | Reconcile reusable logical, temporal, statistical, volume, summary, and plotting behavior | In progress |
 | 5. Test | Synthetic tests cover critical rules and edge cases | In progress |
 | 6. Orchestrate | Stable `run_routine_qc()` API and QC run object | Prototype |
 | 7. Provenance | Configuration, manifests, input identifiers, and persistence | Not started |
@@ -20,9 +20,9 @@ This package is the independent home for the reusable QC engine originally proto
 
 ## Immediate next steps
 
-1. Compare this package's existing QC behavior with the earlier prototype and migrate only justified differences.
-2. Add reproducible configuration and QC run manifests.
-3. Define adapter guidance for mapping pipeline-specific fields into the canonical input.
+1. Reconcile prevalence and temporal facts against `docs/PROTOTYPE_COMPARISON.md`.
+2. Add named configuration profiles before changing tested-volume or action policy.
+3. Reconcile tested-volume modes and action policy in separate tested changes.
 
 ## Repository and licence
 
