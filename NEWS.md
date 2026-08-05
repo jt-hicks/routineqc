@@ -26,3 +26,6 @@
 - Reconciled the prevalence GAM with the prototype region fixed effect and added
   safe row-level prediction eligibility, status, coverage warnings, and manifest
   coverage metadata. Unavailable predictions remain `NA` and review-only.
+- Added a generic, versioned adapter result with declarative column mapping,
+  structured row-level translation diagnostics, safe provenance handoff, and a
+  guarded end-to-end runner. Added a synthetic adapter vignette.

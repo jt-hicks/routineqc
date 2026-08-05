@@ -61,6 +61,31 @@ qc$manifest$model_prediction_coverage
 table(qc$data_flagged$prediction_status)
 ```
 
+## Adapt pipeline data
+
+Pipeline-specific names and conventions belong in an adapter, outside the QC
+engine. A generic declarative adapter is included:
+
+``` r
+adapted <- adapt_qc_data(
+  pipeline_data,
+  mapping = list(
+    facility_id = 'org_unit_id', month_date = 'reporting_month',
+    region = 'province', tested = 'malaria_tested',
+    positive = 'malaria_positive'
+  ),
+  identity_strategy = 'DHIS2 organisation unit ID',
+  adapter = 'example_pipeline', adapter_version = '0.1.0',
+  dataset_id = 'curated-2026-08', source_system = 'DHIS2'
+)
+
+adapted$diagnostics
+qc <- run_qc_adapter(adapted)
+```
+
+Adapter errors block QC without deleting records. Count-conversion warnings do
+not block QC: the converted `NA` values remain available to the logical checks.
+
 The default `conservative_review` policy authorizes exclusion only for
 impossible core tested/positive records. Attendance contradictions and
 statistical, temporal, or tested-volume anomalies remain review-only.
@@ -97,7 +122,8 @@ rather than deleting records.
 Anomaly flags are evidence for review, not automatic proof of error. See
 `docs/ACTION_POLICY.md` and `docs/TESTED_VOLUME_BASELINES.md` for policy and
 baseline limitations, `docs/PREVALENCE_MODEL.md` for model assessment semantics,
-and `docs/RUN_ARTIFACTS.md` for persistence guidance.
+`docs/ADAPTERS.md` for the pipeline boundary, and `docs/RUN_ARTIFACTS.md` for
+persistence guidance.
 
 ## Notes
 

@@ -9,20 +9,29 @@ This package is the independent home for the reusable QC engine originally proto
 | 1. Preserve | Existing package scaffold and QC prototype preserved in Git | Done |
 | 2. Charter | Package scope, ownership boundary, licence, and input contract | Done |
 | 3. Scaffold | Installable R package passing `R CMD check` | Done |
-| 4. Extract | Reconcile reusable logical, temporal, statistical, volume, summary, and plotting behavior | In progress |
-| 5. Test | Synthetic tests cover critical rules and edge cases | In progress |
+| 4. Extract | Reconcile reusable logical, temporal, statistical, volume, summary, and plotting behavior | Done |
+| 5. Test | Synthetic tests cover critical rules and edge cases | Done |
 | 6. Orchestrate | Stable `run_routine_qc()` API and QC run object | Done |
 | 7. Provenance | Configuration, manifests, input identifiers, and persistence | Done |
 | 8. Application | Shiny app consumes selectable QC run objects | Not started |
-| 9. Demonstrate | Generic adapter and synthetic end-to-end vignette | Not started |
-| 10. Release | CI, documentation, checks, and experimental `0.1.0` | Not started |
+| 9. Demonstrate | Generic adapter and synthetic end-to-end vignette | Done |
+| 10. Release | CI, documentation, checks, and experimental `0.1.0` | In progress |
 | 11. Integrate | Optional adapters for upstream data-curation pipelines | Not started |
 
 ## Immediate next steps
 
-1. Define adapter guidance for mapping pipeline-specific data into the canonical contract.
-2. Expand integration tests around the stable QC run object.
-3. Add the generic adapter and synthetic end-to-end vignette.
+1. Build the first Shiny application increment around selectable persisted QC runs.
+2. Add continuous integration and prepare the experimental `0.1.0` release checklist.
+3. Pilot one thin source-specific adapter on non-committed upstream data.
+
+## Current position
+
+The reusable QC engine, synthetic rule coverage, orchestration, provenance, and
+generic adapter demonstration are complete. Application work has not started.
+Release preparation has begun through generated documentation and clean package
+checks, but CI and the `0.1.0` release remain outstanding. No upstream pipeline
+has yet been integrated, preserving the package boundary while the generic
+contract stabilizes.
 
 ## Repository and licence
 

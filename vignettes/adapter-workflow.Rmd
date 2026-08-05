@@ -1,0 +1,59 @@
+---
+title: 'Adapting a Pipeline Extract for routineqc'
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Adapting a Pipeline Extract for routineqc}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = '#>')
+```
+
+This example uses synthetic data. An adapter translates source conventions but
+does not delete, aggregate, impute, or make QC action decisions.
+
+```{r}
+library(routineqc)
+
+source_data <- simulate_qc_data(n_facilities = 12, n_months = 18, seed = 42)
+source_data$record_id <- sprintf('synthetic-%04d', seq_len(nrow(source_data)))
+
+adapted <- adapt_qc_data(
+  source_data,
+  mapping = list(
+    facility_id = 'facility',
+    month_date = 'month',
+    region = 'region',
+    district = 'district',
+    council = 'council',
+    tested = 'tested',
+    positive = 'positive',
+    source_record_id = 'record_id'
+  ),
+  identity_strategy = 'synthetic stable facility code',
+  adapter = 'synthetic_vignette',
+  adapter_version = '1.0.0',
+  dataset_id = 'synthetic-seed-42',
+  source_system = 'routineqc-simulator'
+)
+
+adapted$ready
+head(adapted$diagnostics)
+```
+
+Blocking diagnostics must be resolved upstream without dropping records. A
+ready result can be passed directly into the QC engine.
+
+```{r}
+qc_run <- suppressWarnings(run_qc_adapter(adapted, nthreads = 1))
+
+qc_run$manifest$provenance
+qc_run$manifest$model_prediction_coverage
+qc_run$summaries$by_region
+```
+
+The resulting object has the same versioned configuration, provenance,
+integrity checks, model coverage, flags, and action policy as a direct
+`run_routine_qc()` call.
