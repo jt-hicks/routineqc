@@ -57,6 +57,8 @@ testthat::test_that('wrapper captures and applies its action policy', {
     config = config, nthreads = 1
   )
   testthat::expect_true(all(c('data_flagged', 'model', 'summaries', 'config') %in% names(out)))
+  testthat::expect_s3_class(out, 'routineqc_run')
+  testthat::expect_true('manifest' %in% names(out))
   testthat::expect_s3_class(out$config, 'routineqc_config')
   testthat::expect_identical(out$config$action_policy$name, 'flags_only')
   testthat::expect_false(any(out$data_flagged$flag_exclude_authorized))

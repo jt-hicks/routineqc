@@ -11,8 +11,8 @@ This package is the independent home for the reusable QC engine originally proto
 | 3. Scaffold | Installable R package passing `R CMD check` | Done |
 | 4. Extract | Reconcile reusable logical, temporal, statistical, volume, summary, and plotting behavior | In progress |
 | 5. Test | Synthetic tests cover critical rules and edge cases | In progress |
-| 6. Orchestrate | Stable `run_routine_qc()` API and QC run object | Prototype |
-| 7. Provenance | Configuration, manifests, input identifiers, and persistence | In progress |
+| 6. Orchestrate | Stable `run_routine_qc()` API and QC run object | Done |
+| 7. Provenance | Configuration, manifests, input identifiers, and persistence | Done |
 | 8. Application | Shiny app consumes selectable QC run objects | Not started |
 | 9. Demonstrate | Generic adapter and synthetic end-to-end vignette | Not started |
 | 10. Release | CI, documentation, checks, and experimental `0.1.0` | Not started |
@@ -20,9 +20,9 @@ This package is the independent home for the reusable QC engine originally proto
 
 ## Immediate next steps
 
-1. Add run manifests, input identifiers, and persistence around the captured configuration and policy.
+1. Finish GAM-formula parity and safe prediction handling from the prototype audit.
 2. Define adapter guidance for mapping pipeline-specific data into the canonical contract.
-3. Convert the wrapper result into a stable, versioned QC run object.
+3. Expand integration tests around the stable QC run object.
 
 ## Repository and licence
 

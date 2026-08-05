@@ -16,6 +16,7 @@ run_routine_qc(
   council_var = NULL,
   district_var = NULL,
   config = qc_config(),
+  provenance = list(),
   nthreads = 1,
   ...
 )
@@ -44,13 +45,16 @@ run_routine_qc(
 
 \item{config}{A validated configuration created by \code{\link[=qc_config]{qc_config()}}.}
 
+\item{provenance}{A flat named list of safe upstream identifiers. Credentials,
+secrets, tokens, keys, local paths, and raw records must not be supplied.}
+
 \item{nthreads}{Threads passed to \code{\link[=fit_prevalence_gam]{fit_prevalence_gam()}}.}
 
 \item{...}{Additional arguments reserved for future extensions.}
 }
 \value{
-A list with \code{data_flagged}, \code{model}, \code{summaries}, and the validated
-\code{config} snapshot used for the run.
+A validated \code{routineqc_run} containing flagged data, model, summaries,
+configuration, and a reproducibility manifest.
 }
 \description{
 Main user-facing wrapper that prepares data, fits prevalence model, applies QC

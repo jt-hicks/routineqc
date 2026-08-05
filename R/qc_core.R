@@ -1052,11 +1052,13 @@ plot_qc_summary_by_region <- function(summary_data) {
 #' @param council_var Optional council column.
 #' @param district_var Optional district column.
 #' @param config A validated configuration created by [qc_config()].
+#' @param provenance A flat named list of safe upstream identifiers. Credentials,
+#'   secrets, tokens, keys, local paths, and raw records must not be supplied.
 #' @param nthreads Threads passed to [fit_prevalence_gam()].
 #' @param ... Additional arguments reserved for future extensions.
 #'
-#' @return A list with `data_flagged`, `model`, `summaries`, and the validated
-#'   `config` snapshot used for the run.
+#' @return A validated `routineqc_run` containing flagged data, model, summaries,
+#'   configuration, and a reproducibility manifest.
 #' @export
 run_routine_qc <- function(raw_data,
                            facility_var,
@@ -1069,6 +1071,7 @@ run_routine_qc <- function(raw_data,
                            council_var = NULL,
                            district_var = NULL,
                            config = qc_config(),
+                           provenance = list(),
                            nthreads = 1,
                            ...) {
   validate_qc_config(config)
@@ -1116,10 +1119,12 @@ run_routine_qc <- function(raw_data,
   summaries$by_month <- summarise_qc_by_month(dat)
   summaries$by_facility <- summarise_qc_by_facility(dat)
 
-  list(
+  .new_qc_run(
     data_flagged = dat,
     model = model,
     summaries = summaries,
-    config = config
+    config = config,
+    input_data = prepared,
+    provenance = provenance
   )
 }

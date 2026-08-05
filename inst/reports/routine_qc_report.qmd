@@ -40,6 +40,10 @@ cat('Tested-volume baseline:', qc_result$config$tested_volume$baseline_mode, '\n
 cat('Baseline uses future reports:', qc_result$config$tested_volume$baseline_uses_future, '\n')
 cat('Action policy:', qc_result$config$action_policy$name, '\n')
 cat('Action policy version:', qc_result$config$action_policy$version, '\n')
+cat('Analysis ID:', qc_result$manifest$analysis_id, '\n')
+cat('Execution ID:', qc_result$manifest$execution_id, '\n')
+cat('Input fingerprint:', qc_result$manifest$input_fingerprint, '\n')
+cat('Created UTC:', qc_result$manifest$created_at_utc, '\n')
 ```
 
 The trailing operational baseline has a warm-up period, can adapt slowly after

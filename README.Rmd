@@ -77,12 +77,24 @@ profile, which records that future observations were used:
 historical <- qc_config('retrospective')
 ```
 
+Each result is a validated, versioned run object with deterministic input and
+analysis identities and a unique execution identity. Persist complete runs with
+a metadata-only JSON manifest:
+
+``` r
+write_qc_run(qc, 'qc-runs/example.rds')
+restored <- read_qc_run('qc-runs/example.rds')
+```
+
+The RDS contains the complete flagged dataset and must be protected like the
+source data. The fingerprint is an identifier, not anonymization.
+
 routineqc preserves raw data and appends QC outputs as additional columns
 rather than deleting records.
 
 Anomaly flags are evidence for review, not automatic proof of error. See
 `docs/ACTION_POLICY.md` and `docs/TESTED_VOLUME_BASELINES.md` for policy and
-baseline limitations.
+baseline limitations, and `docs/RUN_ARTIFACTS.md` for persistence guidance.
 
 ## Notes
 

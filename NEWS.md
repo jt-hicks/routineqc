@@ -20,3 +20,6 @@
 - Added versioned `conservative_review` and `flags_only` action policies.
   Automatic exclusion is authorized only for impossible core counts under the
   conservative policy; attendance and anomaly signals remain review-only.
+- Added versioned `routineqc_run` objects with deterministic input and analysis
+  identities, unique execution IDs, safe provenance, manifests, integrity
+  validation, and guarded RDS/JSON persistence.
