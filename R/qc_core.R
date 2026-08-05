@@ -176,15 +176,15 @@ flag_logical_errors <- function(data) {
       flag_tested_gt_attending = !is.na(tested) & !is.na(attending) & tested > attending,
       flag_attending_negative = !is.na(attending) & attending < 0,
       flag_attendance_issue = flag_tested_gt_attending | flag_attending_negative,
-      flag_invalid_logical = (
+      flag_core_invalid = (
         flag_positive_gt_tested |
           flag_tested_negative |
           flag_positive_negative |
           flag_zero_tested_positive |
-          flag_missing_tested_or_positive |
-          flag_attendance_issue
+          flag_missing_tested_or_positive
       ) %>%
-        dplyr::coalesce(FALSE)
+        dplyr::coalesce(FALSE),
+      flag_invalid_logical = flag_core_invalid | flag_attendance_issue
     )
 }
 
@@ -204,12 +204,12 @@ fit_prevalence_gam <- function(data, nthreads = 1) {
   )
 
   train <- dplyr::as_tibble(data)
-  if (!"flag_invalid_logical" %in% names(train)) {
+  if (!"flag_core_invalid" %in% names(train)) {
     train <- flag_logical_errors(train)
   }
 
   train <- train %>%
-    dplyr::filter(!flag_invalid_logical, tested > 0, !is.na(month_num), !is.na(time_index)) %>%
+    dplyr::filter(!flag_core_invalid, tested > 0, !is.na(month_num), !is.na(time_index)) %>%
     dplyr::mutate(
       facility_id = as.factor(facility_id),
       region = as.factor(region)
@@ -561,26 +561,39 @@ add_temporal_qc_flags <- function(data, require_adjacent_months = TRUE) {
                   -prev_month_is_adjacent, -next_month_is_adjacent)
 }
 
+.append_qc_reason <- function(reason, flag, label) {
+  active <- dplyr::coalesce(flag, FALSE)
+  dplyr::if_else(active, dplyr::if_else(reason == '', label, paste0(reason, '; ', label)), reason)
+}
+
 #' Assign QC Action
 #'
-#' Combines QC flags into hierarchical action recommendations.
+#' Applies a versioned action policy to factual QC flags. The conservative policy
+#' authorizes exclusion only for impossible core tested/positive records. The
+#' flags-only policy never authorizes exclusion.
 #'
-#' @param data A data frame with logical, prevalence, and tested-volume flags.
+#' @param data A data frame with logical, prevalence, temporal, and volume flags.
+#' @param policy Either `conservative_review` or `flags_only`.
+#' @param policy_version Action-policy version. Currently only version 1.
 #'
-#' @return Data with QC action and combined issue flags appended.
+#' @return Data with primary action, review priority, accumulated reasons, and
+#'   explicit authorized-exclusion and review flags.
 #' @export
-assign_qc_action <- function(data) {
+assign_qc_action <- function(data,
+                             policy = c('conservative_review', 'flags_only'),
+                             policy_version = 1L) {
+  policy <- match.arg(policy)
+  if (!identical(policy_version, 1L)) {
+    rlang::abort('Unsupported action policy version.')
+  }
   out <- dplyr::as_tibble(data)
 
   required_optional <- c(
-    "flag_invalid_logical",
-    "flag_resid_extreme",
-    "flag_all_negative_large_n",
-    "flag_all_positive_large_n",
-    "flag_large_monthly_prevalence_change",
-    "flag_prevalence_extreme",
-    "flag_tested_volume_extreme",
-    "flag_isolated_extreme"
+    'flag_core_invalid', 'flag_attendance_issue', 'flag_resid_extreme',
+    'flag_all_negative_large_n', 'flag_all_positive_large_n',
+    'flag_large_monthly_prevalence_change', 'flag_prevalence_extreme',
+    'flag_tested_volume_extreme', 'flag_isolated_extreme',
+    'flag_temporal_context_insufficient'
   )
 
   for (nm in required_optional) {
@@ -600,43 +613,63 @@ assign_qc_action <- function(data) {
           flag_isolated_extreme
       ) %>% dplyr::coalesce(FALSE),
       tested_issue = flag_tested_volume_extreme %>% dplyr::coalesce(FALSE),
-      plausibility_issue = !flag_invalid_logical & !prevalence_issue & !tested_issue & tested == 0 & positive == 0,
+      attendance_issue = flag_attendance_issue %>% dplyr::coalesce(FALSE),
+      n_qc_signal_domains = as.integer(attendance_issue) +
+        as.integer(prevalence_issue) + as.integer(tested_issue),
+      multiple_signal_issue = n_qc_signal_domains >= 2L,
       qc_action = dplyr::case_when(
-        flag_invalid_logical ~ "remove_invalid_logical",
-        flag_all_negative_large_n | flag_all_positive_large_n | flag_resid_extreme | flag_isolated_extreme ~ "review_or_remove_high_confidence",
-        prevalence_issue ~ "review_prevalence_extreme",
-        tested_issue ~ "review_tested_volume",
-        plausibility_issue ~ "review_plausibility",
-        TRUE ~ "retain"
+        flag_core_invalid & policy == 'conservative_review' ~ 'exclude_core_invalid',
+        flag_core_invalid ~ 'review_core_invalid',
+        multiple_signal_issue ~ 'review_multiple_signals',
+        attendance_issue ~ 'review_attendance',
+        prevalence_issue ~ 'review_prevalence',
+        tested_issue ~ 'review_tested_volume',
+        flag_temporal_context_insufficient ~ 'review_temporal_context',
+        TRUE ~ 'retain'
       ),
-      qc_reason = dplyr::case_when(
-        qc_action == "remove_invalid_logical" ~ "Logical inconsistency in tested/positive values",
-        qc_action == "review_or_remove_high_confidence" ~ "High-confidence prevalence anomaly",
-        qc_action == "review_prevalence_extreme" ~ "Potential prevalence anomaly",
-        qc_action == "review_tested_volume" ~ "Potential tested volume anomaly",
-        qc_action == "review_plausibility" ~ "Requires plausibility review",
-        TRUE ~ "No QC issue detected"
+      review_priority = dplyr::case_when(
+        flag_core_invalid ~ 'critical',
+        multiple_signal_issue ~ 'high',
+        attendance_issue | prevalence_issue | tested_issue ~ 'medium',
+        flag_temporal_context_insufficient ~ 'low',
+        TRUE ~ 'none'
       ),
-      flag_remove_primary = qc_action %in% c("remove_invalid_logical", "review_or_remove_high_confidence"),
-      flag_sensitivity = qc_action %in% c("review_prevalence_extreme", "review_tested_volume", "review_or_remove_high_confidence"),
-      flag_any_qc_issue = qc_action != "retain",
-      flag_tested_only_issue = tested_issue & !prevalence_issue & !flag_invalid_logical,
-      flag_prevalence_only_issue = prevalence_issue & !tested_issue & !flag_invalid_logical,
-      flag_combined_tested_prevalence_issue = tested_issue & prevalence_issue & !flag_invalid_logical
-    ) %>%
-    dplyr::select(-prevalence_issue, -tested_issue, -plausibility_issue)
+      action_policy = policy,
+      action_policy_version = policy_version,
+      flag_exclude_authorized = qc_action == 'exclude_core_invalid',
+      flag_review_recommended = startsWith(qc_action, 'review_'),
+      flag_sensitivity = !flag_core_invalid & (attendance_issue | prevalence_issue | tested_issue),
+      flag_any_qc_issue = qc_action != 'retain',
+      flag_tested_only_issue = tested_issue & !prevalence_issue & !attendance_issue & !flag_core_invalid,
+      flag_prevalence_only_issue = prevalence_issue & !tested_issue & !attendance_issue & !flag_core_invalid,
+      flag_combined_tested_prevalence_issue = tested_issue & prevalence_issue & !flag_core_invalid
+    )
 
-  out
+  qc_reason <- rep('', nrow(out))
+  qc_reason <- .append_qc_reason(qc_reason, out$flag_core_invalid, 'impossible or missing core tested/positive counts')
+  qc_reason <- .append_qc_reason(qc_reason, out$flag_attendance_issue, 'attendance denominator contradiction')
+  qc_reason <- .append_qc_reason(qc_reason, out$flag_resid_extreme, 'prevalence residual extreme')
+  qc_reason <- .append_qc_reason(qc_reason, out$flag_all_negative_large_n, 'all-negative with large tested count')
+  qc_reason <- .append_qc_reason(qc_reason, out$flag_all_positive_large_n, 'all-positive with large tested count')
+  qc_reason <- .append_qc_reason(qc_reason, out$flag_large_monthly_prevalence_change, 'large adjacent-month prevalence change')
+  qc_reason <- .append_qc_reason(qc_reason, out$flag_isolated_extreme, 'isolated statistical extreme')
+  qc_reason <- .append_qc_reason(qc_reason, out$flag_tested_volume_extreme, 'tested-volume anomaly')
+  qc_reason <- .append_qc_reason(qc_reason, out$flag_temporal_context_insufficient, 'insufficient adjacent-month context')
+  out$qc_reason <- dplyr::if_else(qc_reason == '', 'No QC issue detected', qc_reason)
+
+  out %>%
+    dplyr::select(-prevalence_issue, -tested_issue, -attendance_issue, -multiple_signal_issue)
 }
 
 .summarise_qc_group <- function(data, group_vars = character(0)) {
   dat <- dplyr::as_tibble(data)
 
   needed <- c(
-    "tested", "positive", "flag_any_qc_issue", "flag_invalid_logical",
-    "flag_prevalence_extreme", "flag_tested_volume_extreme", "flag_tested_only_issue",
-    "flag_prevalence_only_issue", "flag_combined_tested_prevalence_issue",
-    "flag_remove_primary", "flag_sensitivity"
+    'tested', 'positive', 'flag_any_qc_issue', 'flag_core_invalid',
+    'flag_attendance_issue', 'flag_prevalence_extreme',
+    'flag_tested_volume_extreme', 'flag_tested_only_issue',
+    'flag_prevalence_only_issue', 'flag_combined_tested_prevalence_issue',
+    'flag_exclude_authorized', 'flag_review_recommended', 'flag_sensitivity'
   )
 
   for (nm in needed) {
@@ -653,20 +686,25 @@ assign_qc_action <- function(data) {
       total_rows = dplyr::n(),
       n_any_qc_issue = sum(flag_any_qc_issue, na.rm = TRUE),
       pct_any_qc_issue = 100 * n_any_qc_issue / total_rows,
-      invalid_logical_rows = sum(flag_invalid_logical, na.rm = TRUE),
+      core_invalid_rows = sum(flag_core_invalid, na.rm = TRUE),
+      attendance_issue_rows = sum(flag_attendance_issue, na.rm = TRUE),
       prevalence_extreme_rows = sum(flag_prevalence_extreme, na.rm = TRUE),
       tested_volume_extreme_rows = sum(flag_tested_volume_extreme, na.rm = TRUE),
       tested_only_issues = sum(flag_tested_only_issue, na.rm = TRUE),
       prevalence_only_issues = sum(flag_prevalence_only_issue, na.rm = TRUE),
       combined_tested_prevalence_issues = sum(flag_combined_tested_prevalence_issue, na.rm = TRUE),
-      recommended_primary_removals = sum(flag_remove_primary, na.rm = TRUE),
+      authorized_exclusion_rows = sum(flag_exclude_authorized, na.rm = TRUE),
+      review_recommended_rows = sum(flag_review_recommended, na.rm = TRUE),
       sensitivity_flags = sum(flag_sensitivity, na.rm = TRUE),
       total_tested_before_qc = sum(tested, na.rm = TRUE),
       total_positive_before_qc = sum(positive, na.rm = TRUE),
-      total_tested_after_primary_qc = sum(dplyr::if_else(flag_remove_primary, 0, tested), na.rm = TRUE),
-      total_positive_after_primary_qc = sum(dplyr::if_else(flag_remove_primary, 0, positive), na.rm = TRUE),
+      total_tested_after_authorized_exclusions = sum(dplyr::if_else(flag_exclude_authorized, 0, tested), na.rm = TRUE),
+      total_positive_after_authorized_exclusions = sum(dplyr::if_else(flag_exclude_authorized, 0, positive), na.rm = TRUE),
       prevalence_before_qc = .safe_divide(total_positive_before_qc, total_tested_before_qc),
-      prevalence_after_primary_qc = .safe_divide(total_positive_after_primary_qc, total_tested_after_primary_qc),
+      prevalence_after_authorized_exclusions = .safe_divide(
+        total_positive_after_authorized_exclusions,
+        total_tested_after_authorized_exclusions
+      ),
       .groups = "drop"
     )
 }
@@ -728,7 +766,7 @@ summarise_qc_by_district <- function(data) {
 
 #' Summarise Before/After QC
 #'
-#' Summarises prevalence and volume before and after primary QC removals.
+#' Summarises prevalence and volume before and after policy-authorized exclusions.
 #'
 #' @param data A QC-flagged data frame.
 #' @param by One of `overall`, `region`, `council`, `district`, `month`.
@@ -955,22 +993,22 @@ plot_facility_timeseries <- function(data, facility_id) {
 
 #' Plot Before/After Prevalence
 #'
-#' @param data A QC data frame with `flag_remove_primary`.
+#' @param data A QC data frame with `flag_exclude_authorized`.
 #'
 #' @return A ggplot object.
 #' @export
 plot_before_after_prevalence <- function(data) {
-  .validate_required_columns(data, c("tested", "positive", "flag_remove_primary"))
+  .validate_required_columns(data, c('tested', 'positive', 'flag_exclude_authorized'))
 
   before <- .safe_divide(sum(data$positive, na.rm = TRUE), sum(data$tested, na.rm = TRUE))
 
   keep <- dplyr::as_tibble(data) %>%
-    dplyr::filter(!flag_remove_primary)
+    dplyr::filter(!flag_exclude_authorized)
 
   after <- .safe_divide(sum(keep$positive, na.rm = TRUE), sum(keep$tested, na.rm = TRUE))
 
   plot_dat <- dplyr::tibble(
-    state = c("Before QC", "After primary QC"),
+    state = c('Source data', 'After authorized exclusions'),
     prevalence = c(before, after)
   )
 
@@ -978,7 +1016,7 @@ plot_before_after_prevalence <- function(data) {
     ggplot2::geom_col(width = 0.6) +
     ggplot2::theme_minimal() +
     ggplot2::guides(fill = "none") +
-    ggplot2::labs(x = NULL, y = "Prevalence", title = "Overall prevalence before and after primary QC")
+    ggplot2::labs(x = NULL, y = 'Prevalence', title = 'Prevalence after authorized exclusions')
 }
 
 #' Plot QC Summary By Region
@@ -1059,7 +1097,11 @@ run_routine_qc <- function(raw_data,
   dat <- do.call(add_prevalence_qc_flags, c(list(data = dat), config$prevalence))
   dat <- do.call(add_tested_volume_qc, c(list(data = dat), config$tested_volume))
   dat <- do.call(add_temporal_qc_flags, c(list(data = dat), config$temporal))
-  dat <- assign_qc_action(dat)
+  dat <- assign_qc_action(
+    dat,
+    policy = config$action_policy$name,
+    policy_version = config$action_policy$version
+  )
 
   summaries <- list(by_region = summarise_qc_by_region(dat))
 

@@ -2,13 +2,15 @@ testthat::test_that('recommended configuration records agreed defaults', {
   config <- routineqc::qc_config()
   testthat::expect_s3_class(config, 'routineqc_config')
   testthat::expect_identical(config$profile, 'recommended')
-  testthat::expect_identical(config$schema_version, 2L)
+  testthat::expect_identical(config$schema_version, 3L)
   testthat::expect_equal(config$prevalence$resid_threshold_large, 4)
   testthat::expect_equal(config$prevalence$resid_threshold_small, 5)
   testthat::expect_equal(config$prevalence$all_negative_min_tested, 50)
   testthat::expect_true(config$temporal$require_adjacent_months)
   testthat::expect_identical(config$tested_volume$baseline_mode, 'trailing')
   testthat::expect_false(config$tested_volume$baseline_uses_future)
+  testthat::expect_identical(config$action_policy$name, 'conservative_review')
+  testthat::expect_identical(config$action_policy$version, 1L)
   testthat::expect_invisible(routineqc::validate_qc_config(config))
 })
 
@@ -53,6 +55,14 @@ testthat::test_that('configuration overrides are validated', {
   testthat::expect_error(
     routineqc::qc_config(tested_volume = list(baseline_mode = 'centered')),
     'must agree'
+  )
+  testthat::expect_identical(
+    routineqc::qc_config(action_policy = list(name = 'flags_only'))$action_policy$name,
+    'flags_only'
+  )
+  testthat::expect_error(
+    routineqc::qc_config(action_policy = list(name = 'aggressive_removal')),
+    'conservative_review or flags_only'
   )
   broken <- config
   broken$temporal$require_adjacent_months <- 'yes'

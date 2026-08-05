@@ -8,6 +8,7 @@ qc_config(
   profile = c("recommended", "operational", "retrospective", "permissive_sensitivity"),
   prevalence = list(),
   temporal = list(),
+  action_policy = list(),
   tested_volume = list()
 )
 }
@@ -18,6 +19,9 @@ qc_config(
 \item{prevalence}{Named list of prevalence-rule overrides.}
 
 \item{temporal}{Named list of temporal-rule overrides.}
+
+\item{action_policy}{Named list selecting \code{conservative_review} or
+\code{flags_only} and its policy version.}
 
 \item{tested_volume}{Named list of tested-volume overrides.}
 }

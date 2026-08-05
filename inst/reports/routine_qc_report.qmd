@@ -38,6 +38,8 @@ cat('Configuration profile:', qc_result$config$profile, '\n')
 cat('Configuration schema:', qc_result$config$schema_version, '\n')
 cat('Tested-volume baseline:', qc_result$config$tested_volume$baseline_mode, '\n')
 cat('Baseline uses future reports:', qc_result$config$tested_volume$baseline_uses_future, '\n')
+cat('Action policy:', qc_result$config$action_policy$name, '\n')
+cat('Action policy version:', qc_result$config$action_policy$version, '\n')
 ```
 
 The trailing operational baseline has a warm-up period, can adapt slowly after
@@ -63,8 +65,9 @@ The routineqc workflow applies:
 ```{r}
 qc_result$data_flagged %>%
   summarise(
-    invalid_logical_rows = sum(flag_invalid_logical, na.rm = TRUE),
-    pct_invalid = 100 * mean(flag_invalid_logical, na.rm = TRUE)
+    core_invalid_rows = sum(flag_core_invalid, na.rm = TRUE),
+    attendance_issue_rows = sum(flag_attendance_issue, na.rm = TRUE),
+    authorized_exclusions = sum(flag_exclude_authorized, na.rm = TRUE)
   )
 ```
 
@@ -99,7 +102,7 @@ plot_tested_robust_z(qc_result$data_flagged)
 
 ```{r}
 qc_result$data_flagged %>%
-  count(qc_action, sort = TRUE)
+  count(review_priority, qc_action, sort = TRUE)
 ```
 
 ## Region QC Summary
@@ -129,7 +132,7 @@ if ("by_district" %in% names(qc_result$summaries)) {
 }
 ```
 
-## Before/After Summaries
+## Authorized-Exclusion Summaries
 
 ```{r}
 summarise_before_after_qc(qc_result$data_flagged, by = "region")

@@ -59,11 +59,30 @@ names(qc$summaries)
 qc$summaries$by_region
 ```
 
+The default `conservative_review` policy authorizes exclusion only for
+impossible core tested/positive records. Attendance contradictions and
+statistical, temporal, or tested-volume anomalies remain review-only.
+
+Use a flags-only run when all exclusion decisions must remain external:
+
+``` r
+flags_only <- qc_config(action_policy = list(name = 'flags_only'))
+```
+
+Operational tested-volume baselines use only previous calendar months. For a
+substantially complete historical dataset, explicitly select the retrospective
+profile, which records that future observations were used:
+
+``` r
+historical <- qc_config('retrospective')
+```
+
 routineqc preserves raw data and appends QC outputs as additional columns
 rather than deleting records.
 
-Flagged records should be interpreted as records for review and sensitivity
-analysis, not automatic proof of error.
+Anomaly flags are evidence for review, not automatic proof of error. See
+`docs/ACTION_POLICY.md` and `docs/TESTED_VOLUME_BASELINES.md` for policy and
+baseline limitations.
 
 ## Notes
 

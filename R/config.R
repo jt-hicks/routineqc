@@ -27,6 +27,10 @@
       use_prevalence_bounds = FALSE
     ),
     temporal = list(require_adjacent_months = TRUE),
+    action_policy = list(
+      name = 'conservative_review',
+      version = 1L
+    ),
     tested_volume = list(
       baseline_mode = 'trailing',
       baseline_window_months = 6,
@@ -80,6 +84,8 @@
 #'   `permissive_sensitivity`.
 #' @param prevalence Named list of prevalence-rule overrides.
 #' @param temporal Named list of temporal-rule overrides.
+#' @param action_policy Named list selecting `conservative_review` or
+#'   `flags_only` and its policy version.
 #' @param tested_volume Named list of tested-volume overrides.
 #'
 #' @return An object of class `routineqc_config`.
@@ -87,14 +93,16 @@
 qc_config <- function(profile = c('recommended', 'operational', 'retrospective', 'permissive_sensitivity'),
                       prevalence = list(),
                       temporal = list(),
+                      action_policy = list(),
                       tested_volume = list()) {
   profile <- match.arg(profile)
   defaults <- .qc_profile_defaults(profile)
   config <- list(
-    schema_version = 2L,
+    schema_version = 3L,
     profile = profile,
     prevalence = .merge_config_section(defaults$prevalence, prevalence, 'prevalence'),
     temporal = .merge_config_section(defaults$temporal, temporal, 'temporal'),
+    action_policy = .merge_config_section(defaults$action_policy, action_policy, 'action_policy'),
     tested_volume = .merge_config_section(defaults$tested_volume, tested_volume, 'tested_volume')
   )
   class(config) <- c('routineqc_config', 'list')
@@ -115,11 +123,11 @@ qc_config <- function(profile = c('recommended', 'operational', 'retrospective',
 #' @return `config`, invisibly, after successful validation.
 #' @export
 validate_qc_config <- function(config) {
-  required <- c('schema_version', 'profile', 'prevalence', 'temporal', 'tested_volume')
+  required <- c('schema_version', 'profile', 'prevalence', 'temporal', 'action_policy', 'tested_volume')
   if (!is.list(config) || !all(required %in% names(config))) {
     rlang::abort('QC configuration is missing required sections.')
   }
-  if (!identical(config$schema_version, 2L)) {
+  if (!identical(config$schema_version, 3L)) {
     rlang::abort('Unsupported QC configuration schema version.')
   }
   if (!is.character(config$profile) || length(config$profile) != 1L ||
@@ -164,6 +172,13 @@ validate_qc_config <- function(config) {
   }
   if (!rlang::is_bool(config$temporal$require_adjacent_months)) {
     rlang::abort('`temporal$require_adjacent_months` must be TRUE or FALSE.')
+  }
+  if (!is.character(config$action_policy$name) || length(config$action_policy$name) != 1L ||
+      !config$action_policy$name %in% c('conservative_review', 'flags_only')) {
+    rlang::abort('`action_policy$name` must be conservative_review or flags_only.')
+  }
+  if (!identical(config$action_policy$version, 1L)) {
+    rlang::abort('Unsupported action policy version.')
   }
   tested_numeric_names <- c(
     'baseline_window_months', 'min_roll_n', 'tested_z_threshold',

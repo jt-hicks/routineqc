@@ -17,3 +17,6 @@
 - Added calendar-aware trailing operational and centered retrospective
   tested-volume baselines, with explicit future-data metadata and documented
   limitations for both modes.
+- Added versioned `conservative_review` and `flags_only` action policies.
+  Automatic exclusion is authorized only for impossible core counts under the
+  conservative policy; attendance and anomaly signals remain review-only.

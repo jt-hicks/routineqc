@@ -20,9 +20,9 @@ This package is the independent home for the reusable QC engine originally proto
 
 ## Immediate next steps
 
-1. Reconcile action policy now that logical, prevalence, temporal, and volume facts have stable tests.
-2. Add run manifests, input identifiers, and persistence around the captured configuration.
-3. Define adapter guidance for mapping pipeline-specific data into the canonical contract.
+1. Add run manifests, input identifiers, and persistence around the captured configuration and policy.
+2. Define adapter guidance for mapping pipeline-specific data into the canonical contract.
+3. Convert the wrapper result into a stable, versioned QC run object.
 
 ## Repository and licence
 

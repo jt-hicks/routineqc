@@ -7,7 +7,7 @@
 plot_before_after_prevalence(data)
 }
 \arguments{
-\item{data}{A QC data frame with \code{flag_remove_primary}.}
+\item{data}{A QC data frame with \code{flag_exclude_authorized}.}
 }
 \value{
 A ggplot object.

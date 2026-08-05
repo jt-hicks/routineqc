@@ -4,14 +4,25 @@
 \alias{assign_qc_action}
 \title{Assign QC Action}
 \usage{
-assign_qc_action(data)
+assign_qc_action(
+  data,
+  policy = c("conservative_review", "flags_only"),
+  policy_version = 1L
+)
 }
 \arguments{
-\item{data}{A data frame with logical, prevalence, and tested-volume flags.}
+\item{data}{A data frame with logical, prevalence, temporal, and volume flags.}
+
+\item{policy}{Either \code{conservative_review} or \code{flags_only}.}
+
+\item{policy_version}{Action-policy version. Currently only version 1.}
 }
 \value{
-Data with QC action and combined issue flags appended.
+Data with primary action, review priority, accumulated reasons, and
+explicit authorized-exclusion and review flags.
 }
 \description{
-Combines QC flags into hierarchical action recommendations.
+Applies a versioned action policy to factual QC flags. The conservative policy
+authorizes exclusion only for impossible core tested/positive records. The
+flags-only policy never authorizes exclusion.
 }

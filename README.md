@@ -59,27 +59,46 @@ qc <- run_routine_qc(
 names(qc$summaries)
 #> [1] "by_region"   "by_council"  "by_district" "by_month"    "by_facility"
 qc$summaries$by_region
-#> # A tibble: 4 × 18
-#>   region   total_rows n_any_qc_issue pct_any_qc_issue invalid_logical_rows
-#>   <chr>         <int>          <int>            <dbl>                <int>
-#> 1 Region_A        130             19            14.6                     2
-#> 2 Region_B        141              9             6.38                    1
-#> 3 Region_C        103             14            13.6                     2
-#> 4 Region_D        106              6             5.66                    0
-#> # ℹ 13 more variables: prevalence_extreme_rows <int>,
-#> #   tested_volume_extreme_rows <int>, tested_only_issues <int>,
-#> #   prevalence_only_issues <int>, combined_tested_prevalence_issues <int>,
-#> #   recommended_primary_removals <int>, sensitivity_flags <int>,
+#> # A tibble: 4 × 20
+#>   region   total_rows n_any_qc_issue pct_any_qc_issue core_invalid_rows
+#>   <chr>         <int>          <int>            <dbl>             <int>
+#> 1 Region_A        130              8             6.15                 2
+#> 2 Region_B        141              3             2.13                 1
+#> 3 Region_C        103              7             6.80                 2
+#> 4 Region_D        106              4             3.77                 0
+#> # ℹ 15 more variables: attendance_issue_rows <int>,
+#> #   prevalence_extreme_rows <int>, tested_volume_extreme_rows <int>,
+#> #   tested_only_issues <int>, prevalence_only_issues <int>,
+#> #   combined_tested_prevalence_issues <int>, authorized_exclusion_rows <int>,
+#> #   review_recommended_rows <int>, sensitivity_flags <int>,
 #> #   total_tested_before_qc <dbl>, total_positive_before_qc <dbl>,
-#> #   total_tested_after_primary_qc <dbl>, total_positive_after_primary_qc <dbl>,
-#> #   prevalence_before_qc <dbl>, prevalence_after_primary_qc <dbl>
+#> #   total_tested_after_authorized_exclusions <dbl>, …
+```
+
+The default `conservative_review` policy authorizes exclusion only for
+impossible core tested/positive records. Attendance contradictions and
+statistical, temporal, or tested-volume anomalies remain review-only.
+
+Use a flags-only run when all exclusion decisions must remain external:
+
+``` r
+flags_only <- qc_config(action_policy = list(name = 'flags_only'))
+```
+
+Operational tested-volume baselines use only previous calendar months.
+For a substantially complete historical dataset, explicitly select the
+retrospective profile, which records that future observations were used:
+
+``` r
+historical <- qc_config('retrospective')
 ```
 
 routineqc preserves raw data and appends QC outputs as additional
 columns rather than deleting records.
 
-Flagged records should be interpreted as records for review and
-sensitivity analysis, not automatic proof of error.
+Anomaly flags are evidence for review, not automatic proof of error. See
+`docs/ACTION_POLICY.md` and `docs/TESTED_VOLUME_BASELINES.md` for policy
+and baseline limitations.
 
 ## Notes
 

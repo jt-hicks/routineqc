@@ -34,8 +34,8 @@ treated as a replacement for the prototype.
 | Tested rolling baseline | Centered 13-month window excluding current observation; at least six valid neighbors | Previous six observations only | Implemented calendar-aware trailing operational and centered retrospective modes |
 | Tested high/low rule | Requires robust-z and ratio conditions plus minimum-volume guards | Robust-z or ratio condition, without equivalent guards | Implemented corroborating evidence and safeguards by default; OR behavior is sensitivity-only |
 | Tested jump/drop | Strict thresholds with minimum current/previous counts | Inclusive thresholds with only previous count > 0 | Implemented strict thresholds and minimum-volume guards |
-| Action policy | High confidence is isolated statistical extreme or tested-volume combined with statistical/plausibility evidence | Any residual, all-negative, all-positive, or isolated flag is high confidence | Restore prototype action precedence as compatibility policy, but keep facts separate from policy |
-| Sensitivity flag | Any non-retain action | Excludes `review_plausibility` | Restore prototype meaning or rename the narrower package output |
+| Action policy | Statistical combinations could recommend primary removal | Statistical anomalies could recommend primary removal | Replaced with versioned policy: only core-invalid counts may be excluded by the conservative default; all anomalies remain review-only |
+| Sensitivity flag | Any non-retain action | Excluded some review categories | Retained as an anomaly-analysis marker; exclusion and review now have explicit separate fields |
 | Summaries | Region/month/facility counts | Generic grouped before/after summaries and more geographic levels | Keep package implementation, after flag-name reconciliation |
 | Plots | Multi-plot diagnostic bundle | Small composable plotting functions | Keep package design; add missing diagnostics only when the app needs them |
 | Simulation/evaluation | Absent | Synthetic injection, truth evaluation, threshold grid | Keep package additions |
@@ -70,8 +70,11 @@ treated as a replacement for the prototype.
   may explicitly select a centered baseline. Centered runs record that they use
   future information. Caveats for both modes are documented in
   `docs/TESTED_VOLUME_BASELINES.md`.
+- The default conservative action policy authorizes exclusion only for
+  impossible or missing core tested/positive counts. Attendance contradictions
+  and all anomaly flags are review-only. `flags_only` authorizes no exclusions.
 
 ## Open domain decisions
 
-- Which review categories, if any, are authorized for automatic exclusion.
-  Computed flags must not answer this policy question implicitly.
+- Any future policy that authorizes broader exclusions requires reviewed data,
+  domain sign-off, a new policy name/version, and explicit tests.

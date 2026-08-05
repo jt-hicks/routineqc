@@ -18,5 +18,5 @@ summarise_before_after_qc(
 A summary tibble.
 }
 \description{
-Summarises prevalence and volume before and after primary QC removals.
+Summarises prevalence and volume before and after policy-authorized exclusions.
 }

@@ -62,6 +62,8 @@ testthat::test_that('approved attendance enables attendance logical rules', {
   out <- routineqc::flag_logical_errors(prepared)
   testthat::expect_true(out$flag_tested_gt_attending[1])
   testthat::expect_true(out$flag_attending_negative[2])
+  testthat::expect_false(out$flag_core_invalid[1])
+  testthat::expect_false(out$flag_core_invalid[2])
   testthat::expect_false(out$flag_invalid_logical[3])
 })
 

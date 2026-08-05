@@ -27,6 +27,7 @@ testthat::test_that('logical count errors remain available for QC flags', {
   testthat::expect_invisible(routineqc::validate_qc_input(dat))
   flagged <- routineqc::flag_logical_errors(dat)
   testthat::expect_true(all(flagged$flag_invalid_logical))
+  testthat::expect_true(all(flagged$flag_core_invalid))
 })
 
 testthat::test_that('attendance requires an explicit definition', {
