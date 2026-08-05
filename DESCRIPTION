@@ -26,5 +26,4 @@ Imports:
     mgcv,
     purrr,
     rlang,
-    slider,
     tidyr

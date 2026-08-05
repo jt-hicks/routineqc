@@ -6,18 +6,35 @@
 \usage{
 add_tested_volume_qc(
   data,
+  baseline_mode = c("trailing", "centered"),
+  baseline_window_months = 6,
+  baseline_uses_future = identical(match.arg(baseline_mode), "centered"),
   min_roll_n = 6,
   tested_z_threshold = 5,
   tested_high_ratio = 3,
   tested_low_ratio = 0.25,
   tested_jump_ratio = 5,
-  tested_drop_ratio = 0.2
+  tested_drop_ratio = 0.2,
+  require_both_extreme = TRUE,
+  tested_high_min = 20,
+  baseline_low_min = 20,
+  baseline_zero_min = 10,
+  tested_jump_min = 20,
+  previous_jump_min = 10,
+  previous_drop_min = 20
 )
 }
 \arguments{
 \item{data}{A prepared data frame.}
 
-\item{min_roll_n}{Minimum previous observations required for rolling stats.}
+\item{baseline_mode}{Either \code{trailing} or \code{centered}.}
+
+\item{baseline_window_months}{Calendar months before the row, and also after
+the row for a centered baseline.}
+
+\item{baseline_uses_future}{Must agree with \code{baseline_mode}; recorded in output.}
+
+\item{min_roll_n}{Minimum non-missing neighboring observations required.}
 
 \item{tested_z_threshold}{Absolute robust z-score threshold.}
 
@@ -28,10 +45,30 @@ add_tested_volume_qc(
 \item{tested_jump_ratio}{Current-to-previous tested jump ratio threshold.}
 
 \item{tested_drop_ratio}{Current-to-previous tested drop ratio threshold.}
+
+\item{require_both_extreme}{Require both z-score and baseline-ratio evidence
+for high/low baseline flags. Recommended default is \code{TRUE}.}
+
+\item{tested_high_min}{Minimum current tested count for a high flag.}
+
+\item{baseline_low_min}{Minimum baseline median for a low flag.}
+
+\item{baseline_zero_min}{Minimum baseline median for an unusual-zero flag.}
+
+\item{tested_jump_min}{Minimum current tested count for a jump flag.}
+
+\item{previous_jump_min}{Minimum previous tested count for a jump flag.}
+
+\item{previous_drop_min}{Minimum previous tested count for a drop flag.}
 }
 \value{
-Data with tested-count rolling metrics and QC flags appended.
+Data with baseline metadata, component measurements, and flags appended.
 }
 \description{
-Adds facility-level tested count anomaly flags using rolling median and MAD.
+Adds facility-level tested-count anomaly flags using a calendar-month rolling
+median and MAD. A \code{trailing} baseline uses only earlier months and is suitable
+for operational monitoring, but requires a warm-up period and may adapt slowly
+after a real structural change. A \code{centered} baseline uses earlier and later
+months and is intended for retrospective curation; it introduces look-ahead
+and flags can change when later data are appended.
 }

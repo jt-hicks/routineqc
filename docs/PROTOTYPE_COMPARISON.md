@@ -31,9 +31,9 @@ treated as a replacement for the prototype.
 | Large prevalence change | Change > 0.5, both months tested >= 20, and months contiguous | Change >= 0.35 without denominator or adjacency guards | Restore prototype guards/default; expose configuration |
 | Raw prevalence bounds | No separate near-zero/near-one rule | <= 0.001 or >= 0.999 contributes to prevalence extreme | Do not silently use as a primary compatibility rule; retain only as an optional sensitivity rule |
 | Isolated extreme | Based on statistical residual extreme; optional adjacency requirement | Based on broad prevalence extreme and ignores calendar gaps | Use the statistical basis and require adjacent calendar months by default; expose insufficient temporal context |
-| Tested rolling baseline | Centered 13-month window excluding current observation; at least six valid neighbors | Previous six observations only | Defer selection to configuration; label centered mode as retrospective and trailing mode as prospective |
-| Tested high/low rule | Requires robust-z and ratio conditions plus minimum-volume guards | Robust-z or ratio condition, without equivalent guards | Restore prototype compatibility mode; retain alternative only as an explicit sensitivity mode |
-| Tested jump/drop | Strict thresholds with minimum current/previous counts | Inclusive thresholds with only previous count > 0 | Restore prototype guards/defaults |
+| Tested rolling baseline | Centered 13-month window excluding current observation; at least six valid neighbors | Previous six observations only | Implemented calendar-aware trailing operational and centered retrospective modes |
+| Tested high/low rule | Requires robust-z and ratio conditions plus minimum-volume guards | Robust-z or ratio condition, without equivalent guards | Implemented corroborating evidence and safeguards by default; OR behavior is sensitivity-only |
+| Tested jump/drop | Strict thresholds with minimum current/previous counts | Inclusive thresholds with only previous count > 0 | Implemented strict thresholds and minimum-volume guards |
 | Action policy | High confidence is isolated statistical extreme or tested-volume combined with statistical/plausibility evidence | Any residual, all-negative, all-positive, or isolated flag is high confidence | Restore prototype action precedence as compatibility policy, but keep facts separate from policy |
 | Sensitivity flag | Any non-retain action | Excludes `review_plausibility` | Restore prototype meaning or rename the narrower package output |
 | Summaries | Region/month/facility counts | Generic grouped before/after summaries and more geographic levels | Keep package implementation, after flag-name reconciliation |
@@ -66,10 +66,12 @@ treated as a replacement for the prototype.
 - Isolated-extreme classification requires actual adjacent calendar months by
   default. A residual extreme without both adjacent months is marked as having
   insufficient temporal context rather than isolated.
+- Operational runs use a trailing calendar baseline and retrospective curation
+  may explicitly select a centered baseline. Centered runs record that they use
+  future information. Caveats for both modes are documented in
+  `docs/TESTED_VOLUME_BASELINES.md`.
 
 ## Open domain decisions
 
-- Whether a QC run intended for operational use may use future observations in
-  a centered tested-volume baseline, or must use a trailing baseline.
 - Which review categories, if any, are authorized for automatic exclusion.
   Computed flags must not answer this policy question implicitly.

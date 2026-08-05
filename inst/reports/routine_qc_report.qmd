@@ -31,6 +31,21 @@ cat("Months:", dplyr::n_distinct(qc_result$data_flagged$month_date), "\n")
 cat("Regions:", dplyr::n_distinct(qc_result$data_flagged$region), "\n")
 ```
 
+## Run Configuration
+
+```{r}
+cat('Configuration profile:', qc_result$config$profile, '\n')
+cat('Configuration schema:', qc_result$config$schema_version, '\n')
+cat('Tested-volume baseline:', qc_result$config$tested_volume$baseline_mode, '\n')
+cat('Baseline uses future reports:', qc_result$config$tested_volume$baseline_uses_future, '\n')
+```
+
+The trailing operational baseline has a warm-up period, can adapt slowly after
+a genuine structural change, and may be contaminated by erroneous earlier
+reports. The centered retrospective baseline uses future information, can change
+when later reports are appended, and must not be interpreted as a real-time
+alert. Missing calendar months reduce baseline evidence in both modes.
+
 ## QC Protocol Summary
 
 The routineqc workflow applies:
@@ -72,6 +87,7 @@ plot_prevalence_residuals(qc_result$data_flagged)
 qc_result$data_flagged %>%
   summarise(
     tested_volume_extreme = sum(flag_tested_volume_extreme, na.rm = TRUE),
+    baseline_not_ready = sum(!tested_baseline_ready, na.rm = TRUE),
     tested_jump = sum(flag_tested_large_jump, na.rm = TRUE),
     tested_drop = sum(flag_tested_large_drop, na.rm = TRUE)
   )

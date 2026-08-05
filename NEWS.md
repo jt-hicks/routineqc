@@ -14,3 +14,6 @@
   `run_routine_qc()` now returns the exact configuration snapshot used.
 - Reconciled optional attendance, prevalence thresholds, adjacent-month change
   rules, and temporal-context flags with synthetic boundary tests.
+- Added calendar-aware trailing operational and centered retrospective
+  tested-volume baselines, with explicit future-data metadata and documented
+  limitations for both modes.

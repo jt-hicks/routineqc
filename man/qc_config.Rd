@@ -5,14 +5,15 @@
 \title{Create a QC Configuration}
 \usage{
 qc_config(
-  profile = c("recommended", "permissive_sensitivity"),
+  profile = c("recommended", "operational", "retrospective", "permissive_sensitivity"),
   prevalence = list(),
   temporal = list(),
   tested_volume = list()
 )
 }
 \arguments{
-\item{profile}{Either \code{recommended} or \code{permissive_sensitivity}.}
+\item{profile}{One of \code{recommended}, \code{operational}, \code{retrospective}, or
+\code{permissive_sensitivity}.}
 
 \item{prevalence}{Named list of prevalence-rule overrides.}
 
@@ -26,7 +27,7 @@ An object of class \code{routineqc_config}.
 \description{
 Creates a named, validated snapshot of thresholds and temporal behavior used
 by \code{\link[=run_routine_qc]{run_routine_qc()}}. The \code{recommended} profile contains the current agreed
-defaults. \code{permissive_sensitivity} intentionally broadens several rules for
-sensitivity analysis and should not be interpreted as recommended policy or
-as an exact historical-reproduction mode.
+defaults and is an alias for \code{operational}. \code{operational} uses only earlier
+months; \code{retrospective} uses earlier and later months. \code{permissive_sensitivity}
+intentionally broadens several rules and is not recommended policy.
 }

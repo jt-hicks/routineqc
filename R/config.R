@@ -28,16 +28,33 @@
     ),
     temporal = list(require_adjacent_months = TRUE),
     tested_volume = list(
+      baseline_mode = 'trailing',
+      baseline_window_months = 6,
+      baseline_uses_future = FALSE,
       min_roll_n = 6,
       tested_z_threshold = 5,
       tested_high_ratio = 3,
       tested_low_ratio = 0.25,
       tested_jump_ratio = 5,
-      tested_drop_ratio = 0.2
+      tested_drop_ratio = 0.2,
+      require_both_extreme = TRUE,
+      tested_high_min = 20,
+      baseline_low_min = 20,
+      baseline_zero_min = 10,
+      tested_jump_min = 20,
+      previous_jump_min = 10,
+      previous_drop_min = 20
     )
   )
 
-  if (profile == 'recommended') return(recommended)
+  if (profile %in% c('recommended', 'operational')) return(recommended)
+
+  if (profile == 'retrospective') {
+    retrospective <- recommended
+    retrospective$tested_volume$baseline_mode <- 'centered'
+    retrospective$tested_volume$baseline_uses_future <- TRUE
+    return(retrospective)
+  }
 
   sensitivity <- recommended
   sensitivity$prevalence$resid_threshold <- 4
@@ -47,6 +64,7 @@
   sensitivity$prevalence$large_change_require_adjacent <- FALSE
   sensitivity$prevalence$use_prevalence_bounds <- TRUE
   sensitivity$temporal$require_adjacent_months <- FALSE
+  sensitivity$tested_volume$require_both_extreme <- FALSE
   sensitivity
 }
 
@@ -54,25 +72,26 @@
 #'
 #' Creates a named, validated snapshot of thresholds and temporal behavior used
 #' by [run_routine_qc()]. The `recommended` profile contains the current agreed
-#' defaults. `permissive_sensitivity` intentionally broadens several rules for
-#' sensitivity analysis and should not be interpreted as recommended policy or
-#' as an exact historical-reproduction mode.
+#' defaults and is an alias for `operational`. `operational` uses only earlier
+#' months; `retrospective` uses earlier and later months. `permissive_sensitivity`
+#' intentionally broadens several rules and is not recommended policy.
 #'
-#' @param profile Either `recommended` or `permissive_sensitivity`.
+#' @param profile One of `recommended`, `operational`, `retrospective`, or
+#'   `permissive_sensitivity`.
 #' @param prevalence Named list of prevalence-rule overrides.
 #' @param temporal Named list of temporal-rule overrides.
 #' @param tested_volume Named list of tested-volume overrides.
 #'
 #' @return An object of class `routineqc_config`.
 #' @export
-qc_config <- function(profile = c('recommended', 'permissive_sensitivity'),
+qc_config <- function(profile = c('recommended', 'operational', 'retrospective', 'permissive_sensitivity'),
                       prevalence = list(),
                       temporal = list(),
                       tested_volume = list()) {
   profile <- match.arg(profile)
   defaults <- .qc_profile_defaults(profile)
   config <- list(
-    schema_version = 1L,
+    schema_version = 2L,
     profile = profile,
     prevalence = .merge_config_section(defaults$prevalence, prevalence, 'prevalence'),
     temporal = .merge_config_section(defaults$temporal, temporal, 'temporal'),
@@ -100,11 +119,11 @@ validate_qc_config <- function(config) {
   if (!is.list(config) || !all(required %in% names(config))) {
     rlang::abort('QC configuration is missing required sections.')
   }
-  if (!identical(config$schema_version, 1L)) {
+  if (!identical(config$schema_version, 2L)) {
     rlang::abort('Unsupported QC configuration schema version.')
   }
   if (!is.character(config$profile) || length(config$profile) != 1L ||
-      !config$profile %in% c('recommended', 'permissive_sensitivity')) {
+      !config$profile %in% c('recommended', 'operational', 'retrospective', 'permissive_sensitivity')) {
     rlang::abort('QC configuration has an unknown profile.')
   }
 
@@ -146,15 +165,37 @@ validate_qc_config <- function(config) {
   if (!rlang::is_bool(config$temporal$require_adjacent_months)) {
     rlang::abort('`temporal$require_adjacent_months` must be TRUE or FALSE.')
   }
-  if (any(!vapply(config$tested_volume, .is_scalar_number, logical(1)))) {
+  tested_numeric_names <- c(
+    'baseline_window_months', 'min_roll_n', 'tested_z_threshold',
+    'tested_high_ratio', 'tested_low_ratio', 'tested_jump_ratio',
+    'tested_drop_ratio', 'tested_high_min', 'baseline_low_min',
+    'baseline_zero_min', 'tested_jump_min', 'previous_jump_min',
+    'previous_drop_min'
+  )
+  if (any(!vapply(config$tested_volume[tested_numeric_names], .is_scalar_number, logical(1)))) {
     rlang::abort('All tested-volume settings must be finite scalar numbers.')
   }
-  if (any(unlist(config$tested_volume, use.names = FALSE) < 0)) {
+  if (any(unlist(config$tested_volume[tested_numeric_names], use.names = FALSE) < 0)) {
     rlang::abort('Tested-volume settings must be non-negative.')
   }
   if (config$tested_volume$min_roll_n < 1 ||
       config$tested_volume$min_roll_n != as.integer(config$tested_volume$min_roll_n)) {
     rlang::abort('`tested_volume$min_roll_n` must be a positive whole number.')
+  }
+  if (config$tested_volume$baseline_window_months < 1 ||
+      config$tested_volume$baseline_window_months != as.integer(config$tested_volume$baseline_window_months)) {
+    rlang::abort('`tested_volume$baseline_window_months` must be a positive whole number.')
+  }
+  if (!config$tested_volume$baseline_mode %in% c('trailing', 'centered')) {
+    rlang::abort('`tested_volume$baseline_mode` must be trailing or centered.')
+  }
+  if (!rlang::is_bool(config$tested_volume$baseline_uses_future) ||
+      !rlang::is_bool(config$tested_volume$require_both_extreme)) {
+    rlang::abort('Tested-volume logical settings must be TRUE or FALSE.')
+  }
+  expected_future <- config$tested_volume$baseline_mode == 'centered'
+  if (!identical(config$tested_volume$baseline_uses_future, expected_future)) {
+    rlang::abort('`baseline_uses_future` must agree with `baseline_mode`.')
   }
   if (config$tested_volume$tested_low_ratio > 1 ||
       config$tested_volume$tested_drop_ratio > 1 ||

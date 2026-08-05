@@ -390,77 +390,138 @@ add_prevalence_qc_flags <- function(data,
   out
 }
 
+.calculate_tested_baseline <- function(tested, month_date, mode, window_months) {
+  month_index <- lubridate::year(month_date) * 12L + lubridate::month(month_date)
+  baseline_n <- integer(length(tested))
+  baseline_median <- baseline_mad <- rep(NA_real_, length(tested))
+
+  for (i in seq_along(tested)) {
+    if (is.na(month_index[i])) next
+    distance <- month_index - month_index[i]
+    eligible <- if (mode == 'trailing') {
+      distance < 0L & distance >= -window_months
+    } else {
+      distance != 0L & abs(distance) <= window_months
+    }
+    values <- tested[eligible & !is.na(tested)]
+    baseline_n[i] <- length(values)
+    if (length(values) == 0L) next
+    baseline_median[i] <- stats::median(values)
+    baseline_mad[i] <- stats::mad(values, center = baseline_median[i], na.rm = TRUE)
+  }
+
+  dplyr::tibble(
+    tested_baseline_n = baseline_n,
+    tested_roll_median = baseline_median,
+    tested_roll_mad = baseline_mad
+  )
+}
+
 #' Add Tested Volume QC Flags
 #'
-#' Adds facility-level tested count anomaly flags using rolling median and MAD.
+#' Adds facility-level tested-count anomaly flags using a calendar-month rolling
+#' median and MAD. A `trailing` baseline uses only earlier months and is suitable
+#' for operational monitoring, but requires a warm-up period and may adapt slowly
+#' after a real structural change. A `centered` baseline uses earlier and later
+#' months and is intended for retrospective curation; it introduces look-ahead
+#' and flags can change when later data are appended.
 #'
 #' @param data A prepared data frame.
-#' @param min_roll_n Minimum previous observations required for rolling stats.
+#' @param baseline_mode Either `trailing` or `centered`.
+#' @param baseline_window_months Calendar months before the row, and also after
+#'   the row for a centered baseline.
+#' @param baseline_uses_future Must agree with `baseline_mode`; recorded in output.
+#' @param min_roll_n Minimum non-missing neighboring observations required.
 #' @param tested_z_threshold Absolute robust z-score threshold.
 #' @param tested_high_ratio High tested-to-median ratio threshold.
 #' @param tested_low_ratio Low tested-to-median ratio threshold.
 #' @param tested_jump_ratio Current-to-previous tested jump ratio threshold.
 #' @param tested_drop_ratio Current-to-previous tested drop ratio threshold.
+#' @param require_both_extreme Require both z-score and baseline-ratio evidence
+#'   for high/low baseline flags. Recommended default is `TRUE`.
+#' @param tested_high_min Minimum current tested count for a high flag.
+#' @param baseline_low_min Minimum baseline median for a low flag.
+#' @param baseline_zero_min Minimum baseline median for an unusual-zero flag.
+#' @param tested_jump_min Minimum current tested count for a jump flag.
+#' @param previous_jump_min Minimum previous tested count for a jump flag.
+#' @param previous_drop_min Minimum previous tested count for a drop flag.
 #'
-#' @return Data with tested-count rolling metrics and QC flags appended.
+#' @return Data with baseline metadata, component measurements, and flags appended.
 #' @export
 add_tested_volume_qc <- function(data,
+                                 baseline_mode = c('trailing', 'centered'),
+                                 baseline_window_months = 6,
+                                 baseline_uses_future = identical(match.arg(baseline_mode), 'centered'),
                                  min_roll_n = 6,
                                  tested_z_threshold = 5,
                                  tested_high_ratio = 3,
                                  tested_low_ratio = 0.25,
                                  tested_jump_ratio = 5,
-                                 tested_drop_ratio = 0.2) {
-  .validate_required_columns(data, c("facility_id", "month_date", "tested"))
+                                 tested_drop_ratio = 0.2,
+                                 require_both_extreme = TRUE,
+                                 tested_high_min = 20,
+                                 baseline_low_min = 20,
+                                 baseline_zero_min = 10,
+                                 tested_jump_min = 20,
+                                 previous_jump_min = 10,
+                                 previous_drop_min = 20) {
+  .validate_required_columns(data, c('facility_id', 'month_date', 'tested'))
+  baseline_mode <- match.arg(baseline_mode)
+  if (!identical(baseline_uses_future, baseline_mode == 'centered')) {
+    rlang::abort('`baseline_uses_future` must agree with `baseline_mode`.')
+  }
 
-  dplyr::as_tibble(data) %>%
+  out <- dplyr::as_tibble(data) %>%
     dplyr::group_by(facility_id) %>%
     dplyr::arrange(month_date, .by_group = TRUE) %>%
+    dplyr::group_modify(~ dplyr::bind_cols(
+      .x,
+      .calculate_tested_baseline(.x$tested, .x$month_date, baseline_mode, baseline_window_months)
+    )) %>%
+    dplyr::ungroup() %>%
+    dplyr::group_by(facility_id) %>%
+    dplyr::arrange(month_date, .by_group = TRUE) %>%
+    dplyr::mutate(tested_prev = dplyr::lag(tested)) %>%
+    dplyr::ungroup() %>%
     dplyr::mutate(
-      tested_prev = dplyr::lag(tested),
-      tested_roll_median = slider::slide_dbl(
-        tested_prev,
-        ~ stats::median(.x, na.rm = TRUE),
-        .before = min_roll_n - 1,
-        .complete = TRUE
+      tested_baseline_mode = baseline_mode,
+      baseline_uses_future = baseline_uses_future,
+      tested_baseline_ready = tested_baseline_n >= min_roll_n,
+      tested_mad_adjusted = dplyr::if_else(
+        is.na(tested_roll_mad), NA_real_, pmax(tested_roll_mad, 1)
       ),
-      tested_roll_mad = slider::slide_dbl(
-        tested_prev,
-        ~ stats::mad(.x, center = stats::median(.x, na.rm = TRUE), constant = 1, na.rm = TRUE),
-        .before = min_roll_n - 1,
-        .complete = TRUE
-      ),
-      tested_robust_z = dplyr::if_else(
-        is.na(tested_roll_mad) | tested_roll_mad == 0,
-        NA_real_,
-        (tested - tested_roll_median) / (tested_roll_mad * 1.4826)
-      ),
+      tested_robust_z = .safe_divide(tested - tested_roll_median, tested_mad_adjusted),
       tested_to_roll_ratio = .safe_divide(tested, tested_roll_median),
       tested_to_prev_ratio = .safe_divide(tested, tested_prev),
-      flag_tested_extreme_high = (
-        (!is.na(tested_robust_z) & tested_robust_z >= tested_z_threshold) |
-          (!is.na(tested_to_roll_ratio) & tested_to_roll_ratio >= tested_high_ratio)
-      ) %>% dplyr::coalesce(FALSE),
-      flag_tested_extreme_low = (
-        (!is.na(tested_robust_z) & tested_robust_z <= -tested_z_threshold) |
-          (!is.na(tested_to_roll_ratio) & tested_to_roll_ratio <= tested_low_ratio)
-      ) %>% dplyr::coalesce(FALSE),
-      flag_tested_zero_unusual = (tested == 0 & !is.na(tested_roll_median) & tested_roll_median > 0) %>%
-        dplyr::coalesce(FALSE),
-      flag_tested_large_jump = (!is.na(tested_to_prev_ratio) & tested_prev > 0 & tested_to_prev_ratio >= tested_jump_ratio) %>%
-        dplyr::coalesce(FALSE),
-      flag_tested_large_drop = (!is.na(tested_to_prev_ratio) & tested_prev > 0 & tested_to_prev_ratio <= tested_drop_ratio) %>%
-        dplyr::coalesce(FALSE),
+      flag_tested_high_z = !is.na(tested_robust_z) & tested_robust_z > tested_z_threshold,
+      flag_tested_high_ratio = !is.na(tested_to_roll_ratio) & tested_to_roll_ratio > tested_high_ratio,
+      flag_tested_low_z = !is.na(tested_robust_z) & tested_robust_z < -tested_z_threshold,
+      flag_tested_low_ratio = !is.na(tested_to_roll_ratio) & tested_to_roll_ratio < tested_low_ratio,
+      flag_tested_extreme_high = tested_baseline_ready & tested >= tested_high_min &
+        if (require_both_extreme) {
+          flag_tested_high_z & flag_tested_high_ratio
+        } else {
+          flag_tested_high_z | flag_tested_high_ratio
+        },
+      flag_tested_extreme_low = tested_baseline_ready & tested_roll_median >= baseline_low_min &
+        if (require_both_extreme) {
+          flag_tested_low_z & flag_tested_low_ratio
+        } else {
+          flag_tested_low_z | flag_tested_low_ratio
+        },
+      flag_tested_zero_unusual = tested_baseline_ready & tested == 0 &
+        tested_roll_median >= baseline_zero_min,
+      flag_tested_large_jump = !is.na(tested_to_prev_ratio) & tested >= tested_jump_min &
+        tested_prev >= previous_jump_min & tested_to_prev_ratio > tested_jump_ratio,
+      flag_tested_large_drop = !is.na(tested_to_prev_ratio) & tested_prev >= previous_drop_min &
+        tested_to_prev_ratio < tested_drop_ratio,
       flag_tested_volume_extreme = (
-        flag_tested_extreme_high |
-          flag_tested_extreme_low |
-          flag_tested_zero_unusual |
-          flag_tested_large_jump |
-          flag_tested_large_drop
+        flag_tested_extreme_high | flag_tested_extreme_low |
+          flag_tested_zero_unusual | flag_tested_large_jump | flag_tested_large_drop
       ) %>% dplyr::coalesce(FALSE)
-    ) %>%
-    dplyr::ungroup() %>%
-    dplyr::select(-tested_prev, -tested_to_roll_ratio, -tested_to_prev_ratio)
+    )
+
+  out
 }
 
 #' Add Temporal QC Flags
