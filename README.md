@@ -30,12 +30,12 @@ sim <- simulate_qc_data(n_facilities = 20, n_months = 24, seed = 42)
 head(sim)
 #> # A tibble: 6 × 8
 #>   facility region   district   council month      tested positive injected_error
-#>   <chr>    <chr>    <chr>      <chr>   <date>      <dbl>    <dbl> <lgl>         
-#> 1 F001     Region_A District_2 Counci… 2022-01-01    119       36 FALSE         
-#> 2 F001     Region_A District_2 Counci… 2022-02-01    154       46 FALSE         
-#> 3 F001     Region_A District_4 Counci… 2022-03-01    173       43 FALSE         
-#> 4 F001     Region_A District_1 Counci… 2022-04-01    150       31 FALSE         
-#> 5 F001     Region_B District_2 Counci… 2022-05-01    102       26 FALSE         
+#>   <chr>    <chr>    <chr>      <chr>   <date>      <dbl>    <dbl> <lgl>
+#> 1 F001     Region_A District_2 Counci… 2022-01-01    119       36 FALSE
+#> 2 F001     Region_A District_2 Counci… 2022-02-01    154       46 FALSE
+#> 3 F001     Region_A District_4 Counci… 2022-03-01    173       43 FALSE
+#> 4 F001     Region_A District_1 Counci… 2022-04-01    150       31 FALSE
+#> 5 F001     Region_B District_2 Counci… 2022-05-01    102       26 FALSE
 #> 6 F001     Region_D District_5 Counci… 2022-06-01    162       29 FALSE
 ```
 
@@ -62,10 +62,10 @@ qc$summaries$by_region
 #> # A tibble: 4 × 20
 #>   region   total_rows n_any_qc_issue pct_any_qc_issue core_invalid_rows
 #>   <chr>         <int>          <int>            <dbl>             <int>
-#> 1 Region_A        130              8             6.15                 2
+#> 1 Region_A        130             10             7.69                 2
 #> 2 Region_B        141              3             2.13                 1
 #> 3 Region_C        103              7             6.80                 2
-#> 4 Region_D        106              4             3.77                 0
+#> 4 Region_D        106              5             4.72                 0
 #> # ℹ 15 more variables: attendance_issue_rows <int>,
 #> #   prevalence_extreme_rows <int>, tested_volume_extreme_rows <int>,
 #> #   tested_only_issues <int>, prevalence_only_issues <int>,
@@ -73,6 +73,12 @@ qc$summaries$by_region
 #> #   review_recommended_rows <int>, sensitivity_flags <int>,
 #> #   total_tested_before_qc <dbl>, total_positive_before_qc <dbl>,
 #> #   total_tested_after_authorized_exclusions <dbl>, …
+qc$manifest$model_prediction_coverage
+#> [1] 1
+table(qc$data_flagged$prediction_status)
+#>
+#>               assessed ineligible_core_counts
+#>                    475                      5
 ```
 
 The default `conservative_review` policy authorizes exclusion only for
@@ -110,7 +116,8 @@ columns rather than deleting records.
 
 Anomaly flags are evidence for review, not automatic proof of error. See
 `docs/ACTION_POLICY.md` and `docs/TESTED_VOLUME_BASELINES.md` for policy
-and baseline limitations, and `docs/RUN_ARTIFACTS.md` for persistence
+and baseline limitations, `docs/PREVALENCE_MODEL.md` for model
+assessment semantics, and `docs/RUN_ARTIFACTS.md` for persistence
 guidance.
 
 ## Notes

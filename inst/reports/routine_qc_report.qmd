@@ -44,6 +44,10 @@ cat('Analysis ID:', qc_result$manifest$analysis_id, '\n')
 cat('Execution ID:', qc_result$manifest$execution_id, '\n')
 cat('Input fingerprint:', qc_result$manifest$input_fingerprint, '\n')
 cat('Created UTC:', qc_result$manifest$created_at_utc, '\n')
+cat('Prevalence model available:', qc_result$manifest$prevalence_model_available, '\n')
+cat('Model-eligible rows:', qc_result$manifest$model_eligible_rows, '\n')
+cat('Model-assessed rows:', qc_result$manifest$model_assessed_rows, '\n')
+cat('Model prediction coverage:', qc_result$manifest$model_prediction_coverage, '\n')
 ```
 
 The trailing operational baseline has a warm-up period, can adapt slowly after
@@ -77,7 +81,13 @@ qc_result$data_flagged %>%
 
 ## Prevalence Anomalies
 
+Rows with unavailable model predictions are preserved with `p_hat` and model
+residuals set to `NA`. Their `prediction_status` explains why they were not
+assessed; non-assessment is not evidence for exclusion.
+
 ```{r}
+qc_result$data_flagged %>% count(prediction_status)
+
 qc_result$data_flagged %>%
   summarise(
     resid_extreme = sum(flag_resid_extreme, na.rm = TRUE),

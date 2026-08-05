@@ -6,6 +6,7 @@
 \usage{
 qc_config(
   profile = c("recommended", "operational", "retrospective", "permissive_sensitivity"),
+  model = list(),
   prevalence = list(),
   temporal = list(),
   action_policy = list(),
@@ -15,6 +16,8 @@ qc_config(
 \arguments{
 \item{profile}{One of \code{recommended}, \code{operational}, \code{retrospective}, or
 \code{permissive_sensitivity}.}
+
+\item{model}{Named list of prevalence-model overrides.}
 
 \item{prevalence}{Named list of prevalence-rule overrides.}
 

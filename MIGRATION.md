@@ -20,9 +20,9 @@ This package is the independent home for the reusable QC engine originally proto
 
 ## Immediate next steps
 
-1. Finish GAM-formula parity and safe prediction handling from the prototype audit.
-2. Define adapter guidance for mapping pipeline-specific data into the canonical contract.
-3. Expand integration tests around the stable QC run object.
+1. Define adapter guidance for mapping pipeline-specific data into the canonical contract.
+2. Expand integration tests around the stable QC run object.
+3. Add the generic adapter and synthetic end-to-end vignette.
 
 ## Repository and licence
 

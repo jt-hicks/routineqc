@@ -22,9 +22,9 @@ treated as a replacement for the prototype.
 | Structural validation | Mixed into preparation and downstream flags | Explicit canonical gate rejects malformed keys and duplicates | Keep package design |
 | Logical counts | Missing attendance is invalid; checks `tested > attending` | Core validity depends only on tested and positive | Keep tested/positive as core; add attendance checks only when an approved attendance definition is supplied |
 | Invalid rows | Preserved and flagged | Preserved and flagged | Equivalent and required |
-| GAM formula | Region fixed effect, region-specific cyclic seasonality, time trend, facility random effect | Region-specific cyclic seasonality, time trend, facility random effect; no region fixed effect | Migrate the region fixed effect and add a regression test |
+| GAM formula | Region fixed effect, region-specific cyclic seasonality, time trend, facility random effect | Region fixed effect, region-specific cyclic seasonality, time trend, facility random effect | Reconciled and protected by a regression test |
 | Small-data GAM | Dynamically caps basis dimensions; errors with no fit rows | Returns `NULL` below 50 rows and retries smaller bases | Keep package resilience; document the minimum-data behavior |
-| Prediction eligibility | Explicitly excludes unseen model factor levels | Attempts prediction after recreating factors, which can fail for facilities absent from training | Migrate prototype-safe eligibility handling |
+| Prediction eligibility | Explicitly excludes unseen model factor levels | Preserves all rows and records assessed, ineligible, unseen-level, unavailable, error, or non-finite status | Reconciled with a stricter row-level status contract |
 | Residual rule | `abs(residual) > 4` for tested >= 20 and `> 5` below 20 | One configurable cutoff, default `>= 4` | Restore the size-dependent prototype rule as the compatibility default; retain configuration |
 | All-negative rule | Tested >= 50 | Tested >= 30 | Restore prototype default; expose configuration |
 | All-positive rule | Tested >= 30 | Tested >= 30 | Equivalent |
@@ -73,6 +73,9 @@ treated as a replacement for the prototype.
 - The default conservative action policy authorizes exclusion only for
   impossible or missing core tested/positive counts. Attendance contradictions
   and all anomaly flags are review-only. `flags_only` authorizes no exclusions.
+- The authoritative prevalence GAM includes the prototype region fixed effect.
+  Prediction failures and unseen factor levels remain explicit non-assessments;
+  they never become anomaly evidence or authorize exclusion.
 
 ## Open domain decisions
 

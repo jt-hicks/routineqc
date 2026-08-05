@@ -4,12 +4,15 @@
 \alias{add_prevalence_predictions}
 \title{Add Prevalence Predictions}
 \usage{
-add_prevalence_predictions(data, model)
+add_prevalence_predictions(data, model, min_prediction_coverage = 0.8)
 }
 \arguments{
 \item{data}{A prepared QC data frame.}
 
 \item{model}{A model returned by \code{\link[=fit_prevalence_gam]{fit_prevalence_gam()}}.}
+
+\item{min_prediction_coverage}{Warn when the proportion of model-eligible
+rows successfully assessed falls below this value.}
 }
 \value{
 The input data with prediction columns appended.

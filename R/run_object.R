@@ -1,5 +1,5 @@
-.qc_run_schema_version <- 1L
-.qc_manifest_schema_version <- 1L
+.qc_run_schema_version <- 2L
+.qc_manifest_schema_version <- 2L
 
 .normalise_fingerprint_data <- function(data) {
   required_fields <- c('facility_id', 'month_date', 'region', 'tested', 'positive')
@@ -137,6 +137,15 @@ fingerprint_qc_input <- function(data) {
     action_policy_version = config$action_policy$version,
     tested_baseline_mode = config$tested_volume$baseline_mode,
     baseline_uses_future = config$tested_volume$baseline_uses_future,
+    prevalence_model_available = !is.null(model),
+    model_eligible_rows = sum(data_flagged$model_assessment_eligible),
+    model_assessed_rows = sum(data_flagged$model_assessed),
+    model_prediction_coverage = if (any(data_flagged$model_assessment_eligible)) {
+      sum(data_flagged$model_assessed) / sum(data_flagged$model_assessment_eligible)
+    } else {
+      NA_real_
+    },
+    prediction_status_counts = as.list(table(data_flagged$prediction_status, useNA = 'ifany')),
     config = unclass(config),
     provenance = provenance
   )
@@ -171,7 +180,9 @@ validate_qc_run <- function(run) {
   manifest <- run$manifest
   manifest_required <- c(
     'manifest_schema_version', 'run_schema_version', 'analysis_id',
-    'execution_id', 'input_fingerprint', 'config_fingerprint', 'input_rows'
+    'execution_id', 'input_fingerprint', 'config_fingerprint', 'input_rows',
+    'prevalence_model_available', 'model_eligible_rows',
+    'model_assessed_rows', 'model_prediction_coverage', 'prediction_status_counts'
   )
   if (!is.list(manifest) || !all(manifest_required %in% names(manifest))) {
     rlang::abort('QC run manifest is incomplete.')
@@ -191,6 +202,29 @@ validate_qc_run <- function(run) {
   }
   if (!identical(manifest$input_fingerprint, fingerprint_qc_input(run$data_flagged))) {
     rlang::abort('QC run data does not match its input fingerprint.')
+  }
+  prediction_columns <- c(
+    'model_assessment_eligible', 'model_assessed', 'prediction_status'
+  )
+  if (!all(prediction_columns %in% names(run$data_flagged))) {
+    rlang::abort('QC run data is missing model-assessment fields.')
+  }
+  expected_eligible <- sum(run$data_flagged$model_assessment_eligible)
+  expected_assessed <- sum(run$data_flagged$model_assessed)
+  expected_coverage <- if (expected_eligible > 0L) {
+    expected_assessed / expected_eligible
+  } else {
+    NA_real_
+  }
+  expected_status_counts <- as.list(table(run$data_flagged$prediction_status, useNA = 'ifany'))
+  model_manifest_matches <-
+    identical(manifest$prevalence_model_available, !is.null(run$model)) &&
+    identical(as.integer(manifest$model_eligible_rows), as.integer(expected_eligible)) &&
+    identical(as.integer(manifest$model_assessed_rows), as.integer(expected_assessed)) &&
+    isTRUE(all.equal(manifest$model_prediction_coverage, expected_coverage)) &&
+    identical(manifest$prediction_status_counts, expected_status_counts)
+  if (!model_manifest_matches) {
+    rlang::abort('QC run model-assessment results do not match its manifest.')
   }
   expected_analysis_id <- .analysis_id(
     manifest$run_schema_version, manifest$package_version,

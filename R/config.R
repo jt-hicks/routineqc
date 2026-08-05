@@ -12,6 +12,9 @@
 
 .qc_profile_defaults <- function(profile) {
   recommended <- list(
+    model = list(
+      min_prediction_coverage = 0.8
+    ),
     prevalence = list(
       resid_threshold = NULL,
       resid_threshold_large = 4,
@@ -83,6 +86,7 @@
 #' @param profile One of `recommended`, `operational`, `retrospective`, or
 #'   `permissive_sensitivity`.
 #' @param prevalence Named list of prevalence-rule overrides.
+#' @param model Named list of prevalence-model overrides.
 #' @param temporal Named list of temporal-rule overrides.
 #' @param action_policy Named list selecting `conservative_review` or
 #'   `flags_only` and its policy version.
@@ -91,6 +95,7 @@
 #' @return An object of class `routineqc_config`.
 #' @export
 qc_config <- function(profile = c('recommended', 'operational', 'retrospective', 'permissive_sensitivity'),
+                      model = list(),
                       prevalence = list(),
                       temporal = list(),
                       action_policy = list(),
@@ -98,8 +103,9 @@ qc_config <- function(profile = c('recommended', 'operational', 'retrospective',
   profile <- match.arg(profile)
   defaults <- .qc_profile_defaults(profile)
   config <- list(
-    schema_version = 3L,
+    schema_version = 4L,
     profile = profile,
+    model = .merge_config_section(defaults$model, model, 'model'),
     prevalence = .merge_config_section(defaults$prevalence, prevalence, 'prevalence'),
     temporal = .merge_config_section(defaults$temporal, temporal, 'temporal'),
     action_policy = .merge_config_section(defaults$action_policy, action_policy, 'action_policy'),
@@ -123,11 +129,11 @@ qc_config <- function(profile = c('recommended', 'operational', 'retrospective',
 #' @return `config`, invisibly, after successful validation.
 #' @export
 validate_qc_config <- function(config) {
-  required <- c('schema_version', 'profile', 'prevalence', 'temporal', 'action_policy', 'tested_volume')
+  required <- c('schema_version', 'profile', 'model', 'prevalence', 'temporal', 'action_policy', 'tested_volume')
   if (!is.list(config) || !all(required %in% names(config))) {
     rlang::abort('QC configuration is missing required sections.')
   }
-  if (!identical(config$schema_version, 3L)) {
+  if (!identical(config$schema_version, 4L)) {
     rlang::abort('Unsupported QC configuration schema version.')
   }
   if (!is.character(config$profile) || length(config$profile) != 1L ||
@@ -141,6 +147,11 @@ validate_qc_config <- function(config) {
     if (!is.list(values) || !setequal(names(values), names(defaults[[section]]))) {
       rlang::abort(paste0('QC configuration section `', section, '` has missing or unknown settings.'))
     }
+  }
+
+  if (!.is_scalar_number(config$model$min_prediction_coverage) ||
+      config$model$min_prediction_coverage < 0 || config$model$min_prediction_coverage > 1) {
+    rlang::abort('`model$min_prediction_coverage` must be one number between 0 and 1.')
   }
 
   numeric_settings <- c(

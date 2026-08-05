@@ -23,3 +23,6 @@
 - Added versioned `routineqc_run` objects with deterministic input and analysis
   identities, unique execution IDs, safe provenance, manifests, integrity
   validation, and guarded RDS/JSON persistence.
+- Reconciled the prevalence GAM with the prototype region fixed effect and added
+  safe row-level prediction eligibility, status, coverage warnings, and manifest
+  coverage metadata. Unavailable predictions remain `NA` and review-only.

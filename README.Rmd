@@ -57,6 +57,8 @@ qc <- run_routine_qc(
 
 names(qc$summaries)
 qc$summaries$by_region
+qc$manifest$model_prediction_coverage
+table(qc$data_flagged$prediction_status)
 ```
 
 The default `conservative_review` policy authorizes exclusion only for
@@ -94,7 +96,8 @@ rather than deleting records.
 
 Anomaly flags are evidence for review, not automatic proof of error. See
 `docs/ACTION_POLICY.md` and `docs/TESTED_VOLUME_BASELINES.md` for policy and
-baseline limitations, and `docs/RUN_ARTIFACTS.md` for persistence guidance.
+baseline limitations, `docs/PREVALENCE_MODEL.md` for model assessment semantics,
+and `docs/RUN_ARTIFACTS.md` for persistence guidance.
 
 ## Notes
 

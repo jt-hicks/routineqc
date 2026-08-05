@@ -16,7 +16,8 @@ Depends:
     R (>= 4.1)
 Suggests: 
     rmarkdown,
-    testthat
+    testthat,
+    tibble
 Config/testthat/edition: 3
 Imports: 
     digest,

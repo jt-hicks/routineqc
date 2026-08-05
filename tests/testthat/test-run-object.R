@@ -44,6 +44,10 @@ testthat::test_that('analysis identity is deterministic and execution identity i
   testthat::expect_identical(first$manifest$analysis_id, second$manifest$analysis_id)
   testthat::expect_false(identical(first$manifest$execution_id, second$manifest$execution_id))
   testthat::expect_false(identical(first$manifest$analysis_id, changed_config$manifest$analysis_id))
+  testthat::expect_identical(first$manifest$prevalence_model_available, FALSE)
+  testthat::expect_identical(first$manifest$model_assessed_rows, 0L)
+  testthat::expect_identical(first$manifest$model_eligible_rows, 3L)
+  testthat::expect_identical(first$manifest$model_prediction_coverage, 0)
 })
 
 testthat::test_that('safe provenance is preserved and unsafe metadata is rejected', {
@@ -94,4 +98,10 @@ testthat::test_that('unsupported and inconsistent run schemas are rejected', {
   changed_data <- run
   changed_data$data_flagged$tested[1] <- changed_data$data_flagged$tested[1] + 1
   testthat::expect_error(routineqc::validate_qc_run(changed_data), 'input fingerprint')
+  changed_coverage <- run
+  changed_coverage$manifest$model_assessed_rows <- 1L
+  testthat::expect_error(
+    routineqc::validate_qc_run(changed_coverage),
+    'model-assessment results'
+  )
 })

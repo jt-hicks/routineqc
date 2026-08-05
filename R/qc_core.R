@@ -222,7 +222,7 @@ fit_prevalence_gam <- function(data, nthreads = 1) {
 
   fit_once <- function(k_month = 12, k_time = 40) {
     mgcv::bam(
-      cbind(positive, tested - positive) ~
+      cbind(positive, tested - positive) ~ region +
         s(month_num, by = region, bs = "cc", k = k_month) +
         s(time_index, k = k_time) +
         s(facility_id, bs = "re"),
@@ -268,35 +268,83 @@ fit_prevalence_gam <- function(data, nthreads = 1) {
 #'
 #' @param data A prepared QC data frame.
 #' @param model A model returned by [fit_prevalence_gam()].
+#' @param min_prediction_coverage Warn when the proportion of model-eligible
+#'   rows successfully assessed falls below this value.
 #'
 #' @return The input data with prediction columns appended.
 #' @export
-add_prevalence_predictions <- function(data, model) {
+add_prevalence_predictions <- function(data, model, min_prediction_coverage = 0.8) {
   out <- dplyr::as_tibble(data)
-  .validate_required_columns(out, c("tested", "positive", "facility_id", "region", "month_num", "time_index"))
+  .validate_required_columns(out, c('tested', 'positive', 'facility_id', 'region', 'month_num', 'time_index'))
 
-  if (is.null(model)) {
-    return(out %>% dplyr::mutate(
-      p_hat = NA_real_,
-      expected_positive = NA_real_,
-      pearson_resid = NA_real_
-    ))
+  if (!.is_scalar_number(min_prediction_coverage) ||
+      min_prediction_coverage < 0 || min_prediction_coverage > 1) {
+    rlang::abort('`min_prediction_coverage` must be one number between 0 and 1.')
   }
+  if (!'flag_core_invalid' %in% names(out)) out <- flag_logical_errors(out)
+
+  missing_predictor <- is.na(out$facility_id) | is.na(out$region) |
+    is.na(out$month_num) | is.na(out$time_index)
+  eligible <- !out$flag_core_invalid & !is.na(out$tested) & out$tested > 0 & !missing_predictor
+  status <- dplyr::case_when(
+    out$flag_core_invalid ~ 'ineligible_core_counts',
+    is.na(out$tested) | out$tested <= 0 ~ 'ineligible_nonpositive_tested',
+    missing_predictor ~ 'ineligible_missing_predictor',
+    TRUE ~ 'pending'
+  )
 
   pred <- rep(NA_real_, nrow(out))
-  valid_idx <- which(!is.na(out$tested) & !is.na(out$month_num) & !is.na(out$time_index))
+  if (is.null(model)) {
+    status[eligible] <- 'model_unavailable'
+  } else {
+    model_levels <- model$xlevels
+    region_levels <- model_levels$region
+    facility_levels <- model_levels$facility_id
+    if (is.null(region_levels)) region_levels <- levels(model$model$region)
+    if (is.null(facility_levels)) facility_levels <- levels(model$model$facility_id)
+    unseen_region <- eligible & !as.character(out$region) %in% region_levels
+    unseen_facility <- eligible & !as.character(out$facility_id) %in% facility_levels
+    status[unseen_region] <- 'unseen_region'
+    status[!unseen_region & unseen_facility] <- 'unseen_facility'
+    valid_idx <- which(eligible & !unseen_region & !unseen_facility)
 
-  if (length(valid_idx) > 0) {
-    newdata <- out[valid_idx, , drop = FALSE]
-    newdata$facility_id <- as.factor(newdata$facility_id)
-    newdata$region <- as.factor(newdata$region)
+    if (length(valid_idx) > 0L) {
+      newdata <- out[valid_idx, , drop = FALSE]
+      newdata$facility_id <- factor(newdata$facility_id, levels = facility_levels)
+      newdata$region <- factor(newdata$region, levels = region_levels)
+      pred_result <- tryCatch(
+        suppressWarnings(stats::predict(model, newdata = newdata, type = 'response')),
+        error = identity
+      )
+      if (inherits(pred_result, 'error')) {
+        status[valid_idx] <- 'prediction_error'
+      } else {
+        pred_vals <- as.numeric(pred_result)
+        finite <- is.finite(pred_vals)
+        pred[valid_idx[finite]] <- pred_vals[finite]
+        status[valid_idx[finite]] <- 'assessed'
+        status[valid_idx[!finite]] <- 'non_finite_prediction'
+      }
+    }
+  }
 
-    pred_vals <- suppressWarnings(stats::predict(model, newdata = newdata, type = "response"))
-    pred[valid_idx] <- as.numeric(pred_vals)
+  assessed <- status == 'assessed'
+  coverage <- if (any(eligible)) sum(assessed) / sum(eligible) else NA_real_
+  if (!is.na(coverage) && coverage < min_prediction_coverage) {
+    warning(
+      sprintf(
+        'Prevalence-model assessment coverage is %.1f%%, below the configured %.1f%% threshold.',
+        100 * coverage, 100 * min_prediction_coverage
+      ),
+      call. = FALSE
+    )
   }
 
   out <- out %>%
     dplyr::mutate(
+      model_assessment_eligible = eligible,
+      model_assessed = assessed,
+      prediction_status = status,
       p_hat = pmin(1 - 1e-6, pmax(1e-6, pred)),
       expected_positive = tested * p_hat,
       pearson_resid = dplyr::if_else(
@@ -1096,7 +1144,10 @@ run_routine_qc <- function(raw_data,
 
   model <- fit_prevalence_gam(dat, nthreads = nthreads)
 
-  dat <- add_prevalence_predictions(dat, model = model)
+  dat <- add_prevalence_predictions(
+    dat, model = model,
+    min_prediction_coverage = config$model$min_prediction_coverage
+  )
   dat <- do.call(add_prevalence_qc_flags, c(list(data = dat), config$prevalence))
   dat <- do.call(add_tested_volume_qc, c(list(data = dat), config$tested_volume))
   dat <- do.call(add_temporal_qc_flags, c(list(data = dat), config$temporal))

@@ -2,7 +2,8 @@ testthat::test_that('recommended configuration records agreed defaults', {
   config <- routineqc::qc_config()
   testthat::expect_s3_class(config, 'routineqc_config')
   testthat::expect_identical(config$profile, 'recommended')
-  testthat::expect_identical(config$schema_version, 3L)
+  testthat::expect_identical(config$schema_version, 4L)
+  testthat::expect_identical(config$model$min_prediction_coverage, 0.8)
   testthat::expect_equal(config$prevalence$resid_threshold_large, 4)
   testthat::expect_equal(config$prevalence$resid_threshold_small, 5)
   testthat::expect_equal(config$prevalence$all_negative_min_tested, 50)
@@ -34,6 +35,10 @@ testthat::test_that('permissive sensitivity profile is explicit', {
 })
 
 testthat::test_that('configuration overrides are validated', {
+  testthat::expect_error(
+    routineqc::qc_config(model = list(min_prediction_coverage = 1.1)),
+    'between 0 and 1'
+  )
   config <- routineqc::qc_config(
     prevalence = list(resid_threshold_small = 6),
     tested_volume = list(tested_z_threshold = 6)

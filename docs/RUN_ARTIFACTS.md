@@ -1,8 +1,9 @@
 # Reproducible QC run artifacts
 
-`run_routine_qc()` returns a validated `routineqc_run`. Run schema version 1
+`run_routine_qc()` returns a validated `routineqc_run`. Run schema version 2
 contains flagged data, the fitted model (or `NULL`), summaries, the exact
-configuration, and a metadata manifest.
+configuration, and a metadata manifest. Version 2 adds prevalence-model
+assessment coverage and status counts to the integrity-checked manifest.
 
 ## Identities
 
