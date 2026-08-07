@@ -1,0 +1,47 @@
+---
+title: 'Exploring Persisted QC Runs'
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Exploring Persisted QC Runs}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = '#>')
+```
+
+The Run Explorer consumes persisted, validated QC artifacts. This synthetic
+example creates one such artifact without using confidential records.
+
+```{r}
+library(routineqc)
+
+source_data <- simulate_qc_data(n_facilities = 8, n_months = 12, seed = 7)
+qc_run <- suppressWarnings(run_routine_qc(
+  source_data,
+  facility_var = 'facility', region_var = 'region', month_var = 'month',
+  tested_var = 'tested', positive_var = 'positive',
+  district_var = 'district', council_var = 'council',
+  provenance = list(dataset_id = 'run-explorer-vignette'), nthreads = 1
+))
+
+run_dir <- tempfile('routineqc-runs-')
+dir.create(run_dir)
+write_qc_run(qc_run, file.path(run_dir, 'synthetic-run.rds'))
+list_qc_runs(run_dir)
+```
+
+In an interactive local R session, launch the read-only application with:
+
+```{r, eval = FALSE}
+launch_qc_app(run_dir)
+```
+
+The browser can filter the review queue and display diagnostic plots, but it
+cannot modify or download the stored records. The selected RDS and adjacent JSON
+manifest must agree before the run is displayed.
+
+```{r, include = FALSE}
+unlink(run_dir, recursive = TRUE)
+```

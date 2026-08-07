@@ -29,3 +29,6 @@
 - Added a generic, versioned adapter result with declarative column mapping,
   structured row-level translation diagnostics, safe provenance handoff, and a
   guarded end-to-end runner. Added a synthetic adapter vignette.
+- Added a read-only, localhost-bound Shiny Run Explorer with metadata-first
+  artifact discovery, validated selection, review filters, diagnostic plots,
+  and configuration/provenance views.

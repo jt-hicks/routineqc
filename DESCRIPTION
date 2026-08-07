@@ -24,6 +24,7 @@ VignetteBuilder: knitr
 Imports: 
     digest,
     dplyr,
+    DT,
     ggplot2,
     jsonlite,
     lubridate,
@@ -31,4 +32,5 @@ Imports:
     mgcv,
     purrr,
     rlang,
+    shiny,
     tidyr

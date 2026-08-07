@@ -13,21 +13,21 @@ This package is the independent home for the reusable QC engine originally proto
 | 5. Test | Synthetic tests cover critical rules and edge cases | Done |
 | 6. Orchestrate | Stable `run_routine_qc()` API and QC run object | Done |
 | 7. Provenance | Configuration, manifests, input identifiers, and persistence | Done |
-| 8. Application | Shiny app consumes selectable QC run objects | Not started |
+| 8. Application | Shiny app consumes selectable QC run objects | Done |
 | 9. Demonstrate | Generic adapter and synthetic end-to-end vignette | Done |
 | 10. Release | CI, documentation, checks, and experimental `0.1.0` | In progress |
 | 11. Integrate | Optional adapters for upstream data-curation pipelines | Not started |
 
 ## Immediate next steps
 
-1. Build the first Shiny application increment around selectable persisted QC runs.
-2. Add continuous integration and prepare the experimental `0.1.0` release checklist.
-3. Pilot one thin source-specific adapter on non-committed upstream data.
+1. Add continuous integration and prepare the experimental `0.1.0` release checklist.
+2. Pilot one thin source-specific adapter on non-committed upstream data.
+3. Define an audited reviewer-decision data model before making the app editable.
 
 ## Current position
 
 The reusable QC engine, synthetic rule coverage, orchestration, provenance, and
-generic adapter demonstration are complete. Application work has not started.
+generic adapter demonstration and read-only run application are complete.
 Release preparation has begun through generated documentation and clean package
 checks, but CI and the `0.1.0` release remain outstanding. No upstream pipeline
 has yet been integrated, preserving the package boundary while the generic

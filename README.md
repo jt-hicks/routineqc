@@ -137,6 +137,21 @@ restored <- read_qc_run('qc-runs/example.rds')
 The RDS contains the complete flagged dataset and must be protected like
 the source data. The fingerprint is an identifier, not anonymization.
 
+## Explore saved runs locally
+
+The read-only Run Explorer discovers paired artifacts, validates a
+selected run, and provides overview, review-queue, diagnostic,
+configuration, and provenance views:
+
+``` r
+list_qc_runs('qc-runs')
+launch_qc_app('qc-runs')
+```
+
+The app binds to localhost, performs no writes, and provides no record
+download. Treat the local browser session and run directory as
+confidential.
+
 routineqc preserves raw data and appends QC outputs as additional
 columns rather than deleting records.
 
@@ -144,7 +159,8 @@ Anomaly flags are evidence for review, not automatic proof of error. See
 `docs/ACTION_POLICY.md` and `docs/TESTED_VOLUME_BASELINES.md` for policy
 and baseline limitations, `docs/PREVALENCE_MODEL.md` for model
 assessment semantics, `docs/ADAPTERS.md` for the pipeline boundary, and
-`docs/RUN_ARTIFACTS.md` for persistence guidance.
+`docs/RUN_ARTIFACTS.md` for persistence guidance. See
+`docs/RUN_EXPLORER.md` for application scope and privacy constraints.
 
 ## Notes
 
