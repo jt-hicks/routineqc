@@ -152,6 +152,16 @@ The app binds to localhost, performs no writes, and provides no record
 download. Treat the local browser session and run directory as
 confidential.
 
+To exercise the complete package with synthetic data before connecting a
+real pipeline, run from the package repository:
+
+``` sh
+Rscript scripts/smoke_test_routineqc.R
+```
+
+Pass an output directory as the first argument and add `--launch` to
+open the generated run immediately.
+
 routineqc preserves raw data and appends QC outputs as additional
 columns rather than deleting records.
 

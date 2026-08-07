@@ -32,3 +32,5 @@
 - Added a read-only, localhost-bound Shiny Run Explorer with metadata-first
   artifact discovery, validated selection, review filters, diagnostic plots,
   and configuration/provenance views.
+- Added a synthetic command-line smoke test covering adapter mapping, QC,
+  run validation, persistence, discovery, and optional app launch.

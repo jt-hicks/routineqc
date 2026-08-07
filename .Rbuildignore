@@ -2,3 +2,4 @@
 ^README\.Rmd$
 ^MIGRATION\.md$
 ^docs$
+^scripts$
