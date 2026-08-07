@@ -150,7 +150,9 @@ launch_qc_app('qc-runs')
 
 The app binds to localhost, performs no writes, and provides no record
 download. Treat the local browser session and run directory as
-confidential.
+confidential. The review queue offers focused column views with hover
+definitions. Facility diagnostics compare observed prevalence with
+stored GAM expectations without rerunning the model.
 
 To exercise the complete package with synthetic data before connecting a
 real pipeline, run from the package repository:

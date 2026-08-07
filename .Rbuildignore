@@ -3,3 +3,4 @@
 ^MIGRATION\.md$
 ^docs$
 ^scripts$
+^qc-runs$

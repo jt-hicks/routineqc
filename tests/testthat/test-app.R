@@ -85,6 +85,36 @@ testthat::test_that('review filters are display-only and composable', {
   )
 })
 
+testthat::test_that('facility plot selects one facility and includes stored model fit', {
+  data <- tibble::tibble(
+    facility_id = rep(c('F1', 'F2'), each = 3),
+    month_date = rep(seq(as.Date('2024-01-01'), by = 'month', length.out = 3), 2),
+    prevalence = c(0.1, 0.2, 0.15, 0.4, 0.5, 0.45),
+    p_hat = c(0.12, 0.18, 0.16, 0.42, 0.48, 0.46),
+    flag_any_qc_issue = c(FALSE, TRUE, FALSE, FALSE, FALSE, TRUE)
+  )
+  plot <- routineqc::plot_facility_timeseries(data, 'F1')
+  testthat::expect_identical(unique(plot$data$facility_id), 'F1')
+  testthat::expect_equal(nrow(plot$data), 3L)
+  testthat::expect_equal(length(plot$layers), 4L)
+  testthat::expect_identical(rlang::as_label(plot$layers[[3]]$mapping$y), 'p_hat')
+})
+
+testthat::test_that('review column sets are focused and have definitions', {
+  data <- app_test_run()$data_flagged
+  review <- routineqc:::.review_column_spec(data, 'review')
+  model <- routineqc:::.review_column_spec(data, 'model')
+  all_fields <- routineqc:::.review_column_spec(data, 'all')
+  testthat::expect_lt(length(review$fields), length(all_fields$fields))
+  testthat::expect_true(all(c('facility_id', 'qc_action', 'qc_reason') %in% review$fields))
+  testthat::expect_true(all(c('p_hat', 'prediction_status') %in% model$fields))
+  testthat::expect_true(all(nzchar(review$definitions)))
+  testthat::expect_error(
+    routineqc:::.review_column_spec(data, 'unknown'),
+    'Unknown review queue column set'
+  )
+})
+
 testthat::test_that('run explorer builds for empty and populated directories', {
   directory <- tempfile('routineqc-app-object-')
   dir.create(directory)
@@ -101,10 +131,13 @@ testthat::test_that('run explorer builds for empty and populated directories', {
   shiny::testServer(
     server,
     {
-      suppressWarnings(session$setInputs(run_path = path, flagged_only = TRUE))
+      suppressWarnings(session$setInputs(
+        run_path = path, flagged_only = TRUE, column_set = 'review'
+      ))
       testthat::expect_true(length(output$overview) > 0L)
       testthat::expect_true(length(output$review_table) > 0L)
       testthat::expect_match(output$overview, 'app-synthetic')
+      testthat::expect_match(output$review_table, 'Reported number tested')
     }
   )
 })

@@ -151,14 +151,74 @@ filter_qc_review <- function(data,
   dplyr::as_tibble(out)
 }
 
-.review_display_columns <- function(data) {
-  intersect(
-    c('source_record_id', 'facility_id', 'facility_name', 'month_date', 'region',
-      'district', 'council', 'tested', 'positive', 'attending', 'prevalence',
-      'qc_action', 'review_priority', 'qc_reason', 'prediction_status',
-      'flag_exclude_authorized', 'flag_review_recommended'),
-    names(data)
+.review_column_definitions <- function() {
+  c(
+    source_record_id = 'Stable source-row identifier supplied by the adapter.',
+    facility_id = 'Stable facility identifier used for grouping and model effects.',
+    facility_name = 'Human-readable facility name, when supplied.',
+    month_date = 'Reporting month represented by its first calendar day.',
+    region = 'Canonical top-level geographic grouping.',
+    district = 'Optional canonical district.',
+    council = 'Optional canonical council.',
+    tested = 'Reported number tested in this facility-month.',
+    positive = 'Reported number testing positive in this facility-month.',
+    attending = 'Optional approved attendance denominator.',
+    prevalence = 'Observed positive divided by tested; NA when tested is zero or missing.',
+    p_hat = 'Expected prevalence from the fitted GAM; NA when the row was not assessed.',
+    expected_positive = 'Expected positive count: tested multiplied by model prevalence.',
+    pearson_resid = 'Pearson residual comparing observed and model-expected positives.',
+    prediction_status = 'Reason the row was assessed or not assessed by the model.',
+    model_assessment_eligible = 'Whether the row has valid counts and complete model predictors.',
+    model_assessed = 'Whether a finite prevalence prediction was obtained.',
+    tested_roll_median = 'Calendar-aware rolling median used as the tested-volume baseline.',
+    tested_robust_z = 'Robust deviation of tested volume from its rolling baseline.',
+    qc_action = 'Action assigned by the selected versioned action policy.',
+    review_priority = 'Relative priority for human review.',
+    qc_reason = 'Machine-readable reasons contributing to the assigned QC action.',
+    flag_exclude_authorized = 'Whether the active policy authorizes exclusion.',
+    flag_review_recommended = 'Whether human review is recommended.',
+    flag_core_invalid = 'Impossible or missing core tested/positive counts.',
+    flag_resid_extreme = 'Model residual exceeds the configured size-dependent threshold.',
+    flag_tested_volume_extreme = 'Tested volume has corroborated evidence of an extreme value.'
   )
+}
+
+.review_column_spec <- function(data, column_set = 'review') {
+  sets <- list(
+    review = c(
+      'source_record_id', 'facility_id', 'facility_name', 'month_date', 'region',
+      'tested', 'positive', 'prevalence', 'qc_action', 'review_priority', 'qc_reason'
+    ),
+    counts = c(
+      'source_record_id', 'facility_id', 'month_date', 'region', 'district',
+      'council', 'tested', 'positive', 'attending', 'prevalence',
+      'flag_core_invalid', 'flag_exclude_authorized', 'flag_review_recommended'
+    ),
+    model = c(
+      'source_record_id', 'facility_id', 'month_date', 'region', 'prevalence',
+      'p_hat', 'expected_positive', 'pearson_resid', 'prediction_status',
+      'model_assessment_eligible', 'model_assessed', 'flag_resid_extreme'
+    ),
+    volume = c(
+      'source_record_id', 'facility_id', 'month_date', 'region', 'tested',
+      'tested_roll_median', 'tested_robust_z', 'flag_tested_volume_extreme',
+      'qc_action', 'review_priority', 'qc_reason'
+    ),
+    all = names(data)
+  )
+  if (!is.character(column_set) || length(column_set) != 1L ||
+      !column_set %in% names(sets)) {
+    rlang::abort('Unknown review queue column set.')
+  }
+  fields <- intersect(sets[[column_set]], names(data))
+  labels <- stats::setNames(gsub('_', ' ', fields, fixed = TRUE), fields)
+  definitions <- .review_column_definitions()
+  definitions <- vapply(fields, function(field) {
+    if (field %in% names(definitions)) definitions[[field]] else {
+      paste0('Package output field: ', field, '.')
+    }
+  }, character(1))
+  list(fields = fields, labels = unname(labels), definitions = unname(definitions))
 }
 
 .qc_app_ui <- function() {
@@ -184,6 +244,21 @@ filter_qc_review <- function(data,
           shiny::column(3, shiny::selectInput('reason', 'QC reason', choices = NULL, multiple = TRUE)),
           shiny::column(3, shiny::selectInput('prediction_status', 'Prediction status', choices = NULL, multiple = TRUE)),
           shiny::column(3, shiny::dateRangeInput('date_range', 'Reporting months'))
+        ),
+        shiny::fluidRow(
+          shiny::column(
+            4,
+            shiny::selectInput(
+              'column_set', 'Columns',
+              choices = c(
+                'Review essentials' = 'review', 'Counts and context' = 'counts',
+                'Model assessment' = 'model', 'Tested-volume assessment' = 'volume',
+                'All available fields' = 'all'
+              ),
+              selected = 'review'
+            )
+          ),
+          shiny::column(8, shiny::helpText('Hover over a column heading for its definition.'))
         ),
         DT::DTOutput('review_table')
       ),
@@ -302,9 +377,23 @@ filter_qc_review <- function(data,
   }, striped = TRUE)
   output$review_table <- DT::renderDT({
     data <- review_data()
+    column_set <- if (is.null(input$column_set)) 'review' else input$column_set
+    spec <- .review_column_spec(data, column_set)
+    display <- data[spec$fields]
+    names(display) <- spec$labels
+    tooltips <- as.character(jsonlite::toJSON(spec$definitions, auto_unbox = TRUE))
     DT::datatable(
-      data[.review_display_columns(data)],
-      options = list(pageLength = 25, scrollX = TRUE), rownames = FALSE,
+      display,
+      extensions = 'FixedColumns',
+      options = list(
+        pageLength = 25, scrollX = TRUE,
+        fixedColumns = list(leftColumns = min(2L, ncol(display))),
+        headerCallback = DT::JS(paste0(
+          'function(thead) { var tips = ', tooltips, '; ',
+          '$(thead).find(th).each(function(i) { this.title = tips[i] || "; }); }'
+        ))
+      ),
+      rownames = FALSE,
       escape = TRUE, selection = 'single'
     )
   })

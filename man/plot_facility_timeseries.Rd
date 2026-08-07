@@ -15,5 +15,6 @@ plot_facility_timeseries(data, facility_id)
 A ggplot object.
 }
 \description{
-Plot Facility Time Series
+Plots observed prevalence for one facility with the stored GAM expectation,
+when available. Red points identify rows with any QC issue.
 }

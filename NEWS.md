@@ -34,3 +34,6 @@
   and configuration/provenance views.
 - Added a synthetic command-line smoke test covering adapter mapping, QC,
   run validation, persistence, discovery, and optional app launch.
+- Fixed facility diagnostic filtering, added observed-versus-model prevalence
+  time series, and made the review queue manageable with focused column sets,
+  fixed identifiers, and header-definition tooltips.

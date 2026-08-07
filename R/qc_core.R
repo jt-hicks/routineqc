@@ -5,7 +5,7 @@
 #' summaries and plots for QC review.
 #'
 #' @importFrom magrittr %>%
-#' @importFrom rlang .data
+#' @importFrom rlang .data .env
 #'
 #' @keywords internal
 "_PACKAGE"
@@ -1016,6 +1016,9 @@ plot_tested_robust_z <- function(data) {
 
 #' Plot Facility Time Series
 #'
+#' Plots observed prevalence for one facility with the stored GAM expectation,
+#' when available. Red points identify rows with any QC issue.
+#'
 #' @param data A QC data frame.
 #' @param facility_id Facility identifier value to filter.
 #'
@@ -1025,18 +1028,42 @@ plot_facility_timeseries <- function(data, facility_id) {
   .validate_required_columns(data, c("facility_id", "month_date", "prevalence"))
 
   dat <- dplyr::as_tibble(data) %>%
-    dplyr::filter(.data$facility_id == facility_id)
+    dplyr::filter(.data$facility_id == .env$facility_id)
 
   if (!"flag_any_qc_issue" %in% names(dat)) {
     dat$flag_any_qc_issue <- FALSE
   }
 
-  ggplot2::ggplot(dat, ggplot2::aes(x = month_date, y = prevalence)) +
-    ggplot2::geom_line(color = "#1f78b4") +
-    ggplot2::geom_point(ggplot2::aes(color = flag_any_qc_issue)) +
+  if (!'p_hat' %in% names(dat)) dat$p_hat <- NA_real_
+  flagged <- dplyr::coalesce(dat$flag_any_qc_issue, FALSE)
+
+  ggplot2::ggplot(dat, ggplot2::aes(x = month_date)) +
+    ggplot2::geom_line(
+      ggplot2::aes(y = prevalence, color = 'Observed'), linewidth = 0.7,
+      na.rm = TRUE
+    ) +
+    ggplot2::geom_point(
+      ggplot2::aes(y = prevalence, color = 'Observed'), size = 1.6,
+      na.rm = TRUE
+    ) +
+    ggplot2::geom_line(
+      ggplot2::aes(y = p_hat, color = 'Model fit'), linewidth = 0.8,
+      linetype = 'dashed', na.rm = TRUE
+    ) +
+    ggplot2::geom_point(
+      data = dat[flagged, , drop = FALSE],
+      ggplot2::aes(y = prevalence), color = '#e31a1c', size = 2.4,
+      na.rm = TRUE
+    ) +
     ggplot2::theme_minimal() +
-    ggplot2::scale_color_manual(values = c("FALSE" = "#1f78b4", "TRUE" = "#e31a1c"), guide = "none") +
-    ggplot2::labs(x = "Month", y = "Prevalence", title = paste("Facility", facility_id, "prevalence over time"))
+    ggplot2::scale_color_manual(
+      values = c('Observed' = '#1f78b4', 'Model fit' = '#ff7f00')
+    ) +
+    ggplot2::labs(
+      x = 'Month', y = 'Prevalence', color = NULL,
+      title = paste('Facility', facility_id, 'observed and expected prevalence'),
+      subtitle = 'Dashed orange: model fit; red points: rows with any QC issue'
+    )
 }
 
 #' Plot Before/After Prevalence

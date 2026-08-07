@@ -25,9 +25,15 @@ must still be treated according to the confidentiality of the source data.
 - **Overview:** dataset identity, row/facility counts, exclusion and review
   counts, prediction coverage, profile, policy, and run identities.
 - **Review queue:** display-only filters for action, priority, geography,
-  facility, reason, prediction status, and reporting dates.
+  facility, reason, prediction status, and reporting dates. Focused column
+  views cover review essentials, counts, model assessment, and tested-volume
+  assessment; an all-fields view remains available. Identifying columns stay
+  fixed during horizontal scrolling, and hovering over a heading shows its
+  definition.
 - **Diagnostics:** facility time series, prevalence residuals, tested-volume
-  robust z-scores, regional burden, and before/after prevalence.
+  robust z-scores, regional burden, and before/after prevalence. Facility plots
+  compare observed prevalence with the already-stored GAM expectation; they do
+  not refit the model.
 - **Configuration and provenance:** the exact configuration snapshot and safe
   caller-supplied provenance.
 
