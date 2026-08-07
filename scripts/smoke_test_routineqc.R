@@ -61,7 +61,9 @@ cat('JSON manifest:', written$manifest, '\n\n')
 print(list_qc_runs(output_dir))
 
 if (launch) {
-  launch_qc_app(output_dir)
+  cat('\nOpening the local Run Explorer in your default browser...\n')
+  cat('Keep this terminal running while using the app; press Ctrl+C to stop it.\n')
+  launch_qc_app(output_dir, launch_browser = TRUE)
 } else {
   cat('\nTo inspect this run interactively:\n')
   cat('  launch_qc_app(', dQuote(normalizePath(output_dir, winslash = '/')), ')\n', sep = '')
