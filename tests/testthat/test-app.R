@@ -132,12 +132,14 @@ testthat::test_that('run explorer builds for empty and populated directories', {
     server,
     {
       suppressWarnings(session$setInputs(
-        run_path = path, flagged_only = TRUE, column_set = 'review'
+        run_path = path, flagged_only = TRUE, column_set = 'review',
+        use_date_filter = FALSE
       ))
       testthat::expect_true(length(output$overview) > 0L)
       testthat::expect_true(length(output$review_table) > 0L)
       testthat::expect_match(output$overview, 'app-synthetic')
       testthat::expect_match(output$review_table, 'Reported number tested')
+      testthat::expect_match(output$review_count, '1 rows displayed')
     }
   )
 })

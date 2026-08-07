@@ -247,7 +247,7 @@ filter_qc_review <- function(data,
         ),
         shiny::fluidRow(
           shiny::column(
-            4,
+            3,
             shiny::selectInput(
               'column_set', 'Columns',
               choices = c(
@@ -258,7 +258,13 @@ filter_qc_review <- function(data,
               selected = 'review'
             )
           ),
-          shiny::column(8, shiny::helpText('Hover over a column heading for its definition.'))
+          shiny::column(3, shiny::checkboxInput('use_date_filter', 'Apply reporting-month filter', FALSE)),
+          shiny::column(2, shiny::actionButton('reset_filters', 'Reset filters')),
+          shiny::column(
+            4,
+            shiny::strong(shiny::textOutput('review_count', inline = TRUE)),
+            shiny::helpText('Hover over a column heading for its definition.')
+          )
         ),
         DT::DTOutput('review_table')
       ),
@@ -326,12 +332,15 @@ filter_qc_review <- function(data,
       if (!column %in% names(data)) return(character())
       sort(unique(as.character(data[[column]][!is.na(data[[column]])])))
     }
-    shiny::updateSelectInput(session, 'action', choices = choices('qc_action'))
-    shiny::updateSelectInput(session, 'priority', choices = choices('review_priority'))
-    shiny::updateSelectInput(session, 'region', choices = choices('region'))
-    shiny::updateSelectInput(session, 'facility', choices = choices('facility_id'))
-    shiny::updateSelectInput(session, 'reason', choices = choices('qc_reason'))
-    shiny::updateSelectInput(session, 'prediction_status', choices = choices('prediction_status'))
+    shiny::updateSelectInput(session, 'action', choices = choices('qc_action'), selected = character())
+    shiny::updateSelectInput(session, 'priority', choices = choices('review_priority'), selected = character())
+    shiny::updateSelectInput(session, 'region', choices = choices('region'), selected = character())
+    shiny::updateSelectInput(session, 'facility', choices = choices('facility_id'), selected = character())
+    shiny::updateSelectInput(session, 'reason', choices = choices('qc_reason'), selected = character())
+    shiny::updateSelectInput(
+      session, 'prediction_status', choices = choices('prediction_status'),
+      selected = character()
+    )
     facilities <- choices('facility_id')
     shiny::updateSelectInput(
       session, 'plot_facility', choices = facilities,
@@ -344,6 +353,14 @@ filter_qc_review <- function(data,
     )
   }, ignoreInit = FALSE)
 
+  shiny::observeEvent(input$reset_filters, {
+    shiny::updateCheckboxInput(session, 'flagged_only', value = TRUE)
+    shiny::updateCheckboxInput(session, 'use_date_filter', value = FALSE)
+    for (id in c('action', 'priority', 'region', 'facility', 'reason', 'prediction_status')) {
+      shiny::updateSelectInput(session, id, selected = character())
+    }
+  })
+
   review_data <- shiny::reactive({
     data <- selected_run()$data_flagged
     filter_qc_review(
@@ -351,8 +368,13 @@ filter_qc_review <- function(data,
       actions = input$action, priorities = input$priority, regions = input$region,
       facilities = input$facility, reasons = input$reason,
       prediction_statuses = input$prediction_status,
-      date_range = input$date_range, flagged_only = isTRUE(input$flagged_only)
+      date_range = if (isTRUE(input$use_date_filter)) input$date_range else NULL,
+      flagged_only = isTRUE(input$flagged_only)
     )
+  })
+
+  output$review_count <- shiny::renderText({
+    paste(nrow(review_data()), 'rows displayed')
   })
 
   output$overview <- shiny::renderTable({
@@ -384,10 +406,8 @@ filter_qc_review <- function(data,
     tooltips <- as.character(jsonlite::toJSON(spec$definitions, auto_unbox = TRUE))
     DT::datatable(
       display,
-      extensions = 'FixedColumns',
       options = list(
-        pageLength = 25, scrollX = TRUE,
-        fixedColumns = list(leftColumns = min(2L, ncol(display))),
+        pageLength = 25, scrollX = TRUE, autoWidth = TRUE,
         headerCallback = DT::JS(paste0(
           'function(thead) { var tips = ', tooltips, '; ',
           '$(thead).find(th).each(function(i) { this.title = tips[i] || "; }); }'

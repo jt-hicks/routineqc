@@ -27,9 +27,9 @@ must still be treated according to the confidentiality of the source data.
 - **Review queue:** display-only filters for action, priority, geography,
   facility, reason, prediction status, and reporting dates. Focused column
   views cover review essentials, counts, model assessment, and tested-volume
-  assessment; an all-fields view remains available. Identifying columns stay
-  fixed during horizontal scrolling, and hovering over a heading shows its
-  definition.
+  assessment; an all-fields view remains available. Hovering over a heading
+  shows its definition. Date filtering is opt-in, the displayed row count is
+  explicit, and one button resets all queue filters.
 - **Diagnostics:** facility time series, prevalence residuals, tested-volume
   robust z-scores, regional burden, and before/after prevalence. Facility plots
   compare observed prevalence with the already-stored GAM expectation; they do

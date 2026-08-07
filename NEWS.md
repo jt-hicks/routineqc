@@ -37,3 +37,6 @@
 - Fixed facility diagnostic filtering, added observed-versus-model prevalence
   time series, and made the review queue manageable with focused column sets,
   fixed identifiers, and header-definition tooltips.
+- Made review dates opt-in, reset categorical filters on run selection, added a
+  visible queue count and reset button, and removed hidden-tab fixed-column
+  initialization that could leave the table blank in a browser.
