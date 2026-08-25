@@ -77,6 +77,28 @@ treated as a replacement for the prototype.
   Prediction failures and unseen factor levels remain explicit non-assessments;
   they never become anomaly evidence or authorize exclusion.
 
+## Compatibility audit (2026-08-25)
+
+The six SMC-relevant compatibility requirements were re-audited against the
+current implementation, tests, and documentation. The audit initially found
+one narrow gap: the exported `flag_logical_errors()` helper could apply
+attendance checks when called directly with non-missing attendance but without
+an attendance definition. Commit `3843f9c` closed that gap. No other
+compatibility gaps were identified.
+
+| Requirement | Result | Evidence |
+|---|---|---|
+| Apply attendance checks only with an approved attendance definition | Satisfied | `prepare_qc_data()`, adapters, canonical validation, and `flag_logical_errors()` reject non-missing attendance without a non-empty definition. Direct-helper tests cover absent, entirely missing, undefined, blank, and accepted attendance definitions. |
+| Include the region fixed effect in the prevalence GAM and regression-test it | Satisfied | `fit_prevalence_gam()` includes `region` in the authoritative formula; `test-prevalence-model.R` asserts its presence in the model terms. |
+| Predict safely for facilities or factor levels absent from model training | Satisfied | `add_prevalence_predictions()` preserves rows, assigns explicit `unseen_facility` or `unseen_region` status, and leaves model-derived values missing; regression tests cover both cases. |
+| Restore configurable residual, all-negative, and large-change compatibility behavior | Satisfied | The recommended configuration restores size-dependent residual thresholds, the all-negative tested-count boundary, and denominator plus calendar-adjacency guards for large changes. Configuration and boundary tests cover these rules. |
+| Keep near-zero and near-one sensitivity flags separate from primary QC defaults | Satisfied | `flag_raw_prevalence_bound` is distinct and `use_prevalence_bounds` is false in primary profiles; it is enabled only explicitly or through the named permissive sensitivity profile. |
+| Base isolated extremes on statistical evidence and document calendar adjacency | Satisfied | `add_temporal_qc_flags()` uses `flag_resid_extreme`, requires both adjacent calendar months by default, and records insufficient temporal context separately. Tests and this comparison document cover calendar gaps. |
+
+After the attendance-helper correction, the full package test suite completed
+with 228 passing tests, no failures, and four expected model fallback or
+insufficient-data warnings.
+
 ## Open domain decisions
 
 - Any future policy that authorizes broader exclusions requires reviewed data,
