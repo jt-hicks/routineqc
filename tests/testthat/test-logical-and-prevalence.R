@@ -20,6 +20,48 @@ testthat::test_that("logical flags catch impossible values", {
   testthat::expect_equal(sum(out$flag_invalid_logical), 5)
 })
 
+testthat::test_that('logical helper allows absent attendance', {
+  core <- tibble::tibble(tested = 10, positive = 2)
+  out <- routineqc::flag_logical_errors(core)
+  testthat::expect_false(out$flag_attendance_issue)
+})
+
+testthat::test_that('logical helper allows entirely missing attendance', {
+  dat <- tibble::tibble(tested = 10, positive = 2, attending = NA_real_)
+  out <- routineqc::flag_logical_errors(dat)
+  testthat::expect_false(out$flag_attendance_issue)
+})
+
+testthat::test_that('logical helper rejects undefined non-missing attendance', {
+  missing_definition <- tibble::tibble(tested = 10, positive = 2, attending = 8)
+  testthat::expect_error(
+    routineqc::flag_logical_errors(missing_definition),
+    'Non-missing `attending` values require a non-missing `attendance_definition`',
+    fixed = TRUE
+  )
+
+  blank_definition <- dplyr::mutate(
+    missing_definition, attendance_definition = '   '
+  )
+  testthat::expect_error(
+    routineqc::flag_logical_errors(blank_definition),
+    'Non-missing `attending` values require a non-missing `attendance_definition`',
+    fixed = TRUE
+  )
+})
+
+testthat::test_that('logical helper accepts defined attendance', {
+  dat <- tibble::tibble(
+    tested = 10,
+    positive = 2,
+    attending = 8,
+    attendance_definition = 'Eligible ANC attendees from the adapter source'
+  )
+  out <- routineqc::flag_logical_errors(dat)
+  testthat::expect_true(out$flag_tested_gt_attending)
+  testthat::expect_true(out$flag_attendance_issue)
+})
+
 testthat::test_that("prepare_qc_data computes prevalence correctly", {
   raw <- tibble::tibble(
     fac = c("A", "A"),

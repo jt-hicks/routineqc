@@ -152,7 +152,11 @@ prepare_qc_data <- function(data,
 
 #' Flag Logical Data Errors
 #'
-#' Adds flags for impossible or invalid tested/positive combinations.
+#' Adds flags for impossible or invalid tested/positive combinations. Attendance
+#' checks are applied only when non-missing `attending` values are accompanied
+#' by a non-empty `attendance_definition`. Data without attendance, or with an
+#' entirely missing attendance column, continue through core logical QC without
+#' attendance checks.
 #'
 #' @param data A prepared QC data frame.
 #'
@@ -164,6 +168,12 @@ flag_logical_errors <- function(data) {
   out <- dplyr::as_tibble(data)
   if (!'attending' %in% names(out)) {
     out$attending <- NA_real_
+  }
+  if (any(!is.na(out$attending)) &&
+      (!'attendance_definition' %in% names(out) ||
+       any(is.na(out$attendance_definition) |
+           trimws(as.character(out$attendance_definition)) == ''))) {
+    rlang::abort('Non-missing `attending` values require a non-missing `attendance_definition`.')
   }
 
   out %>%

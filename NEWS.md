@@ -1,5 +1,8 @@
 # routineqc 0.0.0.9000
 
+- Hardened the exported logical-flag helper so non-missing attendance is
+  rejected unless accompanied by a non-empty attendance definition; absent or
+  entirely missing attendance remains optional.
 - Initial package scaffold using usethis/devtools conventions.
 - Added modular QC pipeline for routine facility-month surveillance data.
 - Added prevalence GAM modeling, tested volume anomaly flags, temporal checks,

@@ -13,5 +13,9 @@ flag_logical_errors(data)
 The input data with logical error flags appended.
 }
 \description{
-Adds flags for impossible or invalid tested/positive combinations.
+Adds flags for impossible or invalid tested/positive combinations. Attendance
+checks are applied only when non-missing \code{attending} values are accompanied
+by a non-empty \code{attendance_definition}. Data without attendance, or with an
+entirely missing attendance column, continue through core logical QC without
+attendance checks.
 }
