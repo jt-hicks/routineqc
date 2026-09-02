@@ -256,9 +256,12 @@ filter_qc_review <- function(data,
         'Overview',
         shiny::tableOutput('overview'),
         shiny::fluidRow(
-          shiny::column(6, plotly::plotlyOutput('status_plot', height = '430px')),
+          shiny::column(6, plotly::plotlyOutput('action_plot', height = '430px')),
+          shiny::column(6, plotly::plotlyOutput('reason_plot', height = '430px'))
+        ),
+        shiny::fluidRow(
           shiny::column(
-            6,
+            3,
             shiny::selectInput(
               'burden_mode', 'Burden measure',
               choices = c(
@@ -267,9 +270,9 @@ filter_qc_review <- function(data,
                 'Authorized exclusion only' = 'exclude'
               ),
               selected = 'flagged'
-            ),
-            plotly::plotlyOutput('facility_burden_plot', height = '350px')
-          )
+            )
+          ),
+          shiny::column(9, plotly::plotlyOutput('facility_burden_plot', height = '350px'))
         ),
         shiny::fluidRow(
           shiny::column(
@@ -354,21 +357,13 @@ filter_qc_review <- function(data,
         'District',
         shiny::uiOutput('district_state'),
         shiny::fluidRow(
-          shiny::column(4, shiny::selectInput('plot_district', 'District', choices = NULL)),
+          shiny::column(6, shiny::selectInput('plot_district', 'District', choices = NULL)),
           shiny::column(
-            4,
+            6,
             shiny::radioButtons(
               'district_plot_metric', 'Measure',
               choices = c('Prevalence' = 'prevalence', 'Number tested' = 'tested'),
               selected = 'prevalence', inline = TRUE
-            )
-          ),
-          shiny::column(
-            4,
-            shiny::radioButtons(
-              'district_plot_view', 'View',
-              choices = c('Heatmap' = 'heatmap', 'Faceted time series' = 'facets'),
-              selected = 'heatmap', inline = TRUE
             )
           )
         ),
@@ -523,8 +518,16 @@ filter_qc_review <- function(data,
       provenance = run$manifest$provenance
     )
   })
-  output$status_plot <- plotly::renderPlotly({
-    .plot_qc_status(selected_run()$data_flagged)
+  output$action_plot <- plotly::renderPlotly({
+    .plot_qc_actions(selected_run()$data_flagged)
+  })
+  output$reason_plot <- plotly::renderPlotly({
+    data <- selected_run()$data_flagged
+    summary <- .qc_reason_summary(data)
+    shiny::validate(shiny::need(
+      nrow(summary) > 0L, 'No QC reasons were recorded in this run.'
+    ))
+    .plot_qc_reasons(data)
   })
   output$facility_burden_plot <- plotly::renderPlotly({
     .plot_facility_burden(
@@ -638,23 +641,14 @@ filter_qc_review <- function(data,
     shiny::req(input$plot_district)
     data <- .district_plot_data(selected_run()$data_flagged, input$plot_district)
     facilities <- dplyr::n_distinct(data$facility_id)
-    view <- .value_or(input$district_plot_view, 'heatmap')
-    height <- if (view == 'facets') {
-      max(500, ceiling(facilities / 3) * 240)
-    } else {
-      max(450, facilities * 22)
-    }
+    height <- max(500, ceiling(facilities / 3) * 240)
     plotly::plotlyOutput('district_plot', height = paste0(height, 'px'))
   })
   output$district_plot <- plotly::renderPlotly({
     shiny::req(input$plot_district)
     data <- selected_run()$data_flagged
     metric <- .value_or(input$district_plot_metric, 'prevalence')
-    if (.value_or(input$district_plot_view, 'heatmap') == 'facets') {
-      .plot_district_facets(data, input$plot_district, metric)
-    } else {
-      .plot_district_heatmap(data, input$plot_district, metric)
-    }
+    .plot_district_facets(data, input$plot_district, metric)
   })
   output$configuration <- shiny::renderPrint({ selected_run()$config })
   output$provenance <- shiny::renderPrint({ selected_run()$manifest$provenance })

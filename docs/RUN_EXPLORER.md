@@ -22,13 +22,15 @@ must still be treated according to the confidentiality of the source data.
 
 ## Views
 
-- **Overview:** a compact run summary plus a nested QC-status chart. The inner
-  ring is the mutually exclusive row action and the outer ring is the complete
-  reason combination recorded for those rows, so every row contributes exactly
-  once. Facility burden groups facilities by affected-row count. District
+- **Overview:** a compact run summary, a QC-action donut across all rows, and a
+  separate bar chart counting each individual QC reason among affected rows.
+  Rows with multiple reasons contribute to each applicable reason bar; the
+  reason chart therefore describes evidence frequency rather than a mutually
+  exclusive partition. Facility burden groups facilities by affected-row
+  count. District
   burden ranks districts by the number or proportion of facilities exceeding
   an adjustable affected-row threshold. Both burden views can switch among
-  review-or-exclusion, review only, and authorized exclusion only. A collapsible
+  review-or-exclusion, review only, and authorized exclusion only. An always-visible
   flow diagram explains the tested/positive validity, attendance, prevalence,
   temporal, and tested-volume evidence used by the action policy.
 - **Review queue:** display-only filters for action, priority, geography,
@@ -43,9 +45,9 @@ must still be treated according to the confidentiality of the source data.
   already-stored GAM expectation or tested-volume rolling baseline; they do not
   refit either model. Hover text exposes the available facility, geography,
   count, model, action, priority, and reason fields for each point.
-- **District:** an interactive facility-by-month heatmap or a vertically
-  scrollable set of faceted facility time series. The measure can switch between
-  prevalence and number tested. Red marks identify rows recommended for review
+- **District:** a vertically scrollable set of interactive, faceted facility
+  time series. The measure can switch between prevalence and number tested.
+  Red marks identify rows recommended for review
   or authorized exclusion. Runs without a district field display an explanatory
   message instead of failing.
 - **Configuration and provenance:** the exact configuration snapshot and safe

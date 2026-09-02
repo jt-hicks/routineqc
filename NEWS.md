@@ -1,11 +1,14 @@
 # routineqc 0.0.0.9000
 
-- Redesigned the read-only Run Explorer with a nested action/reason-combination
-  status view, configurable facility and district burden summaries, a detailed
-  QC decision flow, Plotly tooltips, observed testing-volume time series, and
-  district heatmap and faceted time-series views. Replaced the fragile review
+- Redesigned the read-only Run Explorer with a QC-action donut, an
+  individual-reason frequency chart, configurable facility and district burden
+  summaries, an always-visible detailed QC decision flow, Plotly tooltips,
+  observed testing-volume time series, and district faceted time-series views.
+  Replaced the fragile review
   queue header JavaScript with server-generated tooltips and explicit empty
   states.
+- Expanded the synthetic smoke fixture to three districts with eight facilities
+  each and staggered facility histories of 12 to 24 months.
 - Hardened the exported logical-flag helper so non-missing attendance is
   rejected unless accompanied by a non-empty attendance definition; absent or
   entirely missing attendance remains optional.

@@ -133,11 +133,11 @@ The review queue offers focused column views with hover definitions. Facility
 diagnostics compare observed prevalence with stored GAM expectations without
 rerunning the model.
 
-The Overview combines a nested action/reason-combination status view with
-facility and district burden summaries. Interactive diagnostics expose row
+The Overview combines a QC-action donut, an individual-reason frequency chart,
+and facility and district burden summaries. Interactive diagnostics expose row
 details on hover and compare observed prevalence and testing volume with their
-stored expectations. A District tab provides both a facility-by-month heatmap
-and faceted facility time series when the upstream adapter supplies district.
+stored expectations. A District tab provides faceted facility time series when
+the upstream adapter supplies district.
 
 To exercise the complete package with synthetic data before connecting a real
 pipeline, run from the package repository:

@@ -12,8 +12,37 @@ output_dir <- if (length(paths) > 0L) {
 suppressPackageStartupMessages(library(routineqc))
 
 cat('Creating synthetic source data...\n')
-source_data <- simulate_qc_data(n_facilities = 12, n_months = 18, seed = 42)
+source_data <- simulate_qc_data(n_facilities = 24, n_months = 24, seed = 42)
+facilities <- sort(unique(source_data$facility))
+district_map <- stats::setNames(
+  rep(paste0('District_', LETTERS[1:3]), each = 8),
+  facilities
+)
+months_per_facility <- stats::setNames(
+  rep(12:24, length.out = length(facilities)),
+  facilities
+)
+source_data$district <- unname(district_map[source_data$facility])
+source_data$.facility_month_index <- ave(
+  seq_len(nrow(source_data)), source_data$facility, FUN = seq_along
+)
+source_data <- source_data[
+  source_data$.facility_month_index <= months_per_facility[source_data$facility],
+  ,
+  drop = FALSE
+]
+source_data$.facility_month_index <- NULL
 source_data$record_id <- sprintf('synthetic-%04d', seq_len(nrow(source_data)))
+
+facility_rows <- table(source_data$facility)
+stopifnot(
+  length(unique(source_data$district)) == 3L,
+  identical(sort(as.integer(table(unique(source_data[c('facility', 'district')])$district))), rep(8L, 3)),
+  min(facility_rows) >= 12L,
+  max(facility_rows) <= 24L
+)
+cat('Districts: 3; facilities per district: 8; facility histories:',
+    min(facility_rows), 'to', max(facility_rows), 'months\n')
 
 cat('Adapting source columns to the canonical contract...\n')
 adapted <- adapt_qc_data(

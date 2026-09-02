@@ -29,7 +29,7 @@ utils::globalVariables(c(
   'prev_extreme', 'prev_lag', 'prev_month_date', 'prev_month_is_adjacent',
   'parent', 'pct_all', 'prevalence', 'prevalence_issue',
   'previous_month_is_adjacent', 'proportion', 'proportion_over_threshold',
-  'qc_action', 'qc_reason',
+  'qc_action', 'qc_reason', 'source_row',
   'region', 'review_priority', 'season', 'state', 'tested', 'tested_issue', 'tested_prev',
   'residual_cutoff', 'tested_baseline_n', 'tested_baseline_ready',
   'tested_lag', 'tested_mad_adjusted', 'tested_robust_z',

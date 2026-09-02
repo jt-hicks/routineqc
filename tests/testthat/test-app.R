@@ -145,14 +145,15 @@ testthat::test_that('run explorer builds for empty and populated directories', {
       testthat::expect_match(output$overview, 'app-synthetic')
       testthat::expect_match(output$review_table, 'Reported number tested')
       testthat::expect_match(output$review_count, '1 rows displayed')
-      testthat::expect_true(length(output$status_plot) > 0L)
+      testthat::expect_true(length(output$action_plot) > 0L)
+      testthat::expect_true(length(output$reason_plot) > 0L)
       testthat::expect_true(length(output$facility_burden_plot) > 0L)
       testthat::expect_true(length(output$district_burden_plot) > 0L)
     }
   )
 })
 
-testthat::test_that('overview status hierarchy preserves rows and reason combinations', {
+testthat::test_that('overview separates row actions from individual QC reasons', {
   dat <- tibble::tibble(
     qc_action = c('retain', 'review_prevalence', 'review_prevalence', 'exclude_core_invalid'),
     qc_reason = c(
@@ -162,17 +163,18 @@ testthat::test_that('overview status hierarchy preserves rows and reason combina
       'impossible or missing core tested/positive counts'
     )
   )
-  hierarchy <- routineqc:::.qc_status_hierarchy(dat)
-  root <- hierarchy[hierarchy$level == 'root', ]
-  actions <- hierarchy[hierarchy$level == 'action', ]
-  reasons <- hierarchy[hierarchy$level == 'reason', ]
-  testthat::expect_equal(root$n, nrow(dat))
+  actions <- routineqc:::.qc_action_summary(dat)
+  reasons <- routineqc:::.qc_reason_summary(dat)
   testthat::expect_equal(sum(actions$n), nrow(dat))
-  testthat::expect_equal(sum(reasons$n), nrow(dat))
-  testthat::expect_true(
-    'prevalence residual extreme; tested-volume anomaly' %in% reasons$label
+  testthat::expect_equal(
+    reasons$n[reasons$qc_reason == 'prevalence residual extreme'], 2
   )
-  testthat::expect_s3_class(routineqc:::.plot_qc_status(dat), 'plotly')
+  testthat::expect_equal(
+    reasons$n[reasons$qc_reason == 'tested-volume anomaly'], 1
+  )
+  testthat::expect_false('No QC issue detected' %in% reasons$qc_reason)
+  testthat::expect_s3_class(routineqc:::.plot_qc_actions(dat), 'plotly')
+  testthat::expect_s3_class(routineqc:::.plot_qc_reasons(dat), 'plotly')
 })
 
 testthat::test_that('facility and district burden modes remain explicit', {
@@ -222,11 +224,9 @@ testthat::test_that('tooltip construction tolerates optional fields', {
   testthat::expect_match(tooltip, 'QC reason: prevalence residual extreme')
 })
 
-testthat::test_that('district views support heatmaps, facets, and absent districts', {
+testthat::test_that('district view supports facets and absent districts', {
   dat <- app_test_run()$data_flagged
-  heatmap <- routineqc:::.plot_district_heatmap(dat, 'D1', 'prevalence')
   facets <- routineqc:::.plot_district_facets(dat, 'D1', 'tested')
-  testthat::expect_s3_class(heatmap, 'plotly')
   testthat::expect_s3_class(facets, 'plotly')
   no_district <- dplyr::select(dat, -district)
   testthat::expect_error(
@@ -239,6 +239,7 @@ testthat::test_that('QC flow uses meaningful tested-positive language', {
   html <- as.character(routineqc:::.qc_flow_diagram_ui())
   testthat::expect_match(html, 'Tested/positive validity checks', fixed = TRUE)
   testthat::expect_false(grepl('>Core|>core', html))
+  testthat::expect_false(grepl('<details', html, fixed = TRUE))
 })
 
 testthat::test_that('review queue reports an explicit empty filtered state', {

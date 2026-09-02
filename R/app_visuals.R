@@ -57,57 +57,44 @@
   out
 }
 
-.qc_status_hierarchy <- function(data) {
-  .validate_required_columns(data, c('qc_action', 'qc_reason'))
-  dat <- dplyr::as_tibble(data) %>%
-    dplyr::mutate(
-      qc_action = as.character(qc_action),
-      qc_reason = dplyr::if_else(
-        is.na(qc_reason) | trimws(as.character(qc_reason)) == '',
-        'No QC issue detected',
-        as.character(qc_reason)
-      )
-    )
-
-  action <- dat %>%
+.qc_action_summary <- function(data) {
+  .validate_required_columns(data, 'qc_action')
+  total <- nrow(data)
+  dplyr::as_tibble(data) %>%
+    dplyr::mutate(qc_action = as.character(qc_action)) %>%
     dplyr::count(qc_action, name = 'n') %>%
     dplyr::mutate(
-      id = paste0('action:', qc_action),
       label = .qc_action_label(qc_action),
-      parent = 'all',
       color = .qc_action_color(qc_action),
-      level = 'action'
+      proportion = if (total > 0L) n / total else NA_real_
     )
-  reason <- dat %>%
-    dplyr::count(qc_action, qc_reason, name = 'n') %>%
-    dplyr::mutate(
-      id = paste0('reason:', qc_action, ':', dplyr::row_number()),
-      label = qc_reason,
-      parent = paste0('action:', qc_action),
-      color = .qc_action_color(qc_action),
-      level = 'reason'
-    )
-  total <- nrow(dat)
-  root <- dplyr::tibble(
-    qc_action = NA_character_, n = total, id = 'all',
-    label = 'All rows', parent = '', color = '#ffffff', level = 'root'
+}
+
+.qc_reason_summary <- function(data) {
+  .validate_required_columns(data, c('qc_action', 'qc_reason'))
+  total <- nrow(data)
+  reasons <- strsplit(
+    dplyr::coalesce(as.character(data$qc_reason), 'No QC issue detected'),
+    ';\\s*'
   )
-  nodes <- dplyr::bind_rows(
-    root,
-    dplyr::select(action, qc_action, n, id, label, parent, color, level),
-    dplyr::select(reason, qc_action, n, id, label, parent, color, level)
+  reason_rows <- dplyr::tibble(
+    source_row = rep(seq_along(reasons), lengths(reasons)),
+    qc_reason = trimws(unlist(reasons, use.names = FALSE))
   ) %>%
-    dplyr::mutate(
-      pct_all = if (total > 0L) n / total else NA_real_,
-      hover = dplyr::case_when(
-        level == 'root' ~ paste0('All rows: ', n),
-        level == 'action' ~ paste0(label, '<br>Rows: ', n, '<br>All rows: ', sprintf('%.1f%%', 100 * pct_all)),
-        TRUE ~ paste0(
-          label, '<br>Rows: ', n, '<br>All rows: ', sprintf('%.1f%%', 100 * pct_all)
-        )
-      )
+    dplyr::filter(
+      qc_reason != '',
+      qc_reason != 'No QC issue detected'
     )
-  nodes
+  if (nrow(reason_rows) == 0L) {
+    return(dplyr::tibble(qc_reason = character(), n = integer(), proportion = double()))
+  }
+  reason_rows %>%
+    dplyr::distinct(source_row, qc_reason) %>%
+    dplyr::count(qc_reason, name = 'n') %>%
+    dplyr::mutate(
+      proportion = if (total > 0L) n / total else NA_real_
+    ) %>%
+    dplyr::arrange(n)
 }
 
 .facility_burden_data <- function(data, mode = c('flagged', 'review', 'exclude')) {
@@ -193,19 +180,42 @@
   do.call(paste, c(pieces, sep = '<br>'))
 }
 
-.plot_qc_status <- function(data) {
-  nodes <- .qc_status_hierarchy(data)
+.plot_qc_actions <- function(data) {
+  summary <- .qc_action_summary(data)
   plotly::plot_ly(
-    type = 'sunburst',
-    ids = nodes$id, labels = nodes$label, parents = nodes$parent,
-    values = nodes$n, branchvalues = 'total',
-    marker = list(colors = nodes$color),
-    text = nodes$hover, hovertemplate = '%{text}<extra></extra>',
-    insidetextorientation = 'radial'
+    summary, labels = ~label, values = ~n, type = 'pie', hole = 0.55,
+    marker = list(colors = summary$color),
+    text = ~paste0(
+      label, '<br>Rows: ', n,
+      '<br>All rows: ', sprintf('%.1f%%', 100 * proportion)
+    ),
+    textinfo = 'percent', hovertemplate = '%{text}<extra></extra>',
+    sort = FALSE
   ) %>%
     plotly::layout(
-      title = list(text = 'QC actions and reason combinations'),
+      title = list(text = 'QC action across all rows'),
+      showlegend = TRUE,
       margin = list(l = 10, r = 10, b = 10, t = 55)
+    )
+}
+
+.plot_qc_reasons <- function(data) {
+  summary <- .qc_reason_summary(data)
+  if (nrow(summary) == 0L) return(NULL)
+  plotly::plot_ly(
+    summary, x = ~n, y = ~qc_reason, type = 'bar', orientation = 'h',
+    marker = list(color = '#3182bd'),
+    text = ~paste0(
+      'QC reason: ', qc_reason, '<br>Rows: ', n,
+      '<br>All rows: ', sprintf('%.1f%%', 100 * proportion)
+    ),
+    hovertemplate = '%{text}<extra></extra>'
+  ) %>%
+    plotly::layout(
+      title = list(text = 'Individual QC reasons'),
+      xaxis = list(title = 'Number of rows'),
+      yaxis = list(title = NULL, automargin = TRUE),
+      margin = list(l = 210, t = 55)
     )
 }
 
@@ -262,9 +272,9 @@
       shiny::tags$ul(lapply(items, shiny::tags$li))
     )
   }
-  shiny::tags$details(
+  shiny::div(
     class = 'qc-flow',
-    shiny::tags$summary(shiny::tags$strong('How QC actions are assigned')),
+    shiny::tags$h4('How QC actions are assigned'),
     shiny::p(
       'Each row is evaluated for factual evidence first. The selected action policy ',
       'then maps that evidence to retention, review, or authorized exclusion.'
@@ -466,35 +476,6 @@
   dat$.tooltip <- .qc_row_tooltip(dat)
   dat$.affected <- .qc_flag_vector(dat, 'flagged')
   dat
-}
-
-.plot_district_heatmap <- function(data, district, metric = c('prevalence', 'tested')) {
-  metric <- match.arg(metric)
-  dat <- .district_plot_data(data, district)
-  .validate_required_columns(dat, metric)
-  dat$.metric <- dat[[metric]]
-  dat$facility_id <- factor(dat$facility_id, levels = rev(unique(dat$facility_id)))
-  plot <- ggplot2::ggplot(
-    dat, ggplot2::aes(x = month_date, y = facility_id, fill = .metric, text = .tooltip)
-  ) +
-    ggplot2::geom_tile(na.rm = TRUE) +
-    ggplot2::geom_point(
-      data = dat[dat$.affected, , drop = FALSE],
-      shape = 4, color = '#d73027', size = 1.7, stroke = 0.8
-    ) +
-    ggplot2::scale_fill_viridis_c(
-      option = 'C', na.value = 'grey90',
-      labels = if (metric == 'prevalence') scales::label_percent(accuracy = 0.1) else scales::label_number()
-    ) +
-    ggplot2::theme_minimal() +
-    ggplot2::theme(panel.grid = ggplot2::element_blank()) +
-    ggplot2::labs(
-      x = 'Month', y = 'Facility', fill = if (metric == 'prevalence') 'Prevalence' else 'Tested',
-      title = paste(district, if (metric == 'prevalence') 'prevalence' else 'testing volume'),
-      subtitle = 'Red crosses mark rows recommended for review or authorized exclusion'
-    )
-  plotly::ggplotly(plot, tooltip = 'text') %>%
-    plotly::layout(margin = list(l = 140, t = 80))
 }
 
 .plot_district_facets <- function(data, district, metric = c('prevalence', 'tested')) {
