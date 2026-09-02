@@ -22,23 +22,42 @@ must still be treated according to the confidentiality of the source data.
 
 ## Views
 
-- **Overview:** dataset identity, row/facility counts, exclusion and review
-  counts, prediction coverage, profile, policy, and run identities.
+- **Overview:** a compact run summary plus a nested QC-status chart. The inner
+  ring is the mutually exclusive row action and the outer ring is the complete
+  reason combination recorded for those rows, so every row contributes exactly
+  once. Facility burden groups facilities by affected-row count. District
+  burden ranks districts by the number or proportion of facilities exceeding
+  an adjustable affected-row threshold. Both burden views can switch among
+  review-or-exclusion, review only, and authorized exclusion only. A collapsible
+  flow diagram explains the tested/positive validity, attendance, prevalence,
+  temporal, and tested-volume evidence used by the action policy.
 - **Review queue:** display-only filters for action, priority, geography,
   facility, reason, prediction status, and reporting dates. Focused column
   views cover review essentials, counts, model assessment, and tested-volume
   assessment; an all-fields view remains available. Hovering over a heading
   shows its definition. Date filtering is opt-in, the displayed row count is
   explicit, and one button resets all queue filters.
-- **Diagnostics:** facility time series, prevalence residuals, tested-volume
-  robust z-scores, regional burden, and before/after prevalence. Facility plots
-  compare observed prevalence with the already-stored GAM expectation; they do
-  not refit the model.
+- **Diagnostics:** interactive selected-facility prevalence and tested-count
+  time series, prevalence residuals, tested-volume robust z-scores, and
+  before/after prevalence. Facility plots compare observations with the
+  already-stored GAM expectation or tested-volume rolling baseline; they do not
+  refit either model. Hover text exposes the available facility, geography,
+  count, model, action, priority, and reason fields for each point.
+- **District:** an interactive facility-by-month heatmap or a vertically
+  scrollable set of faceted facility time series. The measure can switch between
+  prevalence and number tested. Red marks identify rows recommended for review
+  or authorized exclusion. Runs without a district field display an explanatory
+  message instead of failing.
 - **Configuration and provenance:** the exact configuration snapshot and safe
   caller-supplied provenance.
 
 Filtering never modifies the stored run or authorizes a new action. Invalid or
 tampered RDS/manifest pairs cannot be opened silently.
+
+“Affected” in the facility and district burden views means either
+`flag_review_recommended` or `flag_exclude_authorized`. The controls expose
+each component separately. Review recommendations remain distinct from
+authorized exclusions throughout the application.
 
 ## Deliberately deferred
 

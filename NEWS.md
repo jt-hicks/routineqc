@@ -1,5 +1,11 @@
 # routineqc 0.0.0.9000
 
+- Redesigned the read-only Run Explorer with a nested action/reason-combination
+  status view, configurable facility and district burden summaries, a detailed
+  QC decision flow, Plotly tooltips, observed testing-volume time series, and
+  district heatmap and faceted time-series views. Replaced the fragile review
+  queue header JavaScript with server-generated tooltips and explicit empty
+  states.
 - Hardened the exported logical-flag helper so non-missing attendance is
   rejected unless accompanied by a non-empty attendance definition; absent or
   entirely missing attendance remains optional.

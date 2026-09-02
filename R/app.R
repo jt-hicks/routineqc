@@ -221,15 +221,81 @@ filter_qc_review <- function(data,
   list(fields = fields, labels = unname(labels), definitions = unname(definitions))
 }
 
+.review_table_container <- function(labels, definitions) {
+  shiny::tags$table(
+    class = 'display',
+    shiny::tags$thead(
+      shiny::tags$tr(
+        Map(
+          function(label, definition) shiny::tags$th(title = definition, label),
+          labels, definitions
+        )
+      )
+    )
+  )
+}
+
 .qc_app_ui <- function() {
   shiny::fluidPage(
+    shiny::tags$head(
+      shiny::tags$style(shiny::HTML(
+        '.qc-flow {margin: 16px 0;} .qc-flow summary {cursor:pointer; font-size:16px;}
+         .qc-flow-grid {display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
+           gap:10px; margin-top:12px;} .qc-flow-box {border:1px solid #ddd;
+           border-radius:6px; padding:10px; background:#fafafa;}
+         .qc-flow-box ul {padding-left:18px; margin:8px 0 0;}
+         .qc-flow-outcomes {border-left:4px solid #2c7fb8; padding:8px 12px;
+           margin-top:12px; background:#f3f8fc;}'
+      ))
+    ),
     shiny::titlePanel('routineqc Run Explorer'),
     shiny::p('Read-only local review of validated persisted QC runs.'),
     shiny::uiOutput('run_selector'),
     shiny::tabsetPanel(
       shiny::tabPanel(
-        'Overview', shiny::tableOutput('overview'),
-        shiny::h4('Artifact inventory'), shiny::tableOutput('artifact_inventory')
+        'Overview',
+        shiny::tableOutput('overview'),
+        shiny::fluidRow(
+          shiny::column(6, plotly::plotlyOutput('status_plot', height = '430px')),
+          shiny::column(
+            6,
+            shiny::selectInput(
+              'burden_mode', 'Burden measure',
+              choices = c(
+                'Review or authorized exclusion' = 'flagged',
+                'Review only' = 'review',
+                'Authorized exclusion only' = 'exclude'
+              ),
+              selected = 'flagged'
+            ),
+            plotly::plotlyOutput('facility_burden_plot', height = '350px')
+          )
+        ),
+        shiny::fluidRow(
+          shiny::column(
+            3,
+            shiny::numericInput(
+              'district_threshold', 'District threshold: affected rows per facility',
+              value = 3, min = 0, step = 1
+            ),
+            shiny::radioButtons(
+              'district_metric', 'District display',
+              choices = c('Proportion of facilities' = 'proportion', 'Number of facilities' = 'count'),
+              selected = 'proportion'
+            )
+          ),
+          shiny::column(
+            9,
+            shiny::uiOutput('overview_district_state'),
+            plotly::plotlyOutput('district_burden_plot', height = '450px')
+          )
+        ),
+        .qc_flow_diagram_ui(),
+        shiny::tags$details(
+          shiny::tags$summary(shiny::tags$strong('Run and artifact details')),
+          shiny::verbatimTextOutput('run_details'),
+          shiny::h4('Artifact inventory'), shiny::tableOutput('artifact_inventory')
+        )
       ),
       shiny::tabPanel(
         'Review queue',
@@ -266,20 +332,47 @@ filter_qc_review <- function(data,
             shiny::helpText('Hover over a column heading for its definition.')
           )
         ),
+        shiny::uiOutput('review_state'),
         DT::DTOutput('review_table')
       ),
       shiny::tabPanel(
         'Diagnostics',
         shiny::selectInput('plot_facility', 'Facility time series', choices = NULL),
-        shiny::plotOutput('facility_plot'),
         shiny::fluidRow(
-          shiny::column(6, shiny::plotOutput('residual_plot')),
-          shiny::column(6, shiny::plotOutput('tested_plot'))
+          shiny::column(6, plotly::plotlyOutput('facility_plot', height = '360px')),
+          shiny::column(6, plotly::plotlyOutput('facility_tested_plot', height = '360px'))
         ),
         shiny::fluidRow(
-          shiny::column(6, shiny::plotOutput('region_plot')),
-          shiny::column(6, shiny::plotOutput('before_after_plot'))
+          shiny::column(6, plotly::plotlyOutput('residual_plot', height = '360px')),
+          shiny::column(6, plotly::plotlyOutput('tested_plot', height = '360px'))
+        ),
+        shiny::fluidRow(
+          shiny::column(6, plotly::plotlyOutput('before_after_plot', height = '340px'))
         )
+      ),
+      shiny::tabPanel(
+        'District',
+        shiny::uiOutput('district_state'),
+        shiny::fluidRow(
+          shiny::column(4, shiny::selectInput('plot_district', 'District', choices = NULL)),
+          shiny::column(
+            4,
+            shiny::radioButtons(
+              'district_plot_metric', 'Measure',
+              choices = c('Prevalence' = 'prevalence', 'Number tested' = 'tested'),
+              selected = 'prevalence', inline = TRUE
+            )
+          ),
+          shiny::column(
+            4,
+            shiny::radioButtons(
+              'district_plot_view', 'View',
+              choices = c('Heatmap' = 'heatmap', 'Faceted time series' = 'facets'),
+              selected = 'heatmap', inline = TRUE
+            )
+          )
+        ),
+        shiny::uiOutput('district_plot_ui')
       ),
       shiny::tabPanel(
         'Configuration and provenance',
@@ -346,6 +439,11 @@ filter_qc_review <- function(data,
       session, 'plot_facility', choices = facilities,
       selected = if (length(facilities) > 0L) facilities[[1]] else character()
     )
+    districts <- choices('district')
+    shiny::updateSelectInput(
+      session, 'plot_district', choices = districts,
+      selected = if (length(districts) > 0L) districts[[1]] else character()
+    )
     shiny::updateDateRangeInput(
       session, 'date_range',
       start = min(data$month_date), end = max(data$month_date),
@@ -377,61 +475,186 @@ filter_qc_review <- function(data,
     paste(nrow(review_data()), 'rows displayed')
   })
 
+  output$review_state <- shiny::renderUI({
+    if (nrow(review_data()) == 0L) {
+      shiny::div(
+        class = 'alert alert-info',
+        if (isTRUE(input$flagged_only)) {
+          'No review or authorized-exclusion rows match the current filters.'
+        } else {
+          'No rows match the current filters.'
+        }
+      )
+    }
+  })
+
   output$overview <- shiny::renderTable({
     run <- selected_run()
     overall <- summarise_before_after_qc(run$data_flagged, by = 'overall')
+    data <- run$data_flagged
+    district_n <- if ('district' %in% names(data)) {
+      dplyr::n_distinct(data$district[!is.na(data$district) & trimws(as.character(data$district)) != ''])
+    } else {
+      0L
+    }
     dplyr::tibble(
       metric = c(
-        'Dataset ID', 'Rows', 'Facilities', 'Authorized exclusions',
-        'Review recommended', 'Model prediction coverage', 'Configuration profile',
-        'Action policy', 'Analysis ID', 'Execution ID'
+        'Dataset', 'Reporting period', 'Rows', 'Facilities', 'Districts',
+        'Review recommended', 'Authorized exclusions', 'Model prediction coverage',
+        'Configuration profile', 'Action policy'
       ),
       value = c(
         .manifest_value(run$manifest$provenance, 'dataset_id'),
-        run$manifest$input_rows, run$manifest$input_facilities,
-        overall$authorized_exclusion_rows, overall$review_recommended_rows,
+        paste(format(min(data$month_date), '%Y-%m'), 'to', format(max(data$month_date), '%Y-%m')),
+        run$manifest$input_rows, run$manifest$input_facilities, district_n,
+        overall$review_recommended_rows, overall$authorized_exclusion_rows,
         ifelse(is.na(run$manifest$model_prediction_coverage), 'NA',
                sprintf('%.1f%%', 100 * run$manifest$model_prediction_coverage)),
-        run$manifest$config_profile, run$manifest$action_policy,
-        run$manifest$analysis_id, run$manifest$execution_id
+        run$manifest$config_profile, run$manifest$action_policy
       )
     )
   }, striped = TRUE)
+  output$run_details <- shiny::renderPrint({
+    run <- selected_run()
+    list(
+      analysis_id = run$manifest$analysis_id,
+      execution_id = run$manifest$execution_id,
+      created_at_utc = run$manifest$created_at_utc,
+      provenance = run$manifest$provenance
+    )
+  })
+  output$status_plot <- plotly::renderPlotly({
+    .plot_qc_status(selected_run()$data_flagged)
+  })
+  output$facility_burden_plot <- plotly::renderPlotly({
+    .plot_facility_burden(
+      selected_run()$data_flagged, .value_or(input$burden_mode, 'flagged')
+    )
+  })
+  output$overview_district_state <- shiny::renderUI({
+    data <- selected_run()$data_flagged
+    if (!'district' %in% names(data) ||
+        all(is.na(data$district) | trimws(as.character(data$district)) == '')) {
+      shiny::div(class = 'alert alert-info', 'This QC run does not contain district information.')
+    }
+  })
+  output$district_burden_plot <- plotly::renderPlotly({
+    data <- selected_run()$data_flagged
+    shiny::req('district' %in% names(data))
+    summary <- .district_burden_data(
+      data, .value_or(input$burden_mode, 'flagged'),
+      .value_or(input$district_threshold, 3L)
+    )
+    shiny::validate(shiny::need(nrow(summary) > 0L, 'No district information is available.'))
+    .plot_district_burden(
+      data, .value_or(input$burden_mode, 'flagged'),
+      .value_or(input$district_threshold, 3L),
+      .value_or(input$district_metric, 'proportion')
+    )
+  })
   output$review_table <- DT::renderDT({
     data <- review_data()
     column_set <- if (is.null(input$column_set)) 'review' else input$column_set
     spec <- .review_column_spec(data, column_set)
     display <- data[spec$fields]
     names(display) <- spec$labels
-    tooltips <- as.character(jsonlite::toJSON(spec$definitions, auto_unbox = TRUE))
+    shiny::validate(shiny::need(nrow(display) > 0L, 'No rows to display.'))
     DT::datatable(
       display,
+      container = .review_table_container(spec$labels, spec$definitions),
       options = list(
-        pageLength = 25, scrollX = TRUE, autoWidth = TRUE,
-        headerCallback = DT::JS(paste0(
-          'function(thead) { var tips = ', tooltips, '; ',
-          '$(thead).find(th).each(function(i) { this.title = tips[i] || "; }); }'
-        ))
+        pageLength = 25, scrollX = TRUE, autoWidth = TRUE
       ),
       rownames = FALSE,
       escape = TRUE, selection = 'single'
     )
   })
-  output$facility_plot <- shiny::renderPlot({
+  output$facility_plot <- plotly::renderPlotly({
     shiny::req(input$plot_facility)
-    plot_facility_timeseries(selected_run()$data_flagged, input$plot_facility)
+    .plot_facility_prevalence_interactive(
+      selected_run()$data_flagged, input$plot_facility
+    )
   })
-  output$residual_plot <- shiny::renderPlot({
-    plot_prevalence_residuals(selected_run()$data_flagged)
+  output$facility_tested_plot <- plotly::renderPlotly({
+    shiny::req(input$plot_facility)
+    .plot_facility_tested_interactive(
+      selected_run()$data_flagged, input$plot_facility
+    )
   })
-  output$tested_plot <- shiny::renderPlot({
-    plot_tested_robust_z(selected_run()$data_flagged)
+  output$residual_plot <- plotly::renderPlotly({
+    run <- selected_run()
+    data <- run$data_flagged
+    prevalence_config <- run$config$prevalence
+    if (is.null(prevalence_config$resid_threshold)) {
+      data$residual_rule_threshold <- ifelse(
+        data$tested >= prevalence_config$resid_large_n,
+        prevalence_config$resid_threshold_large,
+        prevalence_config$resid_threshold_small
+      )
+      thresholds <- sort(unique(c(
+        -prevalence_config$resid_threshold_small,
+        -prevalence_config$resid_threshold_large,
+        prevalence_config$resid_threshold_large,
+        prevalence_config$resid_threshold_small
+      )))
+    } else {
+      data$residual_rule_threshold <- prevalence_config$resid_threshold
+      thresholds <- c(-prevalence_config$resid_threshold, prevalence_config$resid_threshold)
+    }
+    .plot_diagnostic_points(
+      data, 'pearson_resid', 'Prevalence residual diagnostics',
+      'Pearson residual', thresholds
+    )
   })
-  output$region_plot <- shiny::renderPlot({
-    plot_qc_summary_by_region(selected_run()$summaries$by_region)
+  output$tested_plot <- plotly::renderPlotly({
+    run <- selected_run()
+    threshold <- run$config$tested_volume$tested_z_threshold
+    data <- run$data_flagged
+    data$tested_z_rule_threshold <- threshold
+    .plot_diagnostic_points(
+      data, 'tested_robust_z', 'Tested-volume robust-z diagnostics',
+      'Tested robust z', c(-threshold, threshold)
+    )
   })
-  output$before_after_plot <- shiny::renderPlot({
-    plot_before_after_prevalence(selected_run()$data_flagged)
+  output$before_after_plot <- plotly::renderPlotly({
+    .plot_before_after_interactive(selected_run()$data_flagged)
+  })
+  output$district_state <- shiny::renderUI({
+    data <- selected_run()$data_flagged
+    if (!'district' %in% names(data) ||
+        all(is.na(data$district) | trimws(as.character(data$district)) == '')) {
+      shiny::div(
+        class = 'alert alert-info',
+        'This QC run has no district field. Supply district through the upstream adapter to enable this view.'
+      )
+    } else {
+      shiny::p(
+        'View every reporting facility in the selected district. Red marks identify rows ',
+        'recommended for review or authorized exclusion.'
+      )
+    }
+  })
+  output$district_plot_ui <- shiny::renderUI({
+    shiny::req(input$plot_district)
+    data <- .district_plot_data(selected_run()$data_flagged, input$plot_district)
+    facilities <- dplyr::n_distinct(data$facility_id)
+    view <- .value_or(input$district_plot_view, 'heatmap')
+    height <- if (view == 'facets') {
+      max(500, ceiling(facilities / 3) * 240)
+    } else {
+      max(450, facilities * 22)
+    }
+    plotly::plotlyOutput('district_plot', height = paste0(height, 'px'))
+  })
+  output$district_plot <- plotly::renderPlotly({
+    shiny::req(input$plot_district)
+    data <- selected_run()$data_flagged
+    metric <- .value_or(input$district_plot_metric, 'prevalence')
+    if (.value_or(input$district_plot_view, 'heatmap') == 'facets') {
+      .plot_district_facets(data, input$plot_district, metric)
+    } else {
+      .plot_district_heatmap(data, input$plot_district, metric)
+    }
   })
   output$configuration <- shiny::renderPrint({ selected_run()$config })
   output$provenance <- shiny::renderPrint({ selected_run()$manifest$provenance })

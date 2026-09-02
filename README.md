@@ -28,15 +28,15 @@ library(routineqc)
 
 sim <- simulate_qc_data(n_facilities = 20, n_months = 24, seed = 42)
 head(sim)
-#> # A tibble: 6 × 8
+#> # A tibble: 6 x 8
 #>   facility region   district   council month      tested positive injected_error
 #>   <chr>    <chr>    <chr>      <chr>   <date>      <dbl>    <dbl> <lgl>
-#> 1 F001     Region_A District_2 Counci… 2022-01-01    119       36 FALSE
-#> 2 F001     Region_A District_2 Counci… 2022-02-01    154       46 FALSE
-#> 3 F001     Region_A District_4 Counci… 2022-03-01    173       43 FALSE
-#> 4 F001     Region_A District_1 Counci… 2022-04-01    150       31 FALSE
-#> 5 F001     Region_B District_2 Counci… 2022-05-01    102       26 FALSE
-#> 6 F001     Region_D District_5 Counci… 2022-06-01    162       29 FALSE
+#> 1 F001     Region_A District_2 Counci~ 2022-01-01    119       36 FALSE
+#> 2 F001     Region_A District_2 Counci~ 2022-02-01    154       46 FALSE
+#> 3 F001     Region_A District_4 Counci~ 2022-03-01    173       43 FALSE
+#> 4 F001     Region_A District_1 Counci~ 2022-04-01    150       31 FALSE
+#> 5 F001     Region_B District_2 Counci~ 2022-05-01    102       26 FALSE
+#> 6 F001     Region_D District_5 Counci~ 2022-06-01    162       29 FALSE
 ```
 
 ## Run routine QC
@@ -59,20 +59,20 @@ qc <- run_routine_qc(
 names(qc$summaries)
 #> [1] "by_region"   "by_council"  "by_district" "by_month"    "by_facility"
 qc$summaries$by_region
-#> # A tibble: 4 × 20
+#> # A tibble: 4 x 20
 #>   region   total_rows n_any_qc_issue pct_any_qc_issue core_invalid_rows
 #>   <chr>         <int>          <int>            <dbl>             <int>
 #> 1 Region_A        130             10             7.69                 2
 #> 2 Region_B        141              3             2.13                 1
 #> 3 Region_C        103              7             6.80                 2
 #> 4 Region_D        106              5             4.72                 0
-#> # ℹ 15 more variables: attendance_issue_rows <int>,
+#> # i 15 more variables: attendance_issue_rows <int>,
 #> #   prevalence_extreme_rows <int>, tested_volume_extreme_rows <int>,
 #> #   tested_only_issues <int>, prevalence_only_issues <int>,
 #> #   combined_tested_prevalence_issues <int>, authorized_exclusion_rows <int>,
 #> #   review_recommended_rows <int>, sensitivity_flags <int>,
 #> #   total_tested_before_qc <dbl>, total_positive_before_qc <dbl>,
-#> #   total_tested_after_authorized_exclusions <dbl>, …
+#> #   total_tested_after_authorized_exclusions <dbl>, ...
 qc$manifest$model_prediction_coverage
 #> [1] 1
 table(qc$data_flagged$prediction_status)
@@ -153,6 +153,13 @@ download. Treat the local browser session and run directory as
 confidential. The review queue offers focused column views with hover
 definitions. Facility diagnostics compare observed prevalence with
 stored GAM expectations without rerunning the model.
+
+The Overview combines a nested action/reason-combination status view
+with facility and district burden summaries. Interactive diagnostics
+expose row details on hover and compare observed prevalence and testing
+volume with their stored expectations. A District tab provides both a
+facility-by-month heatmap and faceted facility time series when the
+upstream adapter supplies district.
 
 To exercise the complete package with synthetic data before connecting a
 real pipeline, run from the package repository:
