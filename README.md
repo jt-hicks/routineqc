@@ -42,7 +42,7 @@ head(sim)
 ## Run routine QC
 
 ``` r
-qc <- run_routine_qc(
+qc <- suppressWarnings(run_routine_qc(
   raw_data = sim,
   facility_var = "facility",
   region_var = "region",
@@ -52,9 +52,7 @@ qc <- run_routine_qc(
   tested_var = "tested",
   positive_var = "positive",
   nthreads = 1
-)
-#> Warning: Default GAM basis dimensions were too large for the available data;
-#> refitting with k_month=11 and k_time=23.
+))
 
 names(qc$summaries)
 #> [1] "by_region"   "by_council"  "by_district" "by_month"    "by_facility"
@@ -154,11 +152,17 @@ confidential. The review queue offers focused column views with hover
 definitions. Facility diagnostics compare observed prevalence with
 stored GAM expectations without rerunning the model.
 
-The Overview combines a QC-action donut, an individual-reason frequency
-chart, and facility and district burden summaries. Interactive
-diagnostics expose row details on hover and compare observed prevalence
-and testing volume with their stored expectations. A District tab
-provides faceted facility time series when the upstream adapter supplies
+The Overview combines a mutually exclusive QC-action donut, an
+individual-reason bar chart, and facility and district burden summaries.
+A row with multiple QC reasons contributes once to each applicable
+reason bar, so reason counts need not sum to the number of rows. The
+always-visible flow diagram explains how evidence is mapped to retain,
+review, or authorized exclusion actions.
+
+Interactive diagnostics expose row details on hover and compare observed
+prevalence and testing volume with their stored expectations. The
+District tab provides faceted facility time series, switchable between
+prevalence and number tested, when the upstream adapter supplies
 district.
 
 To exercise the complete package with synthetic data before connecting a
@@ -168,8 +172,9 @@ real pipeline, run from the package repository:
 Rscript scripts/smoke_test_routineqc.R
 ```
 
-Pass an output directory as the first argument and add `--launch` to
-open the generated run immediately.
+The smoke fixture contains three districts with eight facilities each
+and 12 to 24 months per facility. Pass an output directory as the first
+argument and add `--launch` to open the generated run immediately.
 
 routineqc preserves raw data and appends QC outputs as additional
 columns rather than deleting records.

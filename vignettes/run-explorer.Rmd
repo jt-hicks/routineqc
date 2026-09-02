@@ -38,9 +38,24 @@ In an interactive local R session, launch the read-only application with:
 launch_qc_app(run_dir)
 ```
 
-The browser can filter the review queue and display diagnostic plots, but it
-cannot modify or download the stored records. The selected RDS and adjacent JSON
-manifest must agree before the run is displayed.
+The browser is organized around four review tasks:
+
+- **Overview:** inspect the mutually exclusive QC-action donut, individual QC
+  reason counts, facility and district burden, and the QC action flow. A row
+  with several reasons contributes once to every applicable reason bar.
+- **Review queue:** filter flagged records and switch among focused column sets.
+  Hover over a column heading to see its definition.
+- **Diagnostics:** compare facility observations with stored prevalence-model
+  expectations and tested-volume baselines. Plotly hover text exposes the row
+  context used to interpret each point.
+- **District:** inspect faceted facility time series for either prevalence or
+  number tested. This view is available only when district was supplied by the
+  upstream adapter.
+
+The application cannot modify or download stored records, and it does not refit
+models. The selected RDS and adjacent JSON manifest must agree before the run is
+displayed. It binds to localhost, but both the run directory and browser session
+must still be handled according to the source data's confidentiality.
 
 ```{r, include = FALSE}
 unlink(run_dir, recursive = TRUE)

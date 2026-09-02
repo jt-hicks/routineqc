@@ -57,3 +57,44 @@ qc_run$summaries$by_region
 The resulting object has the same versioned configuration, provenance,
 integrity checks, model coverage, flags, and action policy as a direct
 `run_routine_qc()` call.
+
+## Optional attendance data
+
+Attendance checks are applied only when the source supplies an approved,
+documented attendance denominator. If `attending` is mapped, the adapter also
+requires a non-empty `attendance_definition`:
+
+```{r, eval = FALSE}
+adapted_with_attendance <- adapt_qc_data(
+  source_data,
+  mapping = list(
+    facility_id = 'facility_code', month_date = 'reporting_month',
+    region = 'region', tested = 'tested', positive = 'positive',
+    attending = 'eligible_anc_attendees'
+  ),
+  attendance_definition = paste(
+    'ANC attendees eligible for malaria testing, as defined in the',
+    'approved reporting specification'
+  ),
+  identity_strategy = 'stable facility code',
+  adapter = 'example_pipeline', adapter_version = '1.0.0',
+  dataset_id = 'example-extract', source_system = 'source-system'
+)
+```
+
+Do not map a convenient attendance-like field unless its meaning and
+comparability with `tested` have been approved. Data without attendance, or
+with an entirely missing attendance column, can still be processed without
+attendance checks.
+
+## Action policy
+
+The default `conservative_review` policy authorizes exclusion only for
+impossible or missing tested/positive counts. Other anomalies remain evidence
+for review. To keep every decision external to the package, pass a flags-only
+configuration:
+
+```{r, eval = FALSE}
+flags_only <- qc_config(action_policy = list(name = 'flags_only'))
+qc_run <- run_qc_adapter(adapted, config = flags_only)
+```

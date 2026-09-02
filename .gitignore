@@ -13,3 +13,5 @@ src/*.so
 src/*.dll
 README.html
 qc-runs/
+/doc/
+/Meta/
