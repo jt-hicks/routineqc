@@ -1,0 +1,12 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+type: software
+title: "routineqc: Reusable Quality Control for Routine Surveillance Data"
+version: 0.1.0
+authors:
+  - family-names: Hicks
+    given-names: "Joseph T"
+    email: jthicks@imperial.ac.uk
+license: MIT
+repository-code: "https://github.com/jt-hicks/routineqc"
+url: "https://github.com/jt-hicks/routineqc"

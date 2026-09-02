@@ -15,23 +15,29 @@ This package is the independent home for the reusable QC engine originally proto
 | 7. Provenance | Configuration, manifests, input identifiers, and persistence | Done |
 | 8. Application | Shiny app consumes selectable QC run objects | Done |
 | 9. Demonstrate | Generic adapter and synthetic end-to-end vignette | Done |
-| 10. Release | CI, documentation, checks, and experimental `0.1.0` | In progress |
+| 10. Release | CI, documentation, checks, and experimental `0.1.0` | Ready for release |
 | 11. Integrate | Optional adapters for upstream data-curation pipelines | Not started |
 
 ## Immediate next steps
 
-1. Add continuous integration and prepare the experimental `0.1.0` release checklist.
+1. Have the maintainer review and approve the `0.1.0` release candidate, then
+   commit, tag, and publish it (not performed automatically as part of
+   release preparation).
 2. Pilot one thin source-specific adapter on non-committed upstream data.
 3. Define an audited reviewer-decision data model before making the app editable.
 
 ## Current position
 
-The reusable QC engine, synthetic rule coverage, orchestration, provenance, and
-generic adapter demonstration and read-only run application are complete.
-Release preparation has begun through generated documentation and clean package
-checks, but CI and the `0.1.0` release remain outstanding. No upstream pipeline
-has yet been integrated, preserving the package boundary while the generic
-contract stabilizes.
+The reusable QC engine, synthetic rule coverage, orchestration, provenance,
+generic adapter demonstration, and read-only run application are complete.
+The full test suite (256 tests) and an `R CMD check --as-cran` pass with 0
+errors and 0 warnings; the remaining NOTEs are expected for a first,
+not-yet-submitted release (see the Phase 10 validation record below). A
+GitHub Actions `R CMD check` workflow, `CITATION.cff`, and experimental
+release documentation are in place. The package version has been updated to `0.1.0` in the working tree; this is
+ready for release pending the maintainer's review, commit, tag, and publish.
+No upstream pipeline has yet been integrated, preserving the package boundary
+while the generic contract stabilizes.
 
 ## Repository and licence
 

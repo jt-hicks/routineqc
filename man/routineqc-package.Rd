@@ -10,6 +10,14 @@ The package provides modular functions for preparing routine facility-month
 data, fitting prevalence models, flagging potential anomalies, and producing
 summaries and plots for QC review.
 }
+\seealso{
+Useful links:
+\itemize{
+  \item \url{https://github.com/jt-hicks/routineqc}
+  \item Report bugs at \url{https://github.com/jt-hicks/routineqc/issues}
+}
+
+}
 \author{
 \strong{Maintainer}: Joseph T Hicks \email{jthicks@imperial.ac.uk}
 

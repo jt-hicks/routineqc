@@ -1,5 +1,21 @@
-# routineqc 0.0.0.9000
+# routineqc 0.1.0
 
+This is the first experimental release candidate. The QC engine, orchestration
+API, provenance model, generic adapter, and read-only Run Explorer are
+complete for synthetic data; no upstream production pipeline has yet been
+integrated (see `MIGRATION.md`). Anomaly flags remain evidence for review, not
+automatic proof of a data-entry error.
+
+- Added a GitHub Actions `R CMD check` workflow (`r-lib/actions`) covering
+  Linux (release and oldrel-1), Windows, and macOS, using only synthetic
+  fixtures.
+- Documented the experimental status, principal limitations, and privacy
+  guidance for saved runs in the README, and added installation instructions
+  for exercising a tagged release candidate.
+- Added `CITATION.cff` and `URL`/`BugReports` fields in `DESCRIPTION`; put the
+  package `Title` in title case.
+- Excluded the generated `README.html` and `CITATION.cff` from the built
+  package via `.Rbuildignore`.
 - Redesigned the read-only Run Explorer with a QC-action donut, an
   individual-reason frequency chart, configurable facility and district burden
   summaries, an always-visible detailed QC decision flow, Plotly tooltips,

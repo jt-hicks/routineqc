@@ -22,6 +22,30 @@ The goal of routineqc is to provide reusable quality-control tools for routine
 health facility-month surveillance data. It is designed to help identify likely
 data-entry anomalies while preserving raw records and appending QC flags.
 
+## Status: experimental (0.1.0)
+
+`routineqc` 0.1.0 is an **experimental release candidate**. APIs, QC
+thresholds, and the action policy may still change before a stable release.
+Treat every output as an aid to review, not a validated production tool.
+
+- **Anomaly flags are evidence for review, not automatic proof of a
+  data-entry error.** Only impossible core tested/positive counts are
+  auto-excluded under the default `conservative_review` policy; attendance,
+  statistical, temporal, and tested-volume signals remain review-only.
+- The prevalence model, tested-volume baselines, and action policy have been
+  validated against synthetic fixtures only; no upstream production pipeline
+  has yet been integrated (see `MIGRATION.md`).
+- The Run Explorer is read-only: there is no reviewer decision, annotation, or
+  audit-trail data model yet.
+- Saved QC runs (the `.rds` file and its manifest) contain the complete
+  flagged dataset, including facility identifiers, and must be treated as
+  confidential, equivalent to source data. The fingerprint recorded in
+  provenance is an identifier, not anonymization.
+
+See `docs/ACTION_POLICY.md`, `docs/TESTED_VOLUME_BASELINES.md`,
+`docs/PREVALENCE_MODEL.md`, and `docs/RUN_EXPLORER.md` for full policy, model,
+and privacy detail.
+
 ## Quick start
 
 From the package directory, run this in an R terminal:
@@ -45,6 +69,31 @@ Install from source in this repository:
 # install.packages("pak")
 pak::pkg_install("path/to/routineqc")
 ```
+
+### Installing this exact release candidate
+
+External testers exercising a specific tagged release (for example, a
+reviewer following up on the 0.1.0 release candidate) should install from
+that tag rather than an untagged checkout, so results are reproducible:
+
+``` r
+# git clone https://github.com/jt-hicks/routineqc.git
+# cd routineqc && git checkout v0.1.0
+
+# install.packages('pak')
+pak::pkg_install('.')
+```
+
+Then confirm the install and exercise the package end to end with the
+non-interactive smoke test, adding `--launch` to also open the local Run
+Explorer:
+
+``` r
+system2('Rscript', c('scripts/smoke_test_routineqc.R', '--launch'))
+```
+
+Report any install or smoke-test failure against the exact commit or tag
+checked out.
 
 ## Minimal simulation example
 

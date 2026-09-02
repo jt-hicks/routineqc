@@ -1,6 +1,9 @@
 ^LICENSE\.md$
 ^README\.Rmd$
+^README\.html$
 ^MIGRATION\.md$
+^CITATION\.cff$
+^\.github$
 ^docs$
 ^scripts$
 ^qc-runs$

@@ -1,7 +1,7 @@
 Package: routineqc
-Title: Reusable Quality Control For Routine Surveillance Data
-Version: 0.0.0.9000
-Authors@R: 
+Title: Reusable Quality Control for Routine Surveillance Data
+Version: 0.1.0
+Authors@R:
     person("Joseph T", "Hicks", , "jthicks@imperial.ac.uk", role = c("aut", "cre"))
 Description: Reusable tools for identifying likely data-entry anomalies in
     routine health facility-month surveillance data, including ANC malaria
@@ -9,6 +9,8 @@ Description: Reusable tools for identifying likely data-entry anomalies in
     flags logical and temporal anomalies, and produces summaries for review
     and sensitivity analyses.
 License: MIT + file LICENSE
+URL: https://github.com/jt-hicks/routineqc
+BugReports: https://github.com/jt-hicks/routineqc/issues
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.3
