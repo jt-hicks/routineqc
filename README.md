@@ -12,6 +12,25 @@ routine health facility-month surveillance data. It is designed to help
 identify likely data-entry anomalies while preserving raw records and
 appending QC flags.
 
+## Quick start
+
+From the package directory, install the package and run the smoke test:
+
+``` r
+# install.packages('pak')
+pak::pkg_install('.')
+```
+
+``` sh
+Rscript scripts/smoke_test_routineqc.R --launch
+```
+
+The smoke test builds a synthetic QC run, checks that the package can
+complete the main workflow, and opens the local QC Run Explorer when
+`--launch` is included. The app listens on a localhost URL; keep the
+terminal open while you review it in the browser, then stop the process
+when finished.
+
 ## Installation
 
 Install from source in this repository:
@@ -30,12 +49,12 @@ sim <- simulate_qc_data(n_facilities = 20, n_months = 24, seed = 42)
 head(sim)
 #> # A tibble: 6 x 8
 #>   facility region   district   council month      tested positive injected_error
-#>   <chr>    <chr>    <chr>      <chr>   <date>      <dbl>    <dbl> <lgl>
-#> 1 F001     Region_A District_2 Counci~ 2022-01-01    119       36 FALSE
-#> 2 F001     Region_A District_2 Counci~ 2022-02-01    154       46 FALSE
-#> 3 F001     Region_A District_4 Counci~ 2022-03-01    173       43 FALSE
-#> 4 F001     Region_A District_1 Counci~ 2022-04-01    150       31 FALSE
-#> 5 F001     Region_B District_2 Counci~ 2022-05-01    102       26 FALSE
+#>   <chr>    <chr>    <chr>      <chr>   <date>      <dbl>    <dbl> <lgl>         
+#> 1 F001     Region_A District_2 Counci~ 2022-01-01    119       36 FALSE         
+#> 2 F001     Region_A District_2 Counci~ 2022-02-01    154       46 FALSE         
+#> 3 F001     Region_A District_4 Counci~ 2022-03-01    173       43 FALSE         
+#> 4 F001     Region_A District_1 Counci~ 2022-04-01    150       31 FALSE         
+#> 5 F001     Region_B District_2 Counci~ 2022-05-01    102       26 FALSE         
 #> 6 F001     Region_D District_5 Counci~ 2022-06-01    162       29 FALSE
 ```
 
@@ -74,8 +93,8 @@ qc$summaries$by_region
 qc$manifest$model_prediction_coverage
 #> [1] 1
 table(qc$data_flagged$prediction_status)
-#>
-#>               assessed ineligible_core_counts
+#> 
+#>               assessed ineligible_core_counts 
 #>                    475                      5
 ```
 
