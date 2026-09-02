@@ -14,20 +14,17 @@ appending QC flags.
 
 ## Quick start
 
-From the package directory, install the package and run the smoke test:
+From the package directory, run this in an R terminal:
 
 ``` r
 # install.packages('pak')
 pak::pkg_install('.')
-```
-
-``` sh
-Rscript scripts/smoke_test_routineqc.R --launch
+system2('Rscript', c('scripts/smoke_test_routineqc.R', '--launch'))
 ```
 
 The smoke test builds a synthetic QC run, checks that the package can
 complete the main workflow, and opens the local QC Run Explorer when
-`--launch` is included. The app listens on a localhost URL; keep the
+`--launch` is included. The app listens on a localhost URL; keep the R
 terminal open while you review it in the browser, then stop the process
 when finished.
 
