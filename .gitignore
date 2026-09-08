@@ -6,7 +6,15 @@
 *.Rcheck/
 check/
 revdep/
-docs/
+# docs/ holds tracked hand-written design documents; do not ignore it wholesale.
+# Ignore only pkgdown-generated site output, should pkgdown ever be added.
+/docs/*.html
+/docs/*.yml
+/docs/sitemap.xml
+/docs/reference/
+/docs/articles/
+/docs/news/
+/docs/deps/
 Meta/
 src/*.o
 src/*.so
