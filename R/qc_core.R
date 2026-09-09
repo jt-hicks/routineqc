@@ -902,13 +902,28 @@ run_threshold_sensitivity <- function(data,
 #' @param n_months Number of months.
 #' @param start_month Start month as date-like string.
 #' @param seed Random seed.
+#' @param zero_tested_fraction Approximate proportion of facility-months to
+#'   report as zero tested, for exercising reporting-consistency measurement.
+#'   Zero, the default, injects nothing and draws no random numbers.
+#' @param absent_month_fraction Approximate proportion of facility-months to
+#'   remove entirely, creating interior reporting gaps. A facility first and
+#'   last month are never removed, so each reporting window is preserved. Zero,
+#'   the default, injects nothing and draws no random numbers.
 #'
 #' @return A tibble with simulated routine data and truth labels.
 #' @export
 simulate_qc_data <- function(n_facilities = 40,
                              n_months = 24,
                              start_month = "2022-01-01",
-                             seed = 123) {
+                             seed = 123,
+                             zero_tested_fraction = 0,
+                             absent_month_fraction = 0) {
+  for (nm in c("zero_tested_fraction", "absent_month_fraction")) {
+    value <- get(nm)
+    if (!.is_scalar_number(value) || value < 0 || value > 1) {
+      rlang::abort(paste0("`", nm, "` must be one number between 0 and 1."))
+    }
+  }
   set.seed(seed)
 
   facilities <- paste0("F", sprintf("%03d", seq_len(n_facilities)))
@@ -949,6 +964,27 @@ simulate_qc_data <- function(n_facilities = 40,
   dat$positive[idx3] <- 0
 
   dat$injected_error[c(idx1, idx2, idx3)] <- TRUE
+
+  if (zero_tested_fraction > 0) {
+    candidates <- setdiff(seq_len(n), c(idx1, idx2, idx3))
+    size <- min(length(candidates), round(zero_tested_fraction * n))
+    if (size > 0L) {
+      idx_zero <- sample(candidates, size = size)
+      dat$tested[idx_zero] <- 0
+      dat$positive[idx_zero] <- 0
+    }
+  }
+
+  if (absent_month_fraction > 0) {
+    interior <- which(
+      duplicated(dat$facility) & duplicated(dat$facility, fromLast = TRUE)
+    )
+    size <- min(length(interior), round(absent_month_fraction * n))
+    if (size > 0L) {
+      dat <- dat[-sample(interior, size = size), , drop = FALSE]
+    }
+  }
+
   dplyr::as_tibble(dat)
 }
 
@@ -1206,6 +1242,7 @@ run_routine_qc <- function(raw_data,
 
   summaries$by_month <- summarise_qc_by_month(dat)
   summaries$by_facility <- summarise_qc_by_facility(dat)
+  summaries$by_facility_reporting <- summarise_qc_reporting_consistency(dat)
 
   .new_qc_run(
     data_flagged = dat,

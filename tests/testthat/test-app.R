@@ -292,3 +292,132 @@ testthat::test_that('app helpers reject invalid arguments', {
     'whole number'
   )
 })
+
+consistency_app_run <- function() {
+  months <- seq.Date(as.Date('2024-01-01'), by = 'month', length.out = 8)
+  raw <- dplyr::bind_rows(
+    tibble::tibble(
+      facility = 'F1', area = 'R1', district = 'D1', period = months,
+      tests = 20, cases = 3
+    ),
+    tibble::tibble(
+      facility = 'F2', area = 'R1', district = 'D1', period = months[-c(3, 4)],
+      tests = 20, cases = 3
+    ),
+    tibble::tibble(
+      facility = 'F3', area = 'R1', district = 'D1', period = months,
+      tests = 0, cases = 0
+    )
+  )
+  suppressWarnings(routineqc::run_routine_qc(
+    raw,
+    facility_var = 'facility', region_var = 'area', month_var = 'period',
+    tested_var = 'tests', positive_var = 'cases', district_var = 'district',
+    provenance = list(dataset_id = 'consistency-synthetic'), nthreads = 1
+  ))
+}
+
+testthat::test_that('consistency column sets are focused and have definitions', {
+  consistency <- routineqc::summarise_qc_reporting_consistency(
+    consistency_app_run()$data_flagged
+  )
+  spec <- routineqc:::.consistency_column_spec(consistency)
+  testthat::expect_true(all(
+    c('facility_id', 'longest_gap_months', 'passes_strictness') %in% spec$fields
+  ))
+  testthat::expect_true(all(nzchar(spec$definitions)))
+  testthat::expect_identical(length(spec$fields), length(spec$definitions))
+  html <- as.character(
+    routineqc:::.review_table_container(spec$labels, spec$definitions)
+  )
+  testthat::expect_match(html, 'Longest run of consecutive months without testing')
+})
+
+testthat::test_that('district summary series aggregates across facilities', {
+  data <- consistency_app_run()$data_flagged
+  series <- routineqc:::.district_summary_series(data, 'D1')
+  testthat::expect_equal(nrow(series), 8L)
+  first <- series[series$month_date == as.Date('2024-01-01'), ]
+  testthat::expect_equal(first$total_tested_before_qc, 40)
+  testthat::expect_equal(first$total_positive_before_qc, 6)
+  testthat::expect_equal(first$prevalence_before_qc, 6 / 40)
+  # March has no F2 row, so only F1 and the untested F3 contribute.
+  march <- series[series$month_date == as.Date('2024-03-01'), ]
+  testthat::expect_equal(march$total_tested_before_qc, 20)
+  testthat::expect_s3_class(
+    routineqc:::.plot_district_summary_series(data, 'D1', 'prevalence'), 'plotly'
+  )
+  testthat::expect_s3_class(
+    routineqc:::.plot_district_summary_series(data, 'D1', 'tested'), 'plotly'
+  )
+  testthat::expect_equal(
+    nrow(routineqc:::.district_summary_series(data, 'absent-district')), 0L
+  )
+})
+
+testthat::test_that('district facets can hide facilities with no testing data', {
+  data <- consistency_app_run()$data_flagged
+  shown <- routineqc:::.district_plot_data(data, 'D1')
+  hidden <- routineqc:::.district_plot_data(data, 'D1', hide_untested = TRUE)
+  testthat::expect_identical(sort(unique(shown$facility_id)), c('F1', 'F2', 'F3'))
+  testthat::expect_identical(sort(unique(hidden$facility_id)), c('F1', 'F2'))
+  testthat::expect_equal(
+    sum(hidden$facility_id == 'F2'), sum(shown$facility_id == 'F2')
+  )
+  testthat::expect_s3_class(
+    routineqc:::.plot_district_facets(data, 'D1', 'tested', hide_untested = TRUE),
+    'plotly'
+  )
+  testthat::expect_error(
+    routineqc:::.district_plot_data(data, 'D1', hide_untested = NA),
+    'TRUE or FALSE'
+  )
+})
+
+testthat::test_that('the review queue can be narrowed to a consistency cohort', {
+  data <- consistency_app_run()$data_flagged
+  all_rows <- routineqc::filter_qc_review(data, flagged_only = FALSE)
+  cohort <- routineqc::filter_qc_review(
+    routineqc::filter_qc_facilities(data, strictness = 'complete_panel'),
+    flagged_only = FALSE
+  )
+  testthat::expect_identical(sort(unique(all_rows$facility_id)), c('F1', 'F2', 'F3'))
+  testthat::expect_identical(unique(cohort$facility_id), 'F1')
+})
+
+testthat::test_that('reporting consistency tab renders for a persisted run', {
+  directory <- tempfile('routineqc-app-consistency-')
+  dir.create(directory)
+  on.exit(unlink(directory, recursive = TRUE), add = TRUE)
+  path <- file.path(directory, 'consistency-run.rds')
+  routineqc::write_qc_run(consistency_app_run(), path)
+
+  server <- function(input, output, session) {
+    routineqc:::.qc_app_server(input, output, session, run_dir = directory)
+  }
+  shiny::testServer(
+    server,
+    {
+      suppressWarnings(session$setInputs(
+        run_path = path, flagged_only = FALSE, column_set = 'review',
+        use_date_filter = FALSE, consistency_strictness = 'all',
+        plot_district = 'D1', district_plot_metric = 'prevalence',
+        district_hide_untested = FALSE
+      ))
+      testthat::expect_match(output$consistency_overview, 'No testing in any month')
+      testthat::expect_true(length(output$consistency_plot) > 0L)
+      testthat::expect_match(output$consistency_table, 'longest gap months')
+      testthat::expect_true(length(output$district_summary_plot) > 0L)
+
+      # The cohort control narrows the review queue to F1 alone: F2 has absent
+      # months and F3 never tested.
+      suppressWarnings(session$setInputs(review_strictness = 'all'))
+      testthat::expect_match(output$review_count, '22 rows displayed')
+      suppressWarnings(session$setInputs(review_strictness = 'complete_panel'))
+      testthat::expect_match(output$review_count, '8 rows displayed')
+
+      suppressWarnings(session$setInputs(consistency_strictness = 'complete_panel'))
+      testthat::expect_true(length(output$consistency_table) > 0L)
+    }
+  )
+})

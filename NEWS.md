@@ -1,3 +1,25 @@
+# routineqc (development version)
+
+- Added facility reporting-consistency measurement:
+  `summarise_qc_reporting_consistency()` reports, per facility, the months
+  without testing split into absent, zero, and missing components, the longest
+  gap without testing, when data collection starts and stops, and coverage of
+  both the facility reporting window and the dataset-wide month span.
+  `run_routine_qc()` now also returns `summaries$by_facility_reporting`.
+- Added named reporting-consistency strictness levels via
+  `qc_consistency_levels()` and cohort selection via `filter_qc_facilities()`,
+  with every threshold overridable. Strictness selects facilities for review and
+  never authorizes exclusion; see `docs/REPORTING_CONSISTENCY.md`.
+- Added a Reporting consistency tab to the Run Explorer, a reporting-consistency
+  cohort filter to the review queue, a district total time series above the
+  district facets, and a toggle to hide facets for facilities with no testing
+  data. The consistency views are computed from the flagged data, so runs saved
+  by earlier versions still open.
+- Added `plot_reporting_consistency()` and optional `zero_tested_fraction` and
+  `absent_month_fraction` arguments to `simulate_qc_data()`, which inject nothing
+  and draw no random numbers at their defaults, so existing seeded output is
+  unchanged.
+
 # routineqc 0.1.0
 
 This is the first experimental release candidate. The QC engine, orchestration

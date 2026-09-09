@@ -37,5 +37,16 @@ utils::globalVariables(c(
   'tested_to_prev_ratio', 'tested_to_roll_ratio', 'time_index',
   'total_positive_after_authorized_exclusions', 'total_positive_before_qc',
   'total_rows', 'total_tested_after_authorized_exclusions',
-  'total_tested_before_qc'
+  'total_tested_before_qc',
+  'all_missing', 'any_testing', 'dataset_month_max', 'dataset_month_min',
+  'first_month_reported', 'first_month_tested', 'gap_bucket',
+  'last_month_reported', 'last_month_tested', 'longest_gap_end',
+  'longest_gap_months', 'longest_gap_start', 'months_absent',
+  'months_in_dataset_window', 'months_in_facility_window',
+  'months_missing_tested', 'months_reported', 'months_with_testing',
+  'months_without_testing', 'months_zero_tested', 'n_gaps', 'never_tested',
+  'passes_strictness', 'prevalence_after_authorized_exclusions',
+  'prevalence_before_qc', 'prop_reported_dataset_window',
+  'prop_with_testing_dataset_window', 'prop_without_testing_facility_window',
+  'summary_value'
 ))

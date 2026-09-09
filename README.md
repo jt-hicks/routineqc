@@ -123,7 +123,8 @@ qc <- suppressWarnings(run_routine_qc(
 ))
 
 names(qc$summaries)
-#> [1] "by_region"   "by_council"  "by_district" "by_month"    "by_facility"
+#> [1] "by_region"             "by_council"            "by_district"          
+#> [4] "by_month"              "by_facility"           "by_facility_reporting"
 qc$summaries$by_region
 #> # A tibble: 4 × 20
 #>   region   total_rows n_any_qc_issue pct_any_qc_issue core_invalid_rows
@@ -146,6 +147,105 @@ table(qc$data_flagged$prediction_status)
 #>               assessed ineligible_core_counts 
 #>                    475                      5
 ```
+
+## Assess reporting consistency
+
+Record-level QC asks whether a value is plausible. Reporting consistency
+asks whether a facility reports at all, and how continuously. Absent
+months, months reported as zero, and months with a missing tested value
+are counted separately and combined into months without testing:
+
+``` r
+gappy <- simulate_qc_data(
+  n_facilities = 8, n_months = 24, seed = 42,
+  zero_tested_fraction = 0.05, absent_month_fraction = 0.05
+)
+prepared <- prepare_qc_data(
+  gappy, 'facility', 'region', 'month', 'tested', 'positive'
+)
+
+consistency <- summarise_qc_reporting_consistency(prepared)
+consistency[c(
+  'facility_id', 'months_with_testing', 'months_absent', 'months_zero_tested',
+  'months_without_testing', 'longest_gap_months', 'never_tested'
+)]
+#> # A tibble: 8 × 7
+#>   facility_id months_with_testing months_absent months_zero_tested
+#>   <chr>                     <int>         <int>              <int>
+#> 1 F001                         20             1                  3
+#> 2 F002                         21             2                  1
+#> 3 F003                         23             0                  1
+#> 4 F004                         22             0                  2
+#> 5 F005                         20             3                  1
+#> 6 F006                         24             0                  0
+#> 7 F007                         23             1                  0
+#> 8 F008                         19             3                  2
+#> # ℹ 3 more variables: months_without_testing <int>, longest_gap_months <int>,
+#> #   never_tested <lgl>
+```
+
+Gap length uses each facility’s own reporting window, so a late joiner
+is not penalised for months before it existed. Proportions are also
+reported against the dataset-wide month span, which is what identifies a
+facility with only a few months of history:
+
+``` r
+consistency[c(
+  'facility_id', 'first_month_tested', 'last_month_tested',
+  'prop_without_testing_facility_window', 'prop_with_testing_dataset_window'
+)]
+#> # A tibble: 8 × 5
+#>   facility_id first_month_tested last_month_tested prop_without_testing_facili…¹
+#>   <chr>       <date>             <date>                                    <dbl>
+#> 1 F001        2022-01-01         2023-12-01                               0.167 
+#> 2 F002        2022-01-01         2023-12-01                               0.125 
+#> 3 F003        2022-01-01         2023-12-01                               0.0417
+#> 4 F004        2022-01-01         2023-12-01                               0.0833
+#> 5 F005        2022-01-01         2023-12-01                               0.167 
+#> 6 F006        2022-01-01         2023-12-01                               0     
+#> 7 F007        2022-01-01         2023-12-01                               0.0417
+#> 8 F008        2022-01-01         2023-12-01                               0.208 
+#> # ℹ abbreviated name: ¹​prop_without_testing_facility_window
+#> # ℹ 1 more variable: prop_with_testing_dataset_window <dbl>
+```
+
+Named strictness levels select a review cohort, from `any_testing` (any
+facility with at least one month of testing) to `complete_panel`
+(testing in every month of the dataset span). Every threshold is
+overridable:
+
+``` r
+qc_consistency_levels()
+#> # A tibble: 7 × 5
+#>   level          max_prop_without_testing max_gap_months min_months_with_testing
+#>   <chr>                             <dbl>          <dbl>                   <dbl>
+#> 1 all                               NA                NA                      NA
+#> 2 any_testing                       NA                NA                       1
+#> 3 lenient                            0.5               3                       1
+#> 4 moderate                           0.2               2                       1
+#> 5 near_complete                      0.05              1                       1
+#> 6 complete                           0                 0                       1
+#> 7 complete_panel                     0                 0                       1
+#> # ℹ 1 more variable: min_prop_with_testing_dataset_window <dbl>
+
+vapply(
+  qc_consistency_levels()$level,
+  function(level) {
+    cohort <- summarise_qc_reporting_consistency(prepared, strictness = level)
+    sum(cohort$passes_strictness)
+  },
+  integer(1)
+)
+#>            all    any_testing        lenient       moderate  near_complete 
+#>              8              8              8              7              3 
+#>       complete complete_panel 
+#>              1              1
+```
+
+Cohort selection is not exclusion. A facility outside the cohort was not
+reviewed under it, which is not a finding that its records are wrong,
+and `flag_exclude_authorized` is unaffected. See
+`docs/REPORTING_CONSISTENCY.md`.
 
 ## Adapt pipeline data
 
@@ -229,9 +329,16 @@ review, or authorized exclusion actions.
 
 Interactive diagnostics expose row details on hover and compare observed
 prevalence and testing volume with their stored expectations. The
-District tab provides faceted facility time series, switchable between
-prevalence and number tested, when the upstream adapter supplies
-district.
+District tab opens with a district total time series summed across all
+reporting facilities, above faceted facility time series. One measure is
+shown at a time, and the same prevalence or number-tested selection
+drives both, when the upstream adapter supplies district. Facets for
+facilities with no testing data can be hidden.
+
+The Reporting consistency tab measures how continuously each facility
+reports and narrows the review queue to a chosen strictness cohort. Both
+are computed from the flagged data, so runs saved by earlier versions
+still open.
 
 To exercise the complete package with synthetic data before connecting a
 real pipeline, run from the package repository:

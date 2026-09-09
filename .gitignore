@@ -23,3 +23,4 @@ README.html
 qc-runs/
 /doc/
 /Meta/
+.claude/settings.local.json

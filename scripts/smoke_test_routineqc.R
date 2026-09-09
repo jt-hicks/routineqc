@@ -12,7 +12,10 @@ output_dir <- if (length(paths) > 0L) {
 suppressPackageStartupMessages(library(routineqc))
 
 cat('Creating synthetic source data...\n')
-source_data <- simulate_qc_data(n_facilities = 24, n_months = 24, seed = 42)
+source_data <- simulate_qc_data(
+  n_facilities = 24, n_months = 24, seed = 42,
+  zero_tested_fraction = 0.05, absent_month_fraction = 0.05
+)
 facilities <- sort(unique(source_data$facility))
 district_map <- stats::setNames(
   rep(paste0('District_', LETTERS[1:3]), each = 8),
@@ -32,6 +35,11 @@ source_data <- source_data[
   drop = FALSE
 ]
 source_data$.facility_month_index <- NULL
+
+never_tested_facility <- facilities[[length(facilities)]]
+source_data$tested[source_data$facility == never_tested_facility] <- 0
+source_data$positive[source_data$facility == never_tested_facility] <- 0
+
 source_data$record_id <- sprintf('synthetic-%04d', seq_len(nrow(source_data)))
 
 facility_rows <- table(source_data$facility)
@@ -42,7 +50,9 @@ stopifnot(
   max(facility_rows) <= 24L
 )
 cat('Districts: 3; facilities per district: 8; facility histories:',
-    min(facility_rows), 'to', max(facility_rows), 'months\n')
+    min(facility_rows), 'to', max(facility_rows), 'reported months\n')
+cat('Zero-tested facility-months:', sum(source_data$tested == 0), '\n')
+cat('Facility with no testing in any month:', never_tested_facility, '\n')
 
 cat('Adapting source columns to the canonical contract...\n')
 adapted <- adapt_qc_data(
@@ -85,6 +95,20 @@ cat('Rows:', nrow(qc_run$data_flagged), '\n')
 cat('Authorized exclusions:', sum(qc_run$data_flagged$flag_exclude_authorized), '\n')
 cat('Review recommended:', sum(qc_run$data_flagged$flag_review_recommended), '\n')
 cat('Model coverage:', qc_run$manifest$model_prediction_coverage, '\n')
+
+consistency <- qc_run$summaries$by_facility_reporting
+cat('\nReporting consistency:\n')
+cat('  Facilities:', nrow(consistency), '\n')
+cat('  No testing in any month:', sum(consistency$never_tested), '\n')
+cat('  Longest gap (months), median:', stats::median(consistency$longest_gap_months),
+    'max:', max(consistency$longest_gap_months), '\n')
+cat('  Facilities with any month without testing:',
+    sum(consistency$months_without_testing > 0), '\n')
+for (level in c('any_testing', 'moderate', 'complete')) {
+  cohort <- summarise_qc_reporting_consistency(qc_run$data_flagged, strictness = level)
+  cat('  Cohort', level, ':', sum(cohort$passes_strictness), 'of', nrow(cohort),
+      'facilities\n')
+}
 cat('Run artifact:', written$run, '\n')
 cat('JSON manifest:', written$manifest, '\n\n')
 print(list_qc_runs(output_dir))

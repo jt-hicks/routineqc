@@ -8,7 +8,9 @@ simulate_qc_data(
   n_facilities = 40,
   n_months = 24,
   start_month = "2022-01-01",
-  seed = 123
+  seed = 123,
+  zero_tested_fraction = 0,
+  absent_month_fraction = 0
 )
 }
 \arguments{
@@ -19,6 +21,15 @@ simulate_qc_data(
 \item{start_month}{Start month as date-like string.}
 
 \item{seed}{Random seed.}
+
+\item{zero_tested_fraction}{Approximate proportion of facility-months to
+report as zero tested, for exercising reporting-consistency measurement.
+Zero, the default, injects nothing and draws no random numbers.}
+
+\item{absent_month_fraction}{Approximate proportion of facility-months to
+remove entirely, creating interior reporting gaps. A facility first and
+last month are never removed, so each reporting window is preserved. Zero,
+the default, injects nothing and draws no random numbers.}
 }
 \value{
 A tibble with simulated routine data and truth labels.

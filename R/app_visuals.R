@@ -468,19 +468,32 @@
     )
 }
 
-.district_plot_data <- function(data, district) {
+.district_plot_data <- function(data, district, hide_untested = FALSE) {
   .validate_required_columns(data, c('district', 'facility_id', 'month_date'))
+  if (!rlang::is_bool(hide_untested)) {
+    rlang::abort('`hide_untested` must be TRUE or FALSE.')
+  }
   dat <- dplyr::as_tibble(data) %>%
     dplyr::filter(as.character(.data$district) == .env$district) %>%
     dplyr::arrange(facility_id, month_date)
+  if (isTRUE(hide_untested) && 'tested' %in% names(dat)) {
+    tested_any <- dat %>%
+      dplyr::group_by(facility_id) %>%
+      dplyr::summarise(
+        any_testing = any(!is.na(tested) & tested > 0), .groups = 'drop'
+      )
+    keep <- tested_any$facility_id[tested_any$any_testing]
+    dat <- dat[as.character(dat$facility_id) %in% as.character(keep), , drop = FALSE]
+  }
   dat$.tooltip <- .qc_row_tooltip(dat)
   dat$.affected <- .qc_flag_vector(dat, 'flagged')
   dat
 }
 
-.plot_district_facets <- function(data, district, metric = c('prevalence', 'tested')) {
+.plot_district_facets <- function(data, district, metric = c('prevalence', 'tested'),
+                                  hide_untested = FALSE) {
   metric <- match.arg(metric)
-  dat <- .district_plot_data(data, district)
+  dat <- .district_plot_data(data, district, hide_untested = hide_untested)
   .validate_required_columns(dat, metric)
   dat$.metric <- dat[[metric]]
   dat$.reference <- if (metric == 'prevalence' && 'p_hat' %in% names(dat)) {
@@ -521,4 +534,83 @@
   }
   plotly::ggplotly(plot, tooltip = 'text') %>%
     plotly::layout(margin = list(t = 80))
+}
+
+.district_summary_series <- function(data, district) {
+  .validate_required_columns(data, c('district', 'month_date', 'tested', 'positive'))
+  dat <- dplyr::as_tibble(data) %>%
+    dplyr::filter(
+      !is.na(.data$district),
+      as.character(.data$district) == .env$district
+    )
+  if (nrow(dat) == 0L) {
+    return(dplyr::tibble())
+  }
+  .summarise_qc_group(dat, group_vars = 'month_date') %>%
+    dplyr::arrange(month_date)
+}
+
+.plot_district_summary_series <- function(data, district,
+                                          metric = c('prevalence', 'tested')) {
+  metric <- match.arg(metric)
+  summary <- .district_summary_series(data, district)
+  if (nrow(summary) == 0L) {
+    return(NULL)
+  }
+  summary$summary_value <- if (metric == 'prevalence') {
+    summary$prevalence_before_qc
+  } else {
+    summary$total_tested_before_qc
+  }
+  hover <- paste0(
+    'Month: ', format(summary$month_date, '%Y-%m'),
+    '<br>Facility-months reported: ', summary$total_rows,
+    '<br>Total tested: ', summary$total_tested_before_qc,
+    '<br>Total positive: ', summary$total_positive_before_qc,
+    '<br>District prevalence: ',
+    ifelse(
+      is.na(summary$prevalence_before_qc), 'NA',
+      sprintf('%.2f%%', 100 * summary$prevalence_before_qc)
+    ),
+    '<br>Rows with authorized exclusion: ', summary$authorized_exclusion_rows
+  )
+  y_title <- if (metric == 'prevalence') 'District prevalence' else 'Total number tested'
+
+  plotly::plot_ly(
+    summary, x = ~month_date, y = ~summary_value, type = 'scatter',
+    mode = 'lines+markers', line = list(color = '#08519c', width = 2),
+    marker = list(color = '#08519c', size = 7),
+    text = hover, hovertemplate = '%{text}<extra></extra>',
+    name = y_title
+  ) %>%
+    plotly::layout(
+      title = list(text = paste(district, 'district total, all reporting facilities')),
+      xaxis = list(title = 'Month'),
+      yaxis = list(
+        title = y_title,
+        tickformat = if (metric == 'prevalence') '.1%' else NULL,
+        rangemode = 'tozero'
+      ),
+      hovermode = 'closest', margin = list(t = 55), showlegend = FALSE
+    )
+}
+
+.plot_consistency_gaps <- function(consistency) {
+  buckets <- .consistency_gap_buckets(consistency)
+  plotly::plot_ly(
+    buckets, x = ~gap_bucket, y = ~facilities, type = 'bar',
+    marker = list(color = '#2c7fb8'),
+    text = ~paste0(
+      'Longest gap: ', gap_bucket, ' month(s)',
+      '<br>Facilities: ', facilities,
+      '<br>All facilities: ', sprintf('%.1f%%', 100 * proportion)
+    ),
+    hovertemplate = '%{text}<extra></extra>'
+  ) %>%
+    plotly::layout(
+      title = list(text = 'Longest gap without testing'),
+      xaxis = list(title = 'Consecutive months without testing'),
+      yaxis = list(title = 'Number of facilities'),
+      margin = list(t = 55)
+    )
 }

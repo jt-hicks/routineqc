@@ -56,6 +56,12 @@ and policy did not recommend action.
 - `review_priority` supports queue ordering but does not alter data.
 - `qc_reason` records all evidence even when one primary action is selected.
 
+Reporting-consistency strictness (`docs/REPORTING_CONSISTENCY.md`) selects a
+cohort of facilities for review. It is not an action policy: it assigns no
+`qc_action`, sets no flag, and never authorizes exclusion. A facility outside the
+selected cohort was not reviewed under that cohort, which is not a finding about
+its records.
+
 Summaries described as “after” QC use only `flag_exclude_authorized`. Review
 rows remain included. Hypothetical exclusions based on unresolved reviews must
 be labeled as scenarios and must not be presented as the package-recommended

@@ -235,6 +235,65 @@ filter_qc_review <- function(data,
   )
 }
 
+.null_if_na <- function(x) {
+  if (is.null(x) || length(x) == 0L || any(is.na(x))) NULL else x
+}
+
+.consistency_column_definitions <- function() {
+  c(
+    facility_id = 'Stable facility identifier used for grouping and model effects.',
+    first_month_reported = 'First month this facility appears in the dataset.',
+    last_month_reported = 'Last month this facility appears in the dataset.',
+    first_month_tested = 'First month with a tested count above zero; NA when never tested.',
+    last_month_tested = 'Last month with a tested count above zero; NA when never tested.',
+    months_in_facility_window = 'Calendar months from first to last reported month, inclusive.',
+    months_reported = 'Distinct months with at least one row for this facility.',
+    months_absent = 'Months inside the reporting window with no row at all.',
+    months_zero_tested = 'Months reported with a zero or non-positive tested count.',
+    months_missing_tested = 'Months reported with a missing tested value.',
+    months_with_testing = 'Months with a tested count above zero.',
+    months_without_testing = 'Absent, zero, and missing months combined.',
+    prop_without_testing_facility_window = 'Months without testing divided by the facility own reporting window.',
+    prop_with_testing_dataset_window = 'Months with testing divided by the dataset-wide month span.',
+    prop_reported_dataset_window = 'Months reported divided by the dataset-wide month span.',
+    longest_gap_months = 'Longest run of consecutive months without testing.',
+    n_gaps = 'Number of separate runs of months without testing.',
+    longest_gap_start = 'First month of the longest gap.',
+    longest_gap_end = 'Last month of the longest gap.',
+    never_tested = 'Whether the facility never reported a tested count above zero.',
+    passes_strictness = 'Whether the facility meets the selected strictness cohort.',
+    months_in_dataset_window = 'Calendar months spanned by the whole dataset.',
+    dataset_month_min = 'Earliest reporting month in the dataset.',
+    dataset_month_max = 'Latest reporting month in the dataset.'
+  )
+}
+
+.consistency_column_spec <- function(data) {
+  fields <- intersect(
+    c(
+      'facility_id', 'passes_strictness', 'never_tested',
+      'first_month_reported', 'last_month_reported',
+      'first_month_tested', 'last_month_tested',
+      'months_in_facility_window', 'months_reported', 'months_with_testing',
+      'months_without_testing', 'months_absent', 'months_zero_tested',
+      'months_missing_tested', 'prop_without_testing_facility_window',
+      'prop_with_testing_dataset_window', 'prop_reported_dataset_window',
+      'longest_gap_months', 'n_gaps', 'longest_gap_start', 'longest_gap_end'
+    ),
+    names(data)
+  )
+  definitions <- .consistency_column_definitions()
+  list(
+    fields = fields,
+    labels = unname(gsub('_', ' ', fields, fixed = TRUE)),
+    definitions = unname(vapply(fields, function(field) {
+      if (field %in% names(definitions)) definitions[[field]] else {
+        paste0('Package output field: ', field, '.')
+      }
+    }, character(1)))
+  )
+}
+
 .qc_app_ui <- function() {
   shiny::fluidPage(
     shiny::tags$head(
@@ -301,6 +360,67 @@ filter_qc_review <- function(data,
         )
       ),
       shiny::tabPanel(
+        'Reporting consistency',
+        shiny::p(
+          'How consistently each facility reports testing activity. A month has ',
+          'testing when a row exists and the number tested is above zero. Absent ',
+          'months, months reported as zero, and months with a missing tested value ',
+          'all count as months without testing.'
+        ),
+        shiny::p(
+          shiny::tags$strong('Strictness selects a review cohort. '),
+          'It does not authorize exclusion and does not change the stored run. A ',
+          'facility outside the cohort was not reviewed here; that is not a finding ',
+          'that its records are wrong.'
+        ),
+        shiny::fluidRow(
+          shiny::column(
+            4,
+            shiny::selectInput(
+              'consistency_strictness', 'Strictness',
+              choices = qc_consistency_levels()$level, selected = 'all'
+            ),
+            shiny::helpText(
+              'Leave an override blank to use the selected level. Levels are not ',
+              'strictly nested: a short but internally complete history can pass ',
+              'complete while failing moderate.'
+            )
+          ),
+          shiny::column(
+            2,
+            shiny::numericInput(
+              'consistency_max_prop', 'Max proportion without testing',
+              value = NA, min = 0, max = 1, step = 0.05
+            )
+          ),
+          shiny::column(
+            2,
+            shiny::numericInput(
+              'consistency_max_gap', 'Max gap (months)', value = NA, min = 0, step = 1
+            )
+          ),
+          shiny::column(
+            2,
+            shiny::numericInput(
+              'consistency_min_months', 'Min months with testing', value = NA,
+              min = 0, step = 1
+            )
+          ),
+          shiny::column(
+            2,
+            shiny::numericInput(
+              'consistency_min_coverage', 'Min dataset-span coverage', value = NA,
+              min = 0, max = 1, step = 0.05
+            )
+          )
+        ),
+        shiny::tableOutput('consistency_overview'),
+        plotly::plotlyOutput('consistency_plot', height = '340px'),
+        shiny::h4('Facility measurements'),
+        shiny::helpText('Hover over a column heading for its definition.'),
+        DT::DTOutput('consistency_table')
+      ),
+      shiny::tabPanel(
         'Review queue',
         shiny::fluidRow(
           shiny::column(3, shiny::checkboxInput('flagged_only', 'Flagged/review rows only', TRUE)),
@@ -325,6 +445,13 @@ filter_qc_review <- function(data,
                 'All available fields' = 'all'
               ),
               selected = 'review'
+            )
+          ),
+          shiny::column(
+            3,
+            shiny::selectInput(
+              'review_strictness', 'Reporting-consistency cohort',
+              choices = qc_consistency_levels()$level, selected = 'all'
             )
           ),
           shiny::column(3, shiny::checkboxInput('use_date_filter', 'Apply reporting-month filter', FALSE)),
@@ -364,8 +491,17 @@ filter_qc_review <- function(data,
               'district_plot_metric', 'Measure',
               choices = c('Prevalence' = 'prevalence', 'Number tested' = 'tested'),
               selected = 'prevalence', inline = TRUE
+            ),
+            shiny::checkboxInput(
+              'district_hide_untested',
+              'Hide facilities with no testing data in any month', FALSE
             )
           )
+        ),
+        plotly::plotlyOutput('district_summary_plot', height = '320px'),
+        shiny::helpText(
+          'District total summed across all reporting facilities, from the source ',
+          'data before authorized exclusions. The measure follows the selection above.'
         ),
         shiny::uiOutput('district_plot_ui')
       ),
@@ -449,15 +585,87 @@ filter_qc_review <- function(data,
   shiny::observeEvent(input$reset_filters, {
     shiny::updateCheckboxInput(session, 'flagged_only', value = TRUE)
     shiny::updateCheckboxInput(session, 'use_date_filter', value = FALSE)
+    shiny::updateSelectInput(session, 'review_strictness', selected = 'all')
     for (id in c('action', 'priority', 'region', 'facility', 'reason', 'prediction_status')) {
       shiny::updateSelectInput(session, id, selected = character())
     }
   })
 
+  run_consistency <- shiny::reactive({
+    summarise_qc_reporting_consistency(selected_run()$data_flagged)
+  })
+
+  consistency_view <- shiny::reactive({
+    metrics <- run_consistency()
+    thresholds <- .resolve_consistency_thresholds(
+      .value_or(input$consistency_strictness, 'all'),
+      .null_if_na(input$consistency_max_prop),
+      .null_if_na(input$consistency_max_gap),
+      .null_if_na(input$consistency_min_months),
+      .null_if_na(input$consistency_min_coverage)
+    )
+    metrics$passes_strictness <- .consistency_pass(metrics, thresholds)
+    metrics
+  })
+
+  output$consistency_overview <- shiny::renderTable({
+    metrics <- consistency_view()
+    dplyr::tibble(
+      metric = c(
+        'Facilities', 'No testing in any month', 'Facilities in cohort',
+        'Facilities outside cohort', 'Median months without testing',
+        'Median longest gap (months)', 'Dataset month span'
+      ),
+      value = c(
+        nrow(metrics),
+        sum(metrics$never_tested),
+        sum(metrics$passes_strictness),
+        sum(!metrics$passes_strictness),
+        stats::median(metrics$months_without_testing),
+        stats::median(metrics$longest_gap_months),
+        paste(
+          format(metrics$dataset_month_min[[1]], '%Y-%m'), 'to',
+          format(metrics$dataset_month_max[[1]], '%Y-%m')
+        )
+      )
+    )
+  }, striped = TRUE)
+
+  output$consistency_plot <- plotly::renderPlotly({
+    .plot_consistency_gaps(consistency_view())
+  })
+
+  output$consistency_table <- DT::renderDT({
+    metrics <- consistency_view()
+    spec <- .consistency_column_spec(metrics)
+    display <- metrics[spec$fields]
+    names(display) <- spec$labels
+    shiny::validate(shiny::need(nrow(display) > 0L, 'No facilities to display.'))
+    percent_columns <- which(spec$fields %in% c(
+      'prop_without_testing_facility_window', 'prop_with_testing_dataset_window',
+      'prop_reported_dataset_window'
+    ))
+    table <- DT::datatable(
+      display,
+      container = .review_table_container(spec$labels, spec$definitions),
+      options = list(pageLength = 25, scrollX = TRUE, autoWidth = TRUE),
+      rownames = FALSE, escape = TRUE, selection = 'single'
+    )
+    if (length(percent_columns) > 0L) {
+      table <- DT::formatPercentage(table, columns = percent_columns, digits = 1)
+    }
+    table
+  })
+
   review_data <- shiny::reactive({
     data <- selected_run()$data_flagged
-    filter_qc_review(
+    cohort <- filter_qc_facilities(
       data,
+      strictness = .value_or(input$review_strictness, 'all'),
+      consistency = run_consistency()
+    )
+    filter_qc_review(
+      cohort,
       actions = input$action, priorities = input$priority, regions = input$region,
       facilities = input$facility, reasons = input$reason,
       prediction_statuses = input$prediction_status,
@@ -637,9 +845,24 @@ filter_qc_review <- function(data,
       )
     }
   })
+  output$district_summary_plot <- plotly::renderPlotly({
+    shiny::req(input$plot_district)
+    data <- selected_run()$data_flagged
+    shiny::req('district' %in% names(data))
+    series <- .district_summary_series(data, input$plot_district)
+    shiny::validate(shiny::need(
+      nrow(series) > 0L, 'No reporting months are available for this district.'
+    ))
+    .plot_district_summary_series(
+      data, input$plot_district, .value_or(input$district_plot_metric, 'prevalence')
+    )
+  })
   output$district_plot_ui <- shiny::renderUI({
     shiny::req(input$plot_district)
-    data <- .district_plot_data(selected_run()$data_flagged, input$plot_district)
+    data <- .district_plot_data(
+      selected_run()$data_flagged, input$plot_district,
+      hide_untested = isTRUE(input$district_hide_untested)
+    )
     facilities <- dplyr::n_distinct(data$facility_id)
     height <- max(500, ceiling(facilities / 3) * 240)
     plotly::plotlyOutput('district_plot', height = paste0(height, 'px'))
@@ -648,7 +871,18 @@ filter_qc_review <- function(data,
     shiny::req(input$plot_district)
     data <- selected_run()$data_flagged
     metric <- .value_or(input$district_plot_metric, 'prevalence')
-    .plot_district_facets(data, input$plot_district, metric)
+    dat <- .district_plot_data(
+      data, input$plot_district,
+      hide_untested = isTRUE(input$district_hide_untested)
+    )
+    shiny::validate(shiny::need(
+      nrow(dat) > 0L,
+      'No facility in this district has testing data in any month.'
+    ))
+    .plot_district_facets(
+      data, input$plot_district, metric,
+      hide_untested = isTRUE(input$district_hide_untested)
+    )
   })
   output$configuration <- shiny::renderPrint({ selected_run()$config })
   output$provenance <- shiny::renderPrint({ selected_run()$manifest$provenance })

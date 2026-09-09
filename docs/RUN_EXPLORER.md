@@ -33,8 +33,17 @@ must still be treated according to the confidentiality of the source data.
   review-or-exclusion, review only, and authorized exclusion only. An always-visible
   flow diagram explains the tested/positive validity, attendance, prevalence,
   temporal, and tested-volume evidence used by the action policy.
+- **Reporting consistency:** facility-level reporting behavior measured from the
+  flagged data, covering months without testing, their absent, zero, and missing
+  components, the longest gap without testing, and coverage of both the facility
+  reporting window and the dataset-wide month span. A strictness selector with
+  optional threshold overrides reports how many facilities fall inside the chosen
+  cohort, and a chart groups facilities by their longest gap. Strictness selects a
+  review cohort; it never authorizes exclusion and never changes the stored run.
+  See `docs/REPORTING_CONSISTENCY.md`.
 - **Review queue:** display-only filters for action, priority, geography,
-  facility, reason, prediction status, and reporting dates. Focused column
+  facility, reason, prediction status, reporting dates, and reporting-consistency
+  cohort. Focused column
   views cover review essentials, counts, model assessment, and tested-volume
   assessment; an all-fields view remains available. Hovering over a heading
   shows its definition. Date filtering is opt-in, the displayed row count is
@@ -45,9 +54,13 @@ must still be treated according to the confidentiality of the source data.
   already-stored GAM expectation or tested-volume rolling baseline; they do not
   refit either model. Hover text exposes the available facility, geography,
   count, model, action, priority, and reason fields for each point.
-- **District:** a vertically scrollable set of interactive, faceted facility
-  time series. The measure can switch between prevalence and number tested.
-  Red marks identify rows recommended for review
+- **District:** a district total time series summed across all reporting
+  facilities, above a vertically scrollable set of interactive, faceted facility
+  time series. One measure is shown at a time, and the same prevalence or
+  number-tested selection drives both the district total and the facets. The
+  district total is computed from the source data before authorized exclusions.
+  An optional toggle hides facets for facilities with no testing data in any
+  month. Red marks identify rows recommended for review
   or authorized exclusion. Runs without a district field display an explanatory
   message instead of failing.
 - **Configuration and provenance:** the exact configuration snapshot and safe
