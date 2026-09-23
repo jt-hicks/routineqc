@@ -146,6 +146,11 @@ fingerprint_qc_input <- function(data) {
       NA_real_
     },
     prediction_status_counts = as.list(table(data_flagged$prediction_status, useNA = 'ifany')),
+    prevalence_dispersion = if ('resid_dispersion' %in% names(data_flagged)) {
+      data_flagged$resid_dispersion[[1]]
+    } else {
+      NA_real_
+    },
     config = unclass(config),
     provenance = provenance
   )
@@ -176,7 +181,7 @@ validate_qc_run <- function(run) {
   if (!inherits(run, 'routineqc_run') || !is.list(run) || !all(required %in% names(run))) {
     rlang::abort('Object is not a complete `routineqc_run`.')
   }
-  validate_qc_config(run$config)
+  .validate_qc_config(run$config, stored = TRUE)
   manifest <- run$manifest
   manifest_required <- c(
     'manifest_schema_version', 'run_schema_version', 'analysis_id',

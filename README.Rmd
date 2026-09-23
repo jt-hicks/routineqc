@@ -181,6 +181,15 @@ Cohort selection is not exclusion. A facility outside the cohort was not reviewe
 under it, which is not a finding that its records are wrong, and
 `flag_exclude_authorized` is unaffected. See `docs/REPORTING_CONSISTENCY.md`.
 
+A missing `tested` or `positive` count is not flagged on the row either. It
+leaves prevalence undefined, so it is measured as count completeness per
+facility or area instead:
+
+```{r completeness}
+prepared$positive[c(3, 17, 40)] <- NA
+summarise_qc_count_completeness(prepared, strictness = 'near_complete')
+```
+
 ## Adapt pipeline data
 
 Pipeline-specific names and conventions belong in an adapter, outside the QC

@@ -163,6 +163,7 @@
     district = 'District', region = 'Region', month_date = 'Month',
     tested = 'Tested', positive = 'Positive', prevalence = 'Observed prevalence',
     p_hat = 'Expected prevalence', pearson_resid = 'Pearson residual',
+    pearson_resid_scaled = 'Dispersion-scaled residual',
     residual_rule_threshold = 'Residual rule threshold',
     tested_roll_median = 'Tested rolling median', tested_robust_z = 'Tested robust z',
     tested_z_rule_threshold = 'Tested robust-z threshold',
@@ -611,6 +612,59 @@
       title = list(text = 'Longest gap without testing'),
       xaxis = list(title = 'Consecutive months without testing'),
       yaxis = list(title = 'Number of facilities'),
+      margin = list(t = 55)
+    )
+}
+
+# Attendance evaluation. Only rows carrying both tested and attending can be
+# compared, so every proportion here is over those rows, never over all rows.
+.attendance_available <- function(data) {
+  'attending' %in% names(data) && any(!is.na(data$attending))
+}
+
+.attendance_comparable <- function(data) {
+  dat <- dplyr::as_tibble(data)
+  dat$.comparable <- !is.na(dat$tested) & !is.na(dat$attending)
+  dat$.over <- dat$.comparable & dat$tested > dat$attending
+  dat
+}
+
+.attendance_summary <- function(data, group_vars = character(0)) {
+  .validate_required_columns(data, c('facility_id', 'tested', 'attending'))
+  .attendance_comparable(data) %>%
+    dplyr::group_by(dplyr::across(dplyr::all_of(group_vars))) %>%
+    dplyr::summarise(
+      rows_with_attendance = sum(!is.na(attending)),
+      comparable_rows = sum(.comparable),
+      tested_gt_attending_rows = sum(.over),
+      prop_tested_gt_attending = .safe_divide(tested_gt_attending_rows, comparable_rows),
+      facilities = dplyr::n_distinct(facility_id[.comparable]),
+      facilities_tested_gt_attending = dplyr::n_distinct(facility_id[.over]),
+      excess_tested = sum(tested[.over] - attending[.over]),
+      .groups = 'drop'
+    )
+}
+
+.plot_attendance_monthly <- function(data) {
+  monthly <- .attendance_summary(data, 'month_date') %>%
+    dplyr::filter(comparable_rows > 0L)
+  if (nrow(monthly) == 0L) return(NULL)
+  plotly::plot_ly(
+    monthly, x = ~month_date, y = ~prop_tested_gt_attending,
+    type = 'scatter', mode = 'lines+markers',
+    line = list(color = '#238b45'), marker = list(color = '#238b45', size = 5),
+    text = ~paste0(
+      'Month: ', format(month_date, '%Y-%m'),
+      '<br>Tested above attendance: ', tested_gt_attending_rows,
+      '<br>Comparable rows: ', comparable_rows,
+      '<br>Proportion: ', sprintf('%.1f%%', 100 * prop_tested_gt_attending)
+    ),
+    hovertemplate = '%{text}<extra></extra>'
+  ) %>%
+    plotly::layout(
+      title = list(text = 'Rows with tested above attendance, by month'),
+      xaxis = list(title = ''),
+      yaxis = list(title = 'Proportion of comparable rows', tickformat = '.1%', rangemode = 'tozero'),
       margin = list(t = 55)
     )
 }

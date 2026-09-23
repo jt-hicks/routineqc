@@ -167,6 +167,8 @@ filter_qc_review <- function(data,
     p_hat = 'Expected prevalence from the fitted GAM; NA when the row was not assessed.',
     expected_positive = 'Expected positive count: tested multiplied by model prevalence.',
     pearson_resid = 'Pearson residual comparing observed and model-expected positives.',
+    pearson_resid_scaled = 'Pearson residual divided by the square root of the model dispersion; the residual rule uses this.',
+    resid_dispersion = 'Pearson chi-square over residual degrees of freedom of the fit, floored at 1.',
     prediction_status = 'Reason the row was assessed or not assessed by the model.',
     model_assessment_eligible = 'Whether the row has valid counts and complete model predictors.',
     model_assessed = 'Whether a finite prevalence prediction was obtained.',
@@ -177,7 +179,8 @@ filter_qc_review <- function(data,
     qc_reason = 'Machine-readable reasons contributing to the assigned QC action.',
     flag_exclude_authorized = 'Whether the active policy authorizes exclusion.',
     flag_review_recommended = 'Whether human review is recommended.',
-    flag_core_invalid = 'Impossible or missing core tested/positive counts.',
+    flag_core_invalid = 'Impossible core tested/positive counts; missing counts are not flagged.',
+    core_count_status = 'Which of tested and positive are present: complete, missing_positive, missing_tested, or missing_both.',
     flag_resid_extreme = 'Model residual exceeds the configured size-dependent threshold.',
     flag_tested_volume_extreme = 'Tested volume has corroborated evidence of an extreme value.'
   )
@@ -192,11 +195,11 @@ filter_qc_review <- function(data,
     counts = c(
       'source_record_id', 'facility_id', 'month_date', 'region', 'district',
       'council', 'tested', 'positive', 'attending', 'prevalence',
-      'flag_core_invalid', 'flag_exclude_authorized', 'flag_review_recommended'
+      'core_count_status', 'flag_core_invalid', 'flag_exclude_authorized', 'flag_review_recommended'
     ),
     model = c(
       'source_record_id', 'facility_id', 'month_date', 'region', 'prevalence',
-      'p_hat', 'expected_positive', 'pearson_resid', 'prediction_status',
+      'p_hat', 'expected_positive', 'pearson_resid', 'pearson_resid_scaled', 'prediction_status',
       'model_assessment_eligible', 'model_assessed', 'flag_resid_extreme'
     ),
     volume = c(
@@ -261,7 +264,14 @@ filter_qc_review <- function(data,
     longest_gap_start = 'First month of the longest gap.',
     longest_gap_end = 'Last month of the longest gap.',
     never_tested = 'Whether the facility never reported a tested count above zero.',
-    passes_strictness = 'Whether the facility meets the selected strictness cohort.',
+    passes_reporting = 'Whether the facility meets the reporting-consistency criteria of the selected level.',
+    passes_completeness = 'Whether the facility meets the count-completeness criterion of the selected level.',
+    passes_strictness = 'Whether the facility meets every criterion of the selected level.',
+    rows_with_any_count = 'Rows reporting tested, positive, or both.',
+    rows_complete_counts = 'Rows reporting both tested and positive.',
+    rows_missing_positive = 'Rows reporting tested but not positive.',
+    rows_missing_tested = 'Rows reporting positive but not tested.',
+    prop_incomplete_counts = 'Rows with exactly one count missing, divided by rows reporting any count. Prevalence is undefined on these rows.',
     months_in_dataset_window = 'Calendar months spanned by the whole dataset.',
     dataset_month_min = 'Earliest reporting month in the dataset.',
     dataset_month_max = 'Latest reporting month in the dataset.'
@@ -271,7 +281,9 @@ filter_qc_review <- function(data,
 .consistency_column_spec <- function(data) {
   fields <- intersect(
     c(
-      'facility_id', 'passes_strictness', 'never_tested',
+      'facility_id', 'passes_strictness', 'passes_reporting', 'passes_completeness',
+      'never_tested', 'prop_incomplete_counts', 'rows_missing_positive',
+      'rows_missing_tested',
       'first_month_reported', 'last_month_reported',
       'first_month_tested', 'last_month_tested',
       'months_in_facility_window', 'months_reported', 'months_with_testing',
@@ -365,7 +377,9 @@ filter_qc_review <- function(data,
           'How consistently each facility reports testing activity. A month has ',
           'testing when a row exists and the number tested is above zero. Absent ',
           'months, months reported as zero, and months with a missing tested value ',
-          'all count as months without testing.'
+          'all count as months without testing. Count completeness is measured ',
+          'separately: among rows reporting any count, the share missing exactly ',
+          'one of tested and positive, which leaves prevalence undefined.'
         ),
         shiny::p(
           shiny::tags$strong('Strictness selects a review cohort. '),
@@ -414,11 +428,43 @@ filter_qc_review <- function(data,
             )
           )
         ),
+        shiny::fluidRow(
+          shiny::column(
+            2, offset = 4,
+            shiny::numericInput(
+              'consistency_max_incomplete', 'Max proportion incomplete counts',
+              value = NA, min = 0, max = 1, step = 0.05
+            )
+          )
+        ),
         shiny::tableOutput('consistency_overview'),
         plotly::plotlyOutput('consistency_plot', height = '340px'),
         shiny::h4('Facility measurements'),
         shiny::helpText('Hover over a column heading for its definition.'),
         DT::DTOutput('consistency_table')
+      ),
+      shiny::tabPanel(
+        'Attendance',
+        shiny::p(
+          'Rows where the number tested exceeds the attendance denominator. Only ',
+          'rows reporting both counts can be compared, so every proportion here is ',
+          'over those rows. The contradiction is review-only: it can reflect a ',
+          'problem with the attendance figure rather than with the tested count.'
+        ),
+        shiny::uiOutput('attendance_state'),
+        shiny::tableOutput('attendance_overview'),
+        plotly::plotlyOutput('attendance_monthly_plot', height = '340px'),
+        shiny::fluidRow(
+          shiny::column(
+            3,
+            shiny::selectInput(
+              'attendance_by', 'Summarise by',
+              choices = c('District' = 'district', 'Region' = 'region', 'Facility' = 'facility_id'),
+              selected = 'district'
+            )
+          )
+        ),
+        DT::DTOutput('attendance_table')
       ),
       shiny::tabPanel(
         'Review queue',
@@ -602,9 +648,12 @@ filter_qc_review <- function(data,
       .null_if_na(input$consistency_max_prop),
       .null_if_na(input$consistency_max_gap),
       .null_if_na(input$consistency_min_months),
-      .null_if_na(input$consistency_min_coverage)
+      .null_if_na(input$consistency_min_coverage),
+      .null_if_na(input$consistency_max_incomplete)
     )
-    metrics$passes_strictness <- .consistency_pass(metrics, thresholds)
+    metrics$passes_reporting <- .reporting_pass(metrics, thresholds)
+    metrics$passes_completeness <- .completeness_pass(metrics, thresholds)
+    metrics$passes_strictness <- metrics$passes_reporting & metrics$passes_completeness
     metrics
   })
 
@@ -613,7 +662,8 @@ filter_qc_review <- function(data,
     dplyr::tibble(
       metric = c(
         'Facilities', 'No testing in any month', 'Facilities in cohort',
-        'Facilities outside cohort', 'Median months without testing',
+        'Facilities outside cohort', 'Failing reporting criteria',
+        'Failing completeness criterion', 'Median months without testing',
         'Median longest gap (months)', 'Dataset month span'
       ),
       value = c(
@@ -621,6 +671,8 @@ filter_qc_review <- function(data,
         sum(metrics$never_tested),
         sum(metrics$passes_strictness),
         sum(!metrics$passes_strictness),
+        sum(!metrics$passes_reporting),
+        sum(!metrics$passes_completeness),
         stats::median(metrics$months_without_testing),
         stats::median(metrics$longest_gap_months),
         paste(
@@ -643,7 +695,7 @@ filter_qc_review <- function(data,
     shiny::validate(shiny::need(nrow(display) > 0L, 'No facilities to display.'))
     percent_columns <- which(spec$fields %in% c(
       'prop_without_testing_facility_window', 'prop_with_testing_dataset_window',
-      'prop_reported_dataset_window'
+      'prop_reported_dataset_window', 'prop_incomplete_counts'
     ))
     table <- DT::datatable(
       display,
@@ -655,6 +707,60 @@ filter_qc_review <- function(data,
       table <- DT::formatPercentage(table, columns = percent_columns, digits = 1)
     }
     table
+  })
+
+  output$attendance_state <- shiny::renderUI({
+    data <- selected_run()$data_flagged
+    if (!.attendance_available(data)) {
+      return(shiny::div(class = 'alert alert-info', 'This QC run carries no attendance data.'))
+    }
+    definition <- unique(stats::na.omit(data$attendance_definition))
+    shiny::helpText(paste('Attendance definition:', paste(definition, collapse = '; ')))
+  })
+
+  output$attendance_overview <- shiny::renderTable({
+    data <- selected_run()$data_flagged
+    shiny::req(.attendance_available(data))
+    s <- .attendance_summary(data)
+    dplyr::tibble(
+      metric = c(
+        'Rows with attendance', 'Rows comparable (tested and attendance)',
+        'Rows with tested above attendance', 'Proportion of comparable rows',
+        'Facilities affected', 'Tested in excess of attendance'
+      ),
+      value = c(
+        format(s$rows_with_attendance, big.mark = ','),
+        format(s$comparable_rows, big.mark = ','),
+        format(s$tested_gt_attending_rows, big.mark = ','),
+        sprintf('%.2f%%', 100 * s$prop_tested_gt_attending),
+        paste0(format(s$facilities_tested_gt_attending, big.mark = ','), ' of ',
+               format(s$facilities, big.mark = ',')),
+        format(s$excess_tested, big.mark = ',')
+      )
+    )
+  }, striped = TRUE)
+
+  output$attendance_monthly_plot <- plotly::renderPlotly({
+    data <- selected_run()$data_flagged
+    shiny::req(.attendance_available(data))
+    .plot_attendance_monthly(data)
+  })
+
+  output$attendance_table <- DT::renderDT({
+    data <- selected_run()$data_flagged
+    shiny::req(.attendance_available(data))
+    by <- .value_or(input$attendance_by, 'district')
+    shiny::validate(shiny::need(by %in% names(data), paste('This run has no', by, 'column.')))
+    summary <- .attendance_summary(data, by) %>%
+      dplyr::arrange(dplyr::desc(prop_tested_gt_attending), dplyr::desc(tested_gt_attending_rows))
+    if (by == 'facility_id') {
+      summary <- dplyr::select(summary, -facilities, -facilities_tested_gt_attending)
+    }
+    DT::datatable(
+      summary, options = list(pageLength = 25, scrollX = TRUE),
+      rownames = FALSE, escape = TRUE, selection = 'single'
+    ) %>%
+      DT::formatPercentage('prop_tested_gt_attending', digits = 2)
   })
 
   review_data <- shiny::reactive({
@@ -812,9 +918,18 @@ filter_qc_review <- function(data,
       data$residual_rule_threshold <- prevalence_config$resid_threshold
       thresholds <- c(-prevalence_config$resid_threshold, prevalence_config$resid_threshold)
     }
+    # Plot the residual the rule was applied to. Runs before 0.1.0.9000 carry
+    # only the unscaled one.
+    scaled <- 'pearson_resid_scaled' %in% names(data)
     .plot_diagnostic_points(
-      data, 'pearson_resid', 'Prevalence residual diagnostics',
-      'Pearson residual', thresholds
+      data, if (scaled) 'pearson_resid_scaled' else 'pearson_resid',
+      'Prevalence residual diagnostics',
+      if (scaled) {
+        sprintf('Pearson residual / sqrt(dispersion %.2f)', data$resid_dispersion[[1]])
+      } else {
+        'Pearson residual'
+      },
+      thresholds
     )
   })
   output$tested_plot <- plotly::renderPlotly({

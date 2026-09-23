@@ -51,6 +51,26 @@ proportions are also reported against the **dataset-wide month span**:
 `last_month_tested` say when data collection actually started and stopped, which can
 differ when a facility reports zeros before its first real test or after its last.
 
+## Count completeness
+
+A month with testing can still be unusable for prevalence when `positive` is
+missing, and a row reporting positives without `tested` is unusable the same way.
+Among rows reporting at least one of the two counts, `prop_incomplete_counts` is
+the share missing exactly one, with `rows_missing_positive` and
+`rows_missing_tested` beside it. Rows missing both are reporting gaps, already
+counted in `months_missing_tested`, and are left out so that no month is
+penalised twice. A facility with no counts at all has an undefined proportion
+and fails any applied completeness threshold.
+
+These rows carry no row-level flag. The package treats missingness as a property
+of a facility or an area, recorded per row only as `core_count_status`.
+`summarise_qc_count_completeness()` reports the same measures per facility, or
+pooled per district, council, or region with the number of facilities that pass
+individually, so an area whose pooled figure is driven by a few large facilities
+can be recognised. `run_routine_qc()` stores the district and council tables as
+`summaries$count_completeness_by_district` and `summaries$count_completeness_by_council`
+when those columns exist.
+
 ## Gaps
 
 `longest_gap_months` is the longest run of consecutive months without testing inside
@@ -69,15 +89,18 @@ standpoint they are the same loss.
 functions, the Run Explorer control, and this document. `NA` means a criterion is not
 applied. A facility passes when every applied criterion holds.
 
-| Level | Max proportion without testing | Max gap | Min months with testing | Min dataset-span coverage |
-|---|---|---|---|---|
-| `all` | - | - | - | - |
-| `any_testing` | - | - | 1 | - |
-| `lenient` | 0.50 | 3 | 1 | 0.25 |
-| `moderate` | 0.20 | 2 | 1 | 0.50 |
-| `near_complete` | 0.05 | 1 | 1 | 0.75 |
-| `complete` | 0 | 0 | 1 | - |
-| `complete_panel` | 0 | 0 | 1 | 1.00 |
+| Level | Max proportion without testing | Max gap | Min months with testing | Min dataset-span coverage | Max proportion incomplete counts |
+|---|---|---|---|---|---|
+| `all` | - | - | - | - | - |
+| `any_testing` | - | - | 1 | - | - |
+| `lenient` | 0.50 | 3 | 1 | 0.25 | 0.50 |
+| `moderate` | 0.20 | 2 | 1 | 0.50 | 0.20 |
+| `near_complete` | 0.05 | 1 | 1 | 0.75 | 0.05 |
+| `complete` | 0 | 0 | 1 | - | 0 |
+| `complete_panel` | 0 | 0 | 1 | 1.00 | 0 |
+
+`passes_reporting` records the first four criteria and `passes_completeness` the
+last; `passes_strictness` requires both.
 
 `any_testing` is the most lenient useful level: it admits any facility with at least
 one month of testing, so it excludes only facilities that never tested. `complete`

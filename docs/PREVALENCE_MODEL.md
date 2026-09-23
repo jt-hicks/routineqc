@@ -24,12 +24,15 @@ fewer than two facilities produces no model rather than an unstable fit.
 ## Row-level assessment status
 
 Every input row is preserved. `model_assessment_eligible` identifies rows with
-valid core counts, positive tested count, and complete model predictors.
+valid core counts, both `tested` and `positive` present, positive tested count,
+and complete model predictors.
 `model_assessed` is true only when a finite prediction was obtained.
 `prediction_status` records one of:
 
 - `assessed`
 - `ineligible_core_counts`
+- `ineligible_missing_counts`: `tested` or `positive` is missing. This is not a
+  QC finding; see `core_count_status` and `summarise_qc_count_completeness()`.
 - `ineligible_nonpositive_tested`
 - `ineligible_missing_predictor`
 - `model_unavailable`
@@ -40,6 +43,30 @@ valid core counts, positive tested count, and complete model predictors.
 
 For every non-assessed row, `p_hat`, `expected_positive`, and `pearson_resid`
 remain `NA`; model-derived residual flags therefore remain false.
+
+## Dispersion
+
+The binomial family fixes the scale at 1. Routine facility-months are usually
+more variable than that, and every Pearson residual is then inflated by the
+square root of the dispersion. The inflation compounds with volume: extra-binomial
+variation grows with the tested count, so an unadjusted cutoff flags mostly the
+largest facilities.
+
+`resid_dispersion` is the Pearson chi-square over residual degrees of freedom of
+the fit, floored at 1 so that an underdispersed fit never enlarges a residual.
+`pearson_resid_scaled` is `pearson_resid / sqrt(resid_dispersion)`, and the
+residual rule applies its cutoffs to it. The raw residual is kept beside it. The
+manifest records the value as `prevalence_dispersion`.
+
+On 452,755 ANC facility-months the dispersion was 3.47, and the unscaled rule
+flagged 3.3% of assessed rows at tested >= 20 against a nominal 0.006%, rising to
+14% at 200 or more tested.
+
+The all-negative rule uses the same dispersion. A month with no positives is
+flagged only when `(1 - p_hat)^(tested / resid_dispersion)`, the chance of zero
+positives with the tested count deflated by the dispersion, is below
+`all_negative_max_probability`. Fifty negative tests are unremarkable where the
+model expects 2% positivity and implausible where it expects 20%.
 
 ## Coverage
 

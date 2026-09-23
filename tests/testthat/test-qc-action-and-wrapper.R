@@ -64,4 +64,26 @@ testthat::test_that('wrapper captures and applies its action policy', {
   testthat::expect_false(any(out$data_flagged$flag_exclude_authorized))
   testthat::expect_equal(nrow(out$data_flagged), nrow(sim))
   testthat::expect_true(all(c('by_region', 'by_month', 'by_facility', 'by_council', 'by_district') %in% names(out$summaries)))
+  testthat::expect_true(all(c('count_completeness_by_council', 'count_completeness_by_district') %in% names(out$summaries)))
+})
+
+testthat::test_that('a missing positive count is retained and still assessed for volume', {
+  sim <- routineqc::simulate_qc_data(n_facilities = 8, n_months = 24, seed = 2)
+  sim$positive[c(5, 30)] <- NA
+  sim$tested[40] <- NA
+  out <- suppressWarnings(routineqc::run_routine_qc(
+    sim,
+    facility_var = 'facility', region_var = 'region', month_var = 'month',
+    tested_var = 'tested', positive_var = 'positive', nthreads = 1
+  ))
+  d <- out$data_flagged
+  rows <- c(5, 30, 40)
+  testthat::expect_identical(d$core_count_status[rows], c('missing_positive', 'missing_positive', 'missing_tested'))
+  testthat::expect_false(any(d$flag_core_invalid[rows]))
+  testthat::expect_false(any(d$flag_exclude_authorized[rows]))
+  testthat::expect_true(all(d$prediction_status[rows] == 'ineligible_missing_counts'))
+  testthat::expect_false(any(grepl('core', d$qc_reason[rows])))
+  # Tested volume depends only on tested, so it is still evaluated there.
+  testthat::expect_true(all(!is.na(d$tested_robust_z[c(5, 30)]) | !d$tested_baseline_ready[c(5, 30)]))
+  testthat::expect_true(is.na(d$tested_robust_z[40]))
 })

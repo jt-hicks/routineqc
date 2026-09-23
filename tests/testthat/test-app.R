@@ -421,3 +421,66 @@ testthat::test_that('reporting consistency tab renders for a persisted run', {
     }
   )
 })
+
+testthat::test_that('attendance summary compares only rows carrying both counts', {
+  dat <- tibble::tibble(
+    facility_id = c('F1', 'F1', 'F1', 'F2', 'F2'),
+    district = c('D1', 'D1', 'D1', 'D2', 'D2'),
+    month_date = as.Date(c('2024-01-01', '2024-02-01', '2024-03-01', '2024-01-01', '2024-02-01')),
+    tested = c(12, 10, NA, 5, 5),
+    attending = c(10, 10, 10, NA, 6)
+  )
+  overall <- routineqc:::.attendance_summary(dat)
+  testthat::expect_equal(overall$rows_with_attendance, 4)
+  testthat::expect_equal(overall$comparable_rows, 3)
+  testthat::expect_equal(overall$tested_gt_attending_rows, 1)
+  testthat::expect_equal(overall$prop_tested_gt_attending, 1 / 3)
+  testthat::expect_equal(overall$excess_tested, 2)
+  testthat::expect_equal(overall$facilities_tested_gt_attending, 1)
+  by_district <- routineqc:::.attendance_summary(dat, 'district')
+  testthat::expect_equal(by_district$prop_tested_gt_attending, c(0.5, 0))
+  testthat::expect_false(routineqc:::.attendance_available(dplyr::select(dat, -attending)))
+  testthat::expect_s3_class(routineqc:::.plot_attendance_monthly(dat), 'plotly')
+})
+
+testthat::test_that('attendance tab renders with and without attendance data', {
+  directory <- tempfile('routineqc-app-attendance-')
+  dir.create(directory)
+  on.exit(unlink(directory, recursive = TRUE), add = TRUE)
+  raw <- tibble::tibble(
+    facility = rep(c('F1', 'F2'), each = 6),
+    area = 'R1', district = rep(c('D1', 'D2'), each = 6),
+    period = rep(seq.Date(as.Date('2024-01-01'), by = 'month', length.out = 6), 2),
+    tests = c(10, 12, 11, 10, 9, 10, 8, 9, 8, 7, 8, 9),
+    cases = c(2, 3, 2, 1, 2, 2, 1, 1, 2, 1, 1, 1),
+    anc1 = c(10, 10, 11, 12, 9, 10, 8, NA, 8, 8, 8, 8)
+  )
+  with_attendance <- suppressWarnings(routineqc::run_routine_qc(
+    raw, facility_var = 'facility', region_var = 'area', month_var = 'period',
+    tested_var = 'tests', positive_var = 'cases', district_var = 'district',
+    attending_var = 'anc1', attendance_definition = 'ANC first visits',
+    provenance = list(dataset_id = 'app-attendance'), nthreads = 1
+  ))
+  attendance_path <- file.path(directory, 'attendance-run.rds')
+  routineqc::write_qc_run(with_attendance, attendance_path)
+  plain_path <- write_app_test_run(directory, 'plain-run')
+
+  server <- function(input, output, session) {
+    routineqc:::.qc_app_server(input, output, session, run_dir = directory)
+  }
+  shiny::testServer(server, {
+    suppressWarnings(session$setInputs(
+      run_path = attendance_path, flagged_only = FALSE, column_set = 'review',
+      use_date_filter = FALSE, attendance_by = 'district'
+    ))
+    testthat::expect_match(output$attendance_state$html, 'ANC first visits')
+    testthat::expect_match(output$attendance_overview, 'Rows with tested above attendance')
+    testthat::expect_true(length(output$attendance_monthly_plot) > 0L)
+    testthat::expect_match(output$attendance_table, '<th>district<')
+    suppressWarnings(session$setInputs(attendance_by = 'facility_id'))
+    testthat::expect_match(output$attendance_table, '<th>facility_id<')
+
+    suppressWarnings(session$setInputs(run_path = plain_path))
+    testthat::expect_match(output$attendance_state$html, 'carries no attendance data')
+  })
+})

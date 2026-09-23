@@ -15,8 +15,19 @@ add_prevalence_predictions(data, model, min_prediction_coverage = 0.8)
 rows successfully assessed falls below this value.}
 }
 \value{
-The input data with prediction columns appended.
+The input data with prediction columns appended, including
+\code{pearson_resid}, \code{resid_dispersion}, and \code{pearson_resid_scaled}.
 }
 \description{
 Appends fitted prevalence and residual diagnostics from a fitted GAM.
+}
+\details{
+The binomial model fixes its scale at 1, but routine facility data are
+usually overdispersed: facility-months vary more than binomial sampling
+allows. Unadjusted, every Pearson residual is inflated by the square root of
+the dispersion, so a residual cutoff fires far more often than its nominal
+size, and increasingly so at high tested counts. \code{resid_dispersion} is the
+Pearson chi-square over residual degrees of freedom of the fit, floored at 1,
+and \code{pearson_resid_scaled} divides the residual by its square root. The
+residual rule in \code{\link[=add_prevalence_qc_flags]{add_prevalence_qc_flags()}} uses the scaled residual.
 }

@@ -16,8 +16,36 @@ testthat::test_that("logical flags catch impossible values", {
   testthat::expect_true(out$flag_tested_negative[2])
   testthat::expect_true(out$flag_zero_tested_positive[3])
   testthat::expect_true(out$flag_positive_negative[4])
-  testthat::expect_true(out$flag_missing_tested_or_positive[5])
-  testthat::expect_equal(sum(out$flag_invalid_logical), 5)
+  testthat::expect_equal(sum(out$flag_invalid_logical), 4)
+})
+
+testthat::test_that('missing counts are recorded as status, not as logical errors', {
+  dat <- tibble::tibble(
+    tested = c(10, 10, NA, NA),
+    positive = c(2, NA, 1, NA)
+  )
+  out <- routineqc::flag_logical_errors(dat)
+  testthat::expect_identical(
+    out$core_count_status,
+    c('complete', 'missing_positive', 'missing_tested', 'missing_both')
+  )
+  testthat::expect_false(any(out$flag_core_invalid))
+  testthat::expect_false(any(out$flag_invalid_logical))
+  testthat::expect_false('flag_missing_tested_or_positive' %in% names(out))
+})
+
+testthat::test_that('summary prevalence uses only rows carrying both counts', {
+  dat <- tibble::tibble(
+    region = 'R1',
+    tested = c(100, 100, NA),
+    positive = c(10, NA, 5),
+    flag_exclude_authorized = FALSE
+  )
+  s <- routineqc::summarise_before_after_qc(dat)
+  testthat::expect_equal(s$prevalence_before_qc, 0.1)
+  testthat::expect_equal(s$prevalence_after_authorized_exclusions, 0.1)
+  testthat::expect_equal(s$incomplete_count_rows, 2)
+  testthat::expect_equal(s$total_tested_before_qc, 200)
 })
 
 testthat::test_that('logical helper allows absent attendance', {

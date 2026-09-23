@@ -10,11 +10,13 @@ summarise_qc_reporting_consistency(
   max_prop_without_testing = NULL,
   max_gap_months = NULL,
   min_months_with_testing = NULL,
-  min_prop_with_testing_dataset_window = NULL
+  min_prop_with_testing_dataset_window = NULL,
+  max_prop_incomplete_counts = NULL
 )
 }
 \arguments{
-\item{data}{A QC data frame with \code{facility_id}, \code{month_date}, and \code{tested}.}
+\item{data}{A QC data frame with \code{facility_id}, \code{month_date}, and \code{tested},
+and optionally \code{positive}.}
 
 \item{strictness}{A level name from \code{\link[=qc_consistency_levels]{qc_consistency_levels()}}.}
 
@@ -31,10 +33,15 @@ months with testing.}
 proportion of the dataset-wide month span in which a facility must have
 testing. This criterion is scale-free, so it identifies a facility with a
 short history even when that history is internally complete.}
+
+\item{max_prop_incomplete_counts}{Optional override for the maximum
+proportion of rows with exactly one of \code{tested} and \code{positive} missing.
+Requires \code{positive} in \code{data}.}
 }
 \value{
-A tibble with one row per facility, its reporting-consistency
-measurements, and \code{passes_strictness}.
+A tibble with one row per facility, its reporting-consistency and
+count-completeness measurements, \code{passes_reporting},
+\code{passes_completeness}, and \code{passes_strictness}.
 }
 \description{
 Measures how consistently each facility reports testing activity. A month has
@@ -48,6 +55,12 @@ Gap length is measured within each facility own reporting window, from its
 first to its last reported month. Proportions are reported against both that
 window and the dataset-wide month span, so a facility with only a few months
 of history can be identified even when those months are internally complete.
+
+When \code{positive} is present, count completeness is measured too: among rows
+reporting at least one count, the proportion missing \code{positive} or \code{tested}
+but not both. Rows missing both are reporting gaps and are already counted in
+\code{months_missing_tested}. \code{passes_reporting} and \code{passes_completeness} record
+the two criteria separately; \code{passes_strictness} requires both.
 
 This function describes reporting behavior only. It does not assign a QC
 action, set a row-level flag, authorize exclusion, or drop records.

@@ -123,17 +123,19 @@ qc <- suppressWarnings(run_routine_qc(
 ))
 
 names(qc$summaries)
-#> [1] "by_region"             "by_council"            "by_district"          
-#> [4] "by_month"              "by_facility"           "by_facility_reporting"
+#> [1] "by_region"                      "by_council"                    
+#> [3] "by_district"                    "by_month"                      
+#> [5] "by_facility"                    "by_facility_reporting"         
+#> [7] "count_completeness_by_district" "count_completeness_by_council"
 qc$summaries$by_region
-#> # A tibble: 4 × 20
-#>   region   total_rows n_any_qc_issue pct_any_qc_issue core_invalid_rows
-#>   <chr>         <int>          <int>            <dbl>             <int>
-#> 1 Region_A        130             10             7.69                 2
-#> 2 Region_B        141              3             2.13                 1
-#> 3 Region_C        103              7             6.80                 2
-#> 4 Region_D        106              5             4.72                 0
-#> # ℹ 15 more variables: attendance_issue_rows <int>,
+#> # A tibble: 4 × 21
+#>   region   total_rows incomplete_count_rows n_any_qc_issue pct_any_qc_issue
+#>   <chr>         <int>                 <int>          <int>            <dbl>
+#> 1 Region_A        130                     0             10             7.69
+#> 2 Region_B        141                     0              3             2.13
+#> 3 Region_C        103                     0              7             6.80
+#> 4 Region_D        106                     0              5             4.72
+#> # ℹ 16 more variables: core_invalid_rows <int>, attendance_issue_rows <int>,
 #> #   prevalence_extreme_rows <int>, tested_volume_extreme_rows <int>,
 #> #   tested_only_issues <int>, prevalence_only_issues <int>,
 #> #   combined_tested_prevalence_issues <int>, authorized_exclusion_rows <int>,
@@ -216,7 +218,7 @@ overridable:
 
 ``` r
 qc_consistency_levels()
-#> # A tibble: 7 × 5
+#> # A tibble: 7 × 6
 #>   level          max_prop_without_testing max_gap_months min_months_with_testing
 #>   <chr>                             <dbl>          <dbl>                   <dbl>
 #> 1 all                               NA                NA                      NA
@@ -226,7 +228,8 @@ qc_consistency_levels()
 #> 5 near_complete                      0.05              1                       1
 #> 6 complete                           0                 0                       1
 #> 7 complete_panel                     0                 0                       1
-#> # ℹ 1 more variable: min_prop_with_testing_dataset_window <dbl>
+#> # ℹ 2 more variables: min_prop_with_testing_dataset_window <dbl>,
+#> #   max_prop_incomplete_counts <dbl>
 
 vapply(
   qc_consistency_levels()$level,
@@ -246,6 +249,28 @@ Cohort selection is not exclusion. A facility outside the cohort was not
 reviewed under it, which is not a finding that its records are wrong,
 and `flag_exclude_authorized` is unaffected. See
 `docs/REPORTING_CONSISTENCY.md`.
+
+A missing `tested` or `positive` count is not flagged on the row either.
+It leaves prevalence undefined, so it is measured as count completeness
+per facility or area instead:
+
+``` r
+prepared$positive[c(3, 17, 40)] <- NA
+summarise_qc_count_completeness(prepared, strictness = 'near_complete')
+#> # A tibble: 8 × 7
+#>   facility_id rows_with_any_count rows_complete_counts rows_missing_positive
+#>   <chr>                     <int>                <int>                 <int>
+#> 1 F001                         23                   21                     2
+#> 2 F002                         22                   21                     1
+#> 3 F003                         24                   24                     0
+#> 4 F004                         24                   24                     0
+#> 5 F005                         21                   21                     0
+#> 6 F006                         24                   24                     0
+#> 7 F007                         23                   23                     0
+#> 8 F008                         21                   21                     0
+#> # ℹ 3 more variables: rows_missing_tested <int>, prop_incomplete_counts <dbl>,
+#> #   passes_completeness <lgl>
+```
 
 ## Adapt pipeline data
 

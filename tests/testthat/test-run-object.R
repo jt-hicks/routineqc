@@ -105,3 +105,22 @@ testthat::test_that('unsupported and inconsistent run schemas are rejected', {
     'model-assessment results'
   )
 })
+
+testthat::test_that('a persisted version 1 run stays readable', {
+  sim <- routineqc::simulate_qc_data(n_facilities = 4, n_months = 12, seed = 3)
+  run <- suppressWarnings(routineqc::run_routine_qc(
+    sim, facility_var = 'facility', region_var = 'region', month_var = 'month',
+    tested_var = 'tested', positive_var = 'positive', nthreads = 1
+  ))
+  # Stand in for a run written by 0.1.0, rebuilding the fingerprint and identity
+  # that depend on the configuration.
+  run$config$action_policy$version <- 1L
+  run$manifest$config$action_policy$version <- 1L
+  run$manifest$config_fingerprint <- digest::digest(run$manifest$config, algo = 'sha256', serialize = TRUE)
+  run$manifest$analysis_id <- routineqc:::.analysis_id(
+    run$manifest$run_schema_version, run$manifest$package_version,
+    run$manifest$input_fingerprint, run$manifest$config_fingerprint
+  )
+  testthat::expect_invisible(routineqc::validate_qc_run(run))
+  testthat::expect_error(routineqc::validate_qc_config(run$config), 'no longer supported')
+})

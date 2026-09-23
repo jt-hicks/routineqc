@@ -16,7 +16,40 @@
   )
 }
 
+.count_completeness <- function(tested, positive) {
+  any_count <- sum(!is.na(tested) | !is.na(positive))
+  missing_positive <- sum(!is.na(tested) & is.na(positive))
+  missing_tested <- sum(is.na(tested) & !is.na(positive))
+  dplyr::tibble(
+    rows_with_any_count = as.integer(any_count),
+    rows_complete_counts = as.integer(sum(!is.na(tested) & !is.na(positive))),
+    rows_missing_positive = as.integer(missing_positive),
+    rows_missing_tested = as.integer(missing_tested),
+    prop_incomplete_counts = if (any_count > 0L) {
+      (missing_positive + missing_tested) / any_count
+    } else {
+      NA_real_
+    }
+  )
+}
+
+.count_completeness_unavailable <- function() {
+  dplyr::tibble(
+    rows_with_any_count = NA_integer_, rows_complete_counts = NA_integer_,
+    rows_missing_positive = NA_integer_, rows_missing_tested = NA_integer_,
+    prop_incomplete_counts = NA_real_
+  )
+}
+
 .facility_consistency <- function(dat, dataset_months) {
+  completeness <- if ('positive' %in% names(dat)) {
+    .count_completeness(
+      suppressWarnings(as.numeric(dat$tested)),
+      suppressWarnings(as.numeric(dat$positive))
+    )
+  } else {
+    .count_completeness_unavailable()
+  }
   monthly <- dplyr::tibble(
     month_date = lubridate::floor_date(dat$month_date, unit = 'month'),
     tested = suppressWarnings(as.numeric(dat$tested))
@@ -83,7 +116,8 @@
     longest_gap_start = longest_gap_start,
     longest_gap_end = longest_gap_end,
     never_tested = months_with_testing == 0L
-  )
+  ) %>%
+    dplyr::bind_cols(completeness)
 }
 
 #' Reporting-Consistency Strictness Levels
@@ -105,7 +139,8 @@ qc_consistency_levels <- function() {
     max_prop_without_testing = c(NA, NA, 0.5, 0.2, 0.05, 0, 0),
     max_gap_months = c(NA, NA, 3, 2, 1, 0, 0),
     min_months_with_testing = c(NA, 1, 1, 1, 1, 1, 1),
-    min_prop_with_testing_dataset_window = c(NA, NA, 0.25, 0.5, 0.75, NA, 1)
+    min_prop_with_testing_dataset_window = c(NA, NA, 0.25, 0.5, 0.75, NA, 1),
+    max_prop_incomplete_counts = c(NA, NA, 0.5, 0.2, 0.05, 0, 0)
   )
 }
 
@@ -117,7 +152,8 @@ qc_consistency_levels <- function() {
                                             max_prop_without_testing = NULL,
                                             max_gap_months = NULL,
                                             min_months_with_testing = NULL,
-                                            min_prop_with_testing_dataset_window = NULL) {
+                                            min_prop_with_testing_dataset_window = NULL,
+                                            max_prop_incomplete_counts = NULL) {
   levels <- qc_consistency_levels()
   if (!is.character(strictness) || length(strictness) != 1L || is.na(strictness) ||
       !strictness %in% levels$level) {
@@ -130,13 +166,15 @@ qc_consistency_levels <- function() {
     max_prop_without_testing = preset$max_prop_without_testing,
     max_gap_months = preset$max_gap_months,
     min_months_with_testing = preset$min_months_with_testing,
-    min_prop_with_testing_dataset_window = preset$min_prop_with_testing_dataset_window
+    min_prop_with_testing_dataset_window = preset$min_prop_with_testing_dataset_window,
+    max_prop_incomplete_counts = preset$max_prop_incomplete_counts
   )
   overrides <- list(
     max_prop_without_testing = max_prop_without_testing,
     max_gap_months = max_gap_months,
     min_months_with_testing = min_months_with_testing,
-    min_prop_with_testing_dataset_window = min_prop_with_testing_dataset_window
+    min_prop_with_testing_dataset_window = min_prop_with_testing_dataset_window,
+    max_prop_incomplete_counts = max_prop_incomplete_counts
   )
   for (nm in names(overrides)) {
     value <- overrides[[nm]]
@@ -154,6 +192,23 @@ qc_consistency_levels <- function() {
 }
 
 .consistency_pass <- function(consistency, thresholds) {
+  .reporting_pass(consistency, thresholds) & .completeness_pass(consistency, thresholds)
+}
+
+# A unit with no counts at all has an undefined proportion and fails any
+# applied completeness threshold: nothing it reported can be used.
+.completeness_pass <- function(measures, thresholds) {
+  if (is.na(thresholds$max_prop_incomplete_counts)) {
+    return(rep(TRUE, nrow(measures)))
+  }
+  .validate_required_columns(measures, 'prop_incomplete_counts')
+  dplyr::coalesce(
+    measures$prop_incomplete_counts <= thresholds$max_prop_incomplete_counts,
+    FALSE
+  )
+}
+
+.reporting_pass <- function(consistency, thresholds) {
   required <- c(
     'prop_without_testing_facility_window', 'longest_gap_months',
     'months_with_testing', 'prop_with_testing_dataset_window'
@@ -190,10 +245,17 @@ qc_consistency_levels <- function() {
 #' window and the dataset-wide month span, so a facility with only a few months
 #' of history can be identified even when those months are internally complete.
 #'
+#' When `positive` is present, count completeness is measured too: among rows
+#' reporting at least one count, the proportion missing `positive` or `tested`
+#' but not both. Rows missing both are reporting gaps and are already counted in
+#' `months_missing_tested`. `passes_reporting` and `passes_completeness` record
+#' the two criteria separately; `passes_strictness` requires both.
+#'
 #' This function describes reporting behavior only. It does not assign a QC
 #' action, set a row-level flag, authorize exclusion, or drop records.
 #'
-#' @param data A QC data frame with `facility_id`, `month_date`, and `tested`.
+#' @param data A QC data frame with `facility_id`, `month_date`, and `tested`,
+#'   and optionally `positive`.
 #' @param strictness A level name from [qc_consistency_levels()].
 #' @param max_prop_without_testing Optional override for the maximum proportion
 #'   of months without testing within a facility own reporting window.
@@ -205,21 +267,30 @@ qc_consistency_levels <- function() {
 #'   proportion of the dataset-wide month span in which a facility must have
 #'   testing. This criterion is scale-free, so it identifies a facility with a
 #'   short history even when that history is internally complete.
+#' @param max_prop_incomplete_counts Optional override for the maximum
+#'   proportion of rows with exactly one of `tested` and `positive` missing.
+#'   Requires `positive` in `data`.
 #'
-#' @return A tibble with one row per facility, its reporting-consistency
-#'   measurements, and `passes_strictness`.
+#' @return A tibble with one row per facility, its reporting-consistency and
+#'   count-completeness measurements, `passes_reporting`,
+#'   `passes_completeness`, and `passes_strictness`.
 #' @export
 summarise_qc_reporting_consistency <- function(data,
                                                strictness = 'all',
                                                max_prop_without_testing = NULL,
                                                max_gap_months = NULL,
                                                min_months_with_testing = NULL,
-                                               min_prop_with_testing_dataset_window = NULL) {
+                                               min_prop_with_testing_dataset_window = NULL,
+                                               max_prop_incomplete_counts = NULL) {
   .validate_required_columns(data, c('facility_id', 'month_date', 'tested'))
   thresholds <- .resolve_consistency_thresholds(
     strictness, max_prop_without_testing, max_gap_months,
-    min_months_with_testing, min_prop_with_testing_dataset_window
+    min_months_with_testing, min_prop_with_testing_dataset_window,
+    max_prop_incomplete_counts
   )
+  if (!is.na(thresholds$max_prop_incomplete_counts) && !'positive' %in% names(data)) {
+    rlang::abort('A count-completeness threshold requires a `positive` column.')
+  }
 
   dat <- dplyr::as_tibble(data)
   if (nrow(dat) == 0L) {
@@ -232,7 +303,7 @@ summarise_qc_reporting_consistency <- function(data,
   window <- .dataset_month_window(dat$month_date)
 
   out <- dat %>%
-    dplyr::select(facility_id, month_date, tested) %>%
+    dplyr::select(dplyr::any_of(c('facility_id', 'month_date', 'tested', 'positive'))) %>%
     dplyr::group_by(facility_id) %>%
     dplyr::group_modify(~ .facility_consistency(.x, window$months)) %>%
     dplyr::ungroup() %>%
@@ -243,7 +314,9 @@ summarise_qc_reporting_consistency <- function(data,
     ) %>%
     dplyr::arrange(facility_id)
 
-  out$passes_strictness <- .consistency_pass(out, thresholds)
+  out$passes_reporting <- .reporting_pass(out, thresholds)
+  out$passes_completeness <- .completeness_pass(out, thresholds)
+  out$passes_strictness <- out$passes_reporting & out$passes_completeness
   out
 }
 
@@ -262,6 +335,7 @@ summarise_qc_reporting_consistency <- function(data,
 #' @param max_gap_months Optional threshold override.
 #' @param min_months_with_testing Optional threshold override.
 #' @param min_prop_with_testing_dataset_window Optional threshold override.
+#' @param max_prop_incomplete_counts Optional threshold override.
 #' @param consistency Optional precomputed output of
 #'   [summarise_qc_reporting_consistency()] used as a measurement cache. The
 #'   strictness decision is always recomputed from the supplied thresholds.
@@ -274,11 +348,13 @@ filter_qc_facilities <- function(data,
                                  max_gap_months = NULL,
                                  min_months_with_testing = NULL,
                                  min_prop_with_testing_dataset_window = NULL,
+                                 max_prop_incomplete_counts = NULL,
                                  consistency = NULL) {
   .validate_required_columns(data, 'facility_id')
   thresholds <- .resolve_consistency_thresholds(
     strictness, max_prop_without_testing, max_gap_months,
-    min_months_with_testing, min_prop_with_testing_dataset_window
+    min_months_with_testing, min_prop_with_testing_dataset_window,
+    max_prop_incomplete_counts
   )
   out <- dplyr::as_tibble(data)
 
@@ -288,7 +364,8 @@ filter_qc_facilities <- function(data,
       max_prop_without_testing = max_prop_without_testing,
       max_gap_months = max_gap_months,
       min_months_with_testing = min_months_with_testing,
-      min_prop_with_testing_dataset_window = min_prop_with_testing_dataset_window
+      min_prop_with_testing_dataset_window = min_prop_with_testing_dataset_window,
+      max_prop_incomplete_counts = max_prop_incomplete_counts
     )
   } else {
     consistency <- dplyr::as_tibble(consistency)
@@ -338,4 +415,74 @@ plot_reporting_consistency <- function(consistency) {
       title = 'Facility reporting consistency',
       subtitle = 'Gaps are measured within each facility own reporting window'
     )
+}
+
+#' Summarise Count Completeness by Facility or Area
+#'
+#' Measures how often `tested` and `positive` are reported together. Among rows
+#' reporting at least one of the two, a row is incomplete when exactly one is
+#' missing, which leaves its prevalence undefined. Rows missing both are
+#' reporting gaps, measured by [summarise_qc_reporting_consistency()], and are
+#' not counted here.
+#'
+#' At area level the proportion is pooled over the area's rows, and the number
+#' of facilities that individually pass is reported beside it, so an area whose
+#' pooled figure is dominated by a few large facilities can be recognised.
+#'
+#' Missingness is a property of a facility or an area, not of an individual
+#' record. This function sets no row-level flag, assigns no QC action, and
+#' authorizes no exclusion.
+#'
+#' @param data A QC data frame with `facility_id`, `tested`, and `positive`,
+#'   and the grouping column when `by` is not `facility`.
+#' @param by One of `facility`, `district`, `council`, or `region`.
+#' @param strictness A level name from [qc_consistency_levels()]; supplies the
+#'   default `max_prop_incomplete_counts`.
+#' @param max_prop_incomplete_counts Optional threshold override.
+#'
+#' @return A tibble with one row per facility or area, its completeness
+#'   measures, and `passes_completeness`. Area rows also carry `n_facilities` and
+#'   `n_facilities_passing_completeness`.
+#' @export
+summarise_qc_count_completeness <- function(data,
+                                            by = c('facility', 'district', 'council', 'region'),
+                                            strictness = 'all',
+                                            max_prop_incomplete_counts = NULL) {
+  by <- match.arg(by)
+  group_var <- if (by == 'facility') 'facility_id' else by
+  .validate_required_columns(data, unique(c('facility_id', group_var, 'tested', 'positive')))
+  thresholds <- .resolve_consistency_thresholds(
+    strictness, max_prop_incomplete_counts = max_prop_incomplete_counts
+  )
+
+  dat <- dplyr::as_tibble(data)
+  dat <- dat[!is.na(dat$facility_id), , drop = FALSE]
+  dat$tested <- suppressWarnings(as.numeric(dat$tested))
+  dat$positive <- suppressWarnings(as.numeric(dat$positive))
+
+  measure <- function(d) .count_completeness(d$tested, d$positive)
+  facility <- dat %>%
+    dplyr::group_by(dplyr::across(dplyr::all_of(unique(c(group_var, 'facility_id'))))) %>%
+    dplyr::group_modify(~ measure(.x)) %>%
+    dplyr::ungroup()
+  facility$passes_completeness <- .completeness_pass(facility, thresholds)
+  if (by == 'facility') {
+    return(dplyr::arrange(facility, facility_id))
+  }
+
+  pooled <- dat %>%
+    dplyr::group_by(dplyr::across(dplyr::all_of(group_var))) %>%
+    dplyr::group_modify(~ measure(.x)) %>%
+    dplyr::ungroup()
+  pooled$passes_completeness <- .completeness_pass(pooled, thresholds)
+  facility_counts <- facility %>%
+    dplyr::group_by(dplyr::across(dplyr::all_of(group_var))) %>%
+    dplyr::summarise(
+      n_facilities = dplyr::n(),
+      n_facilities_passing_completeness = sum(passes_completeness),
+      .groups = 'drop'
+    )
+  pooled %>%
+    dplyr::left_join(facility_counts, by = group_var) %>%
+    dplyr::arrange(.data[[group_var]])
 }

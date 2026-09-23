@@ -327,3 +327,71 @@ testthat::test_that('gap measurement plot data buckets every facility once', {
     routineqc::plot_reporting_consistency(consistency), 'ggplot'
   )
 })
+
+completeness_fixture <- function() {
+  tibble::tibble(
+    facility_id = rep(c('A', 'B', 'C'), each = 4),
+    district = rep(c('D1', 'D1', 'D2'), each = 4),
+    month_date = rep(seq.Date(as.Date('2024-01-01'), by = 'month', length.out = 4), 3),
+    tested = c(10, 10, 10, 10, 10, 10, 10, NA, NA, NA, NA, NA),
+    positive = c(1, 1, 1, 1, 1, NA, NA, 2, NA, NA, NA, NA)
+  )
+}
+
+testthat::test_that('count completeness is measured per facility', {
+  out <- routineqc::summarise_qc_count_completeness(completeness_fixture())
+  a <- out[out$facility_id == 'A', ]
+  b <- out[out$facility_id == 'B', ]
+  c <- out[out$facility_id == 'C', ]
+  testthat::expect_equal(a$prop_incomplete_counts, 0)
+  testthat::expect_equal(b$rows_missing_positive, 2)
+  testthat::expect_equal(b$rows_missing_tested, 1)
+  testthat::expect_equal(b$prop_incomplete_counts, 0.75)
+  # Rows missing both are reporting gaps, not incompleteness.
+  testthat::expect_equal(c$rows_with_any_count, 0)
+  testthat::expect_true(is.na(c$prop_incomplete_counts))
+  testthat::expect_true(all(out$passes_completeness))
+})
+
+testthat::test_that('count completeness thresholds fail incomplete and empty units', {
+  out <- routineqc::summarise_qc_count_completeness(
+    completeness_fixture(), strictness = 'moderate'
+  )
+  testthat::expect_identical(out$passes_completeness, c(TRUE, FALSE, FALSE))
+  loose <- routineqc::summarise_qc_count_completeness(
+    completeness_fixture(), strictness = 'moderate', max_prop_incomplete_counts = 0.8
+  )
+  testthat::expect_identical(loose$passes_completeness, c(TRUE, TRUE, FALSE))
+})
+
+testthat::test_that('count completeness pools by area and counts passing facilities', {
+  out <- routineqc::summarise_qc_count_completeness(
+    completeness_fixture(), by = 'district', strictness = 'moderate'
+  )
+  d1 <- out[out$district == 'D1', ]
+  testthat::expect_equal(d1$rows_with_any_count, 8)
+  testthat::expect_equal(d1$prop_incomplete_counts, 3 / 8)
+  testthat::expect_false(d1$passes_completeness)
+  testthat::expect_equal(d1$n_facilities, 2)
+  testthat::expect_equal(d1$n_facilities_passing_completeness, 1)
+  testthat::expect_error(
+    routineqc::summarise_qc_count_completeness(completeness_fixture(), by = 'council'),
+    'Missing required columns'
+  )
+})
+
+testthat::test_that('reporting consistency reports completeness separately from reporting', {
+  out <- routineqc::summarise_qc_reporting_consistency(
+    completeness_fixture(), strictness = 'lenient'
+  )
+  b <- out[out$facility_id == 'B', ]
+  testthat::expect_true(b$passes_reporting)
+  testthat::expect_false(b$passes_completeness)
+  testthat::expect_false(b$passes_strictness)
+  testthat::expect_error(
+    routineqc::summarise_qc_reporting_consistency(
+      dplyr::select(completeness_fixture(), -positive), max_prop_incomplete_counts = 0.1
+    ),
+    'requires a `positive` column'
+  )
+})

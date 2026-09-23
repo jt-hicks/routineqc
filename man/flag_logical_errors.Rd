@@ -10,7 +10,8 @@ flag_logical_errors(data)
 \item{data}{A prepared QC data frame.}
 }
 \value{
-The input data with logical error flags appended.
+The input data with logical error flags and \code{core_count_status}
+appended.
 }
 \description{
 Adds flags for impossible or invalid tested/positive combinations. Attendance
@@ -18,4 +19,14 @@ checks are applied only when non-missing \code{attending} values are accompanied
 by a non-empty \code{attendance_definition}. Data without attendance, or with an
 entirely missing attendance column, continue through core logical QC without
 attendance checks.
+}
+\details{
+A missing \code{tested} or \code{positive} value is not a logical error and sets no
+flag. It is recorded in \code{core_count_status} instead, one of \code{complete},
+\code{missing_positive}, \code{missing_tested} or \code{missing_both}, so that missingness
+can be summarised per facility and area by
+\code{\link[=summarise_qc_reporting_consistency]{summarise_qc_reporting_consistency()}} and \code{\link[=summarise_qc_count_completeness]{summarise_qc_count_completeness()}}
+without marking individual records for exclusion. A missing \code{tested} alongside
+a reported \code{positive} is treated the same way: prevalence is undefined, which
+is the consequence that matters.
 }

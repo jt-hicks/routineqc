@@ -11,6 +11,7 @@ filter_qc_facilities(
   max_gap_months = NULL,
   min_months_with_testing = NULL,
   min_prop_with_testing_dataset_window = NULL,
+  max_prop_incomplete_counts = NULL,
   consistency = NULL
 )
 }
@@ -26,6 +27,8 @@ filter_qc_facilities(
 \item{min_months_with_testing}{Optional threshold override.}
 
 \item{min_prop_with_testing_dataset_window}{Optional threshold override.}
+
+\item{max_prop_incomplete_counts}{Optional threshold override.}
 
 \item{consistency}{Optional precomputed output of
 \code{\link[=summarise_qc_reporting_consistency]{summarise_qc_reporting_consistency()}} used as a measurement cache. The

@@ -1,5 +1,56 @@
 # routineqc (development version)
 
+## Breaking changes
+
+- A missing `tested` or `positive` count is no longer a logical error.
+  `flag_missing_tested_or_positive` is replaced by `core_count_status`
+  (`complete`, `missing_positive`, `missing_tested`, `missing_both`), which is
+  descriptive and feeds no flag. Such rows no longer set `flag_core_invalid` or
+  `flag_invalid_logical`, and are no longer assigned `exclude_core_invalid`.
+  A missing `tested` alongside a reported `positive` is treated the same way,
+  since its prevalence is undefined either way.
+- The action policy is now version 2, and new runs can only use version 2.
+  Requesting version 1, which excluded rows missing either count, raises an
+  error naming the change. Runs persisted under version 1 remain readable by
+  `read_qc_run()` and the Run Explorer, with their original flags.
+- Rows missing a count are ineligible for the prevalence model with the new
+  `prediction_status` level `ineligible_missing_counts`, distinct from
+  `ineligible_core_counts`. The fit previously relied on the missing-count flag
+  to drop rows with `tested` but no `positive`; it now excludes them explicitly.
+- The residual rule is dispersion-adjusted. `add_prevalence_predictions()`
+  estimates the fit's dispersion (Pearson chi-square over residual df, floored
+  at 1) as `resid_dispersion` and adds `pearson_resid_scaled`;
+  `add_prevalence_qc_flags()` applies the residual cutoffs to the scaled
+  residual when present. Overdispersed data will raise far fewer residual
+  flags, and no longer disproportionately at high tested counts. The manifest
+  records `prevalence_dispersion`.
+- The all-negative rule is expectation-based. A month with at least
+  `all_negative_min_tested` tested and no positives is flagged only when the
+  model makes zero positives improbable: `(1 - p_hat)^(tested / dispersion)`
+  below the new `prevalence$all_negative_max_probability`, default 0.001. The
+  count-only rule flagged ordinary months in low-prevalence areas; on 452,755
+  ANC facility-months 77% of its flags had a model probability of zero above 1%.
+  Rows the model did not assess are not evaluated. The configuration schema is
+  now 5; stored schema 4 configurations remain readable.
+- Summary prevalence (`prevalence_before_qc`,
+  `prevalence_after_authorized_exclusions`) is computed over rows carrying both
+  counts. It previously divided all positives by all tested, so a row with
+  `tested` but no `positive` pulled prevalence down. Summaries gain
+  `incomplete_count_rows`.
+
+## New features
+
+- `summarise_qc_count_completeness()` measures how often `tested` and `positive`
+  are reported together, per facility or pooled per district, council, or
+  region, with a pass/fail against `max_prop_incomplete_counts`.
+  `summarise_qc_reporting_consistency()` includes the same measures and now
+  returns `passes_reporting` and `passes_completeness` alongside
+  `passes_strictness`. `qc_consistency_levels()` gains the
+  `max_prop_incomplete_counts` criterion, and the Run Explorer's Reporting
+  consistency tab shows and filters on it.
+- Added an Attendance tab to the Run Explorer: rows where tested exceeds the
+  attendance denominator, as a proportion of rows reporting both, overall, by
+  month, and by district, region, or facility.
 - Added facility reporting-consistency measurement:
   `summarise_qc_reporting_consistency()` reports, per facility, the months
   without testing split into absent, zero, and missing components, the longest

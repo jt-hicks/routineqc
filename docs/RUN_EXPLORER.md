@@ -40,7 +40,13 @@ must still be treated according to the confidentiality of the source data.
   optional threshold overrides reports how many facilities fall inside the chosen
   cohort, and a chart groups facilities by their longest gap. Strictness selects a
   review cohort; it never authorizes exclusion and never changes the stored run.
-  See `docs/REPORTING_CONSISTENCY.md`.
+  Count completeness, the share of rows missing exactly one of tested and
+  positive, is shown and filtered alongside. See `docs/REPORTING_CONSISTENCY.md`.
+- **Attendance:** where tested exceeds the attendance denominator. Proportions are
+  over rows reporting both counts, never all rows. Shows the attendance
+  definition the run carries, an overall summary, the monthly proportion, and a
+  table by district, region, or facility ranked by that proportion. Runs without
+  attendance data say so.
 - **Review queue:** display-only filters for action, priority, geography,
   facility, reason, prediction status, reporting dates, and reporting-consistency
   cohort. Focused column

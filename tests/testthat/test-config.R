@@ -2,7 +2,8 @@ testthat::test_that('recommended configuration records agreed defaults', {
   config <- routineqc::qc_config()
   testthat::expect_s3_class(config, 'routineqc_config')
   testthat::expect_identical(config$profile, 'recommended')
-  testthat::expect_identical(config$schema_version, 4L)
+  testthat::expect_identical(config$schema_version, 5L)
+  testthat::expect_equal(config$prevalence$all_negative_max_probability, 0.001)
   testthat::expect_identical(config$model$min_prediction_coverage, 0.8)
   testthat::expect_equal(config$prevalence$resid_threshold_large, 4)
   testthat::expect_equal(config$prevalence$resid_threshold_small, 5)
@@ -11,7 +12,7 @@ testthat::test_that('recommended configuration records agreed defaults', {
   testthat::expect_identical(config$tested_volume$baseline_mode, 'trailing')
   testthat::expect_false(config$tested_volume$baseline_uses_future)
   testthat::expect_identical(config$action_policy$name, 'conservative_review')
-  testthat::expect_identical(config$action_policy$version, 1L)
+  testthat::expect_identical(config$action_policy$version, 2L)
   testthat::expect_invisible(routineqc::validate_qc_config(config))
 })
 
@@ -69,7 +70,27 @@ testthat::test_that('configuration overrides are validated', {
     routineqc::qc_config(action_policy = list(name = 'aggressive_removal')),
     'conservative_review or flags_only'
   )
+  testthat::expect_error(
+    routineqc::qc_config(action_policy = list(version = 1L)),
+    'version 1 is no longer supported'
+  )
+  testthat::expect_error(
+    routineqc::assign_qc_action(tibble::tibble(flag_core_invalid = FALSE), policy_version = 1L),
+    'version 1 is no longer supported'
+  )
   broken <- config
   broken$temporal$require_adjacent_months <- 'yes'
   testthat::expect_error(routineqc::validate_qc_config(broken), 'TRUE or FALSE')
+})
+
+testthat::test_that('a stored schema 4 configuration without the zero-probability key is readable', {
+  old <- routineqc::qc_config()
+  old$schema_version <- 4L
+  old$prevalence$all_negative_max_probability <- NULL
+  testthat::expect_invisible(routineqc:::.validate_qc_config(old, stored = TRUE))
+  testthat::expect_error(routineqc::validate_qc_config(old), 'schema version')
+  testthat::expect_error(
+    routineqc::qc_config(prevalence = list(all_negative_max_probability = 0)),
+    'must be one number in'
+  )
 })

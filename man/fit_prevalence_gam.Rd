@@ -15,5 +15,6 @@ fit_prevalence_gam(data, nthreads = 1)
 A fitted \code{mgcv} model, or \code{NULL} if insufficient data.
 }
 \description{
-Fits a binomial GAM using logically valid rows with tested > 0.
+Fits a binomial GAM using logically valid rows with both counts present and
+tested > 0.
 }

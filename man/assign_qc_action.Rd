@@ -7,7 +7,7 @@
 assign_qc_action(
   data,
   policy = c("conservative_review", "flags_only"),
-  policy_version = 1L
+  policy_version = 2L
 )
 }
 \arguments{
@@ -15,7 +15,10 @@ assign_qc_action(
 
 \item{policy}{Either \code{conservative_review} or \code{flags_only}.}
 
-\item{policy_version}{Action-policy version. Currently only version 1.}
+\item{policy_version}{Action-policy version. Only version 2 is supported.
+Version 1 also authorized exclusion of rows with a missing \code{tested} or
+\code{positive} count; runs made under it are reproduced by the package version
+recorded in their manifest.}
 }
 \value{
 Data with primary action, review priority, accumulated reasons, and

@@ -8,12 +8,24 @@ authorized exclusion. No package function deletes source rows.
 ## Conservative review policy
 
 `conservative_review` is the default policy. It authorizes exclusion only when
-core tested/positive data are structurally unusable:
+core tested/positive data are impossible as reported:
 
-- tested or positive is missing;
 - tested or positive is negative;
 - positive is greater than tested;
 - positive is greater than zero when tested is zero.
+
+A missing `tested` or `positive` count is not grounds for exclusion or review.
+Missingness describes a facility's reporting, not an error in a record, so it is
+recorded in `core_count_status` and summarised per facility and area by
+`summarise_qc_reporting_consistency()` and `summarise_qc_count_completeness()`.
+A row missing a count receives `retain` unless another rule applies to what it
+does report: tested-volume checks still run on a row with `tested` but no
+`positive`. Its prevalence is `NA`, and prevalence summaries use only rows
+carrying both counts.
+
+This is policy version 2. Version 1 also authorized exclusion of rows missing
+either count; it is no longer supported, and a version 1 run is reproduced by
+the routineqc release recorded in its manifest.
 
 Attendance contradictions are review-only, even with an approved attendance
 definition. They can reflect a problem with the external attendance denominator

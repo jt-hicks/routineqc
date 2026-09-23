@@ -21,6 +21,7 @@
       resid_threshold_small = 5,
       resid_large_n = 20,
       all_negative_min_tested = 50,
+      all_negative_max_probability = 0.001,
       all_positive_min_tested = 30,
       large_change_threshold = 0.5,
       large_change_min_tested = 20,
@@ -32,7 +33,7 @@
     temporal = list(require_adjacent_months = TRUE),
     action_policy = list(
       name = 'conservative_review',
-      version = 1L
+      version = 2L
     ),
     tested_volume = list(
       baseline_mode = 'trailing',
@@ -103,7 +104,7 @@ qc_config <- function(profile = c('recommended', 'operational', 'retrospective',
   profile <- match.arg(profile)
   defaults <- .qc_profile_defaults(profile)
   config <- list(
-    schema_version = 4L,
+    schema_version = .qc_config_schema_version,
     profile = profile,
     model = .merge_config_section(defaults$model, model, 'model'),
     prevalence = .merge_config_section(defaults$prevalence, prevalence, 'prevalence'),
@@ -115,6 +116,11 @@ qc_config <- function(profile = c('recommended', 'operational', 'retrospective',
   validate_qc_config(config)
   config
 }
+
+# Schema 5 added prevalence$all_negative_max_probability. A stored schema 4
+# configuration is valid without it; its run applied the count-only rule.
+.qc_config_schema_version <- 5L
+.qc_config_keys_added <- list(`5` = list(prevalence = 'all_negative_max_probability'))
 
 .is_scalar_number <- function(x) {
   is.numeric(x) && length(x) == 1L && !is.na(x) && is.finite(x)
@@ -129,11 +135,19 @@ qc_config <- function(profile = c('recommended', 'operational', 'retrospective',
 #' @return `config`, invisibly, after successful validation.
 #' @export
 validate_qc_config <- function(config) {
+  .validate_qc_config(config)
+}
+
+# `stored = TRUE` validates the configuration of a persisted run, which may
+# carry an action-policy version that new runs can no longer use.
+.validate_qc_config <- function(config, stored = FALSE) {
   required <- c('schema_version', 'profile', 'model', 'prevalence', 'temporal', 'action_policy', 'tested_volume')
   if (!is.list(config) || !all(required %in% names(config))) {
     rlang::abort('QC configuration is missing required sections.')
   }
-  if (!identical(config$schema_version, 4L)) {
+  supported <- if (stored) c(4L, .qc_config_schema_version) else .qc_config_schema_version
+  if (!is.integer(config$schema_version) || length(config$schema_version) != 1L ||
+      !config$schema_version %in% supported) {
     rlang::abort('Unsupported QC configuration schema version.')
   }
   if (!is.character(config$profile) || length(config$profile) != 1L ||
@@ -142,6 +156,15 @@ validate_qc_config <- function(config) {
   }
 
   defaults <- .qc_profile_defaults(config$profile)
+  if (config$schema_version < .qc_config_schema_version) {
+    for (version in names(.qc_config_keys_added)) {
+      if (config$schema_version >= as.integer(version)) next
+      for (section in names(.qc_config_keys_added[[version]])) {
+        added <- .qc_config_keys_added[[version]][[section]]
+        defaults[[section]] <- defaults[[section]][setdiff(names(defaults[[section]]), added)]
+      }
+    }
+  }
   for (section in names(defaults)) {
     values <- config[[section]]
     if (!is.list(values) || !setequal(names(values), names(defaults[[section]]))) {
@@ -177,6 +200,12 @@ validate_qc_config <- function(config) {
       config$prevalence$prevalence_low_extreme >= config$prevalence$prevalence_high_extreme) {
     rlang::abort('Prevalence bounds must satisfy 0 <= low < high <= 1.')
   }
+  if (!is.null(config$prevalence$all_negative_max_probability) &&
+      (!.is_scalar_number(config$prevalence$all_negative_max_probability) ||
+       config$prevalence$all_negative_max_probability <= 0 ||
+       config$prevalence$all_negative_max_probability > 1)) {
+    rlang::abort('`prevalence$all_negative_max_probability` must be one number in (0, 1].')
+  }
   prevalence_logical <- c('large_change_require_adjacent', 'use_prevalence_bounds')
   if (any(!vapply(config$prevalence[prevalence_logical], rlang::is_bool, logical(1)))) {
     rlang::abort('Prevalence logical settings must be TRUE or FALSE.')
@@ -188,9 +217,7 @@ validate_qc_config <- function(config) {
       !config$action_policy$name %in% c('conservative_review', 'flags_only')) {
     rlang::abort('`action_policy$name` must be conservative_review or flags_only.')
   }
-  if (!identical(config$action_policy$version, 1L)) {
-    rlang::abort('Unsupported action policy version.')
-  }
+  .check_action_policy_version(config$action_policy$version, stored = stored)
   tested_numeric_names <- c(
     'baseline_window_months', 'min_roll_n', 'tested_z_threshold',
     'tested_high_ratio', 'tested_low_ratio', 'tested_jump_ratio',

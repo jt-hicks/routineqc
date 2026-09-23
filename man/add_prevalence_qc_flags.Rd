@@ -11,6 +11,7 @@ add_prevalence_qc_flags(
   resid_threshold_small = 5,
   resid_large_n = 20,
   all_negative_min_tested = 50,
+  all_negative_max_probability = 0.001,
   all_positive_min_tested = 30,
   large_change_threshold = 0.5,
   large_change_min_tested = 20,
@@ -35,6 +36,14 @@ least \code{resid_large_n}.}
 
 \item{all_negative_min_tested}{Minimum tested count for an all-negative flag.}
 
+\item{all_negative_max_probability}{An all-negative month is flagged only when
+the model makes zero positives at least this improbable. The probability is
+\code{(1 - p_hat)^(tested / resid_dispersion)}: the binomial chance of no
+positives with the tested count deflated by the dispersion, so that
+overdispersed data, in which zeros are commoner, are not over-flagged. A row
+the model did not assess is not evaluated. Data without \code{p_hat} fall back to
+the count-only rule.}
+
 \item{all_positive_min_tested}{Minimum tested count for an all-positive flag.}
 
 \item{large_change_threshold}{Absolute month-to-month prevalence change threshold.}
@@ -56,4 +65,7 @@ Data with prevalence QC flags appended.
 }
 \description{
 Adds prevalence-based anomaly flags using residuals and simple temporal rules.
+The residual rule uses \code{pearson_resid_scaled}, the dispersion-adjusted
+residual from \code{\link[=add_prevalence_predictions]{add_prevalence_predictions()}}, when present, and the raw
+\code{pearson_resid} otherwise.
 }

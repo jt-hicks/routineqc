@@ -150,6 +150,37 @@ prepare_qc_data <- function(data,
     )
 }
 
+.core_count_levels <- c('complete', 'missing_positive', 'missing_tested', 'missing_both')
+
+.core_count_status <- function(tested, positive) {
+  dplyr::case_when(
+    is.na(tested) & is.na(positive) ~ 'missing_both',
+    is.na(tested) ~ 'missing_tested',
+    is.na(positive) ~ 'missing_positive',
+    TRUE ~ 'complete'
+  )
+}
+
+# Runs are made under version 2 only. A stored version 1 run stays readable:
+# its flags were computed under the old policy and are reported as such.
+.check_action_policy_version <- function(version, stored = FALSE) {
+  if (stored && identical(version, 1L)) {
+    return(invisible(version))
+  }
+  if (identical(version, 1L)) {
+    rlang::abort(paste(
+      'Action policy version 1 is no longer supported. It authorized exclusion',
+      'of rows with a missing tested or positive count; version 2 records',
+      'missingness in `core_count_status` instead. Use version 2, or the',
+      'routineqc release that produced a version 1 run.'
+    ))
+  }
+  if (!identical(version, 2L)) {
+    rlang::abort('Unsupported action policy version.')
+  }
+  invisible(version)
+}
+
 #' Flag Logical Data Errors
 #'
 #' Adds flags for impossible or invalid tested/positive combinations. Attendance
@@ -158,9 +189,19 @@ prepare_qc_data <- function(data,
 #' entirely missing attendance column, continue through core logical QC without
 #' attendance checks.
 #'
+#' A missing `tested` or `positive` value is not a logical error and sets no
+#' flag. It is recorded in `core_count_status` instead, one of `complete`,
+#' `missing_positive`, `missing_tested` or `missing_both`, so that missingness
+#' can be summarised per facility and area by
+#' [summarise_qc_reporting_consistency()] and [summarise_qc_count_completeness()]
+#' without marking individual records for exclusion. A missing `tested` alongside
+#' a reported `positive` is treated the same way: prevalence is undefined, which
+#' is the consequence that matters.
+#'
 #' @param data A prepared QC data frame.
 #'
-#' @return The input data with logical error flags appended.
+#' @return The input data with logical error flags and `core_count_status`
+#'   appended.
 #' @export
 flag_logical_errors <- function(data) {
   .validate_required_columns(data, c("tested", "positive"))
@@ -182,7 +223,7 @@ flag_logical_errors <- function(data) {
       flag_tested_negative = tested < 0,
       flag_positive_negative = positive < 0,
       flag_zero_tested_positive = tested == 0 & positive > 0,
-      flag_missing_tested_or_positive = is.na(tested) | is.na(positive),
+      core_count_status = .core_count_status(tested, positive),
       flag_tested_gt_attending = !is.na(tested) & !is.na(attending) & tested > attending,
       flag_attending_negative = !is.na(attending) & attending < 0,
       flag_attendance_issue = flag_tested_gt_attending | flag_attending_negative,
@@ -190,8 +231,7 @@ flag_logical_errors <- function(data) {
         flag_positive_gt_tested |
           flag_tested_negative |
           flag_positive_negative |
-          flag_zero_tested_positive |
-          flag_missing_tested_or_positive
+          flag_zero_tested_positive
       ) %>%
         dplyr::coalesce(FALSE),
       flag_invalid_logical = flag_core_invalid | flag_attendance_issue
@@ -200,7 +240,8 @@ flag_logical_errors <- function(data) {
 
 #' Fit Prevalence GAM
 #'
-#' Fits a binomial GAM using logically valid rows with tested > 0.
+#' Fits a binomial GAM using logically valid rows with both counts present and
+#' tested > 0.
 #'
 #' @param data A prepared and logically flagged data frame.
 #' @param nthreads Number of threads to pass to [mgcv::bam()].
@@ -219,7 +260,10 @@ fit_prevalence_gam <- function(data, nthreads = 1) {
   }
 
   train <- train %>%
-    dplyr::filter(!flag_core_invalid, tested > 0, !is.na(month_num), !is.na(time_index)) %>%
+    dplyr::filter(
+      !flag_core_invalid, !is.na(positive), tested > 0,
+      !is.na(month_num), !is.na(time_index)
+    ) %>%
     dplyr::mutate(
       facility_id = as.factor(facility_id),
       region = as.factor(region)
@@ -276,12 +320,22 @@ fit_prevalence_gam <- function(data, nthreads = 1) {
 #'
 #' Appends fitted prevalence and residual diagnostics from a fitted GAM.
 #'
+#' The binomial model fixes its scale at 1, but routine facility data are
+#' usually overdispersed: facility-months vary more than binomial sampling
+#' allows. Unadjusted, every Pearson residual is inflated by the square root of
+#' the dispersion, so a residual cutoff fires far more often than its nominal
+#' size, and increasingly so at high tested counts. `resid_dispersion` is the
+#' Pearson chi-square over residual degrees of freedom of the fit, floored at 1,
+#' and `pearson_resid_scaled` divides the residual by its square root. The
+#' residual rule in [add_prevalence_qc_flags()] uses the scaled residual.
+#'
 #' @param data A prepared QC data frame.
 #' @param model A model returned by [fit_prevalence_gam()].
 #' @param min_prediction_coverage Warn when the proportion of model-eligible
 #'   rows successfully assessed falls below this value.
 #'
-#' @return The input data with prediction columns appended.
+#' @return The input data with prediction columns appended, including
+#'   `pearson_resid`, `resid_dispersion`, and `pearson_resid_scaled`.
 #' @export
 add_prevalence_predictions <- function(data, model, min_prediction_coverage = 0.8) {
   out <- dplyr::as_tibble(data)
@@ -295,10 +349,12 @@ add_prevalence_predictions <- function(data, model, min_prediction_coverage = 0.
 
   missing_predictor <- is.na(out$facility_id) | is.na(out$region) |
     is.na(out$month_num) | is.na(out$time_index)
-  eligible <- !out$flag_core_invalid & !is.na(out$tested) & out$tested > 0 & !missing_predictor
+  missing_counts <- is.na(out$tested) | is.na(out$positive)
+  eligible <- !out$flag_core_invalid & !missing_counts & out$tested > 0 & !missing_predictor
   status <- dplyr::case_when(
     out$flag_core_invalid ~ 'ineligible_core_counts',
-    is.na(out$tested) | out$tested <= 0 ~ 'ineligible_nonpositive_tested',
+    missing_counts ~ 'ineligible_missing_counts',
+    out$tested <= 0 ~ 'ineligible_nonpositive_tested',
     missing_predictor ~ 'ineligible_missing_predictor',
     TRUE ~ 'pending'
   )
@@ -361,15 +417,28 @@ add_prevalence_predictions <- function(data, model, min_prediction_coverage = 0.
         is.na(tested) | is.na(positive) | is.na(p_hat) | tested <= 0,
         NA_real_,
         (positive - expected_positive) / sqrt(tested * p_hat * (1 - p_hat))
-      )
+      ),
+      resid_dispersion = .model_dispersion(model),
+      pearson_resid_scaled = pearson_resid / sqrt(resid_dispersion)
     )
 
   out
 }
 
+.model_dispersion <- function(model) {
+  if (is.null(model)) return(NA_real_)
+  pr <- stats::residuals(model, type = 'pearson')
+  df <- stats::df.residual(model)
+  if (!is.finite(df) || df <= 0) return(NA_real_)
+  max(1, sum(pr^2) / df)
+}
+
 #' Add Prevalence QC Flags
 #'
 #' Adds prevalence-based anomaly flags using residuals and simple temporal rules.
+#' The residual rule uses `pearson_resid_scaled`, the dispersion-adjusted
+#' residual from [add_prevalence_predictions()], when present, and the raw
+#' `pearson_resid` otherwise.
 #'
 #' @param data A data frame with prevalence and prediction columns.
 #' @param resid_threshold Optional single absolute residual threshold overriding
@@ -379,6 +448,13 @@ add_prevalence_predictions <- function(data, model, min_prediction_coverage = 0.
 #' @param resid_threshold_small Absolute residual threshold below `resid_large_n`.
 #' @param resid_large_n Tested-count boundary for residual thresholds.
 #' @param all_negative_min_tested Minimum tested count for an all-negative flag.
+#' @param all_negative_max_probability An all-negative month is flagged only when
+#'   the model makes zero positives at least this improbable. The probability is
+#'   `(1 - p_hat)^(tested / resid_dispersion)`: the binomial chance of no
+#'   positives with the tested count deflated by the dispersion, so that
+#'   overdispersed data, in which zeros are commoner, are not over-flagged. A row
+#'   the model did not assess is not evaluated. Data without `p_hat` fall back to
+#'   the count-only rule.
 #' @param all_positive_min_tested Minimum tested count for an all-positive flag.
 #' @param large_change_threshold Absolute month-to-month prevalence change threshold.
 #' @param large_change_min_tested Minimum tested count required in both adjacent months.
@@ -397,6 +473,7 @@ add_prevalence_qc_flags <- function(data,
                                     resid_threshold_small = 5,
                                     resid_large_n = 20,
                                     all_negative_min_tested = 50,
+                                    all_negative_max_probability = 0.001,
                                     all_positive_min_tested = 30,
                                     large_change_threshold = 0.5,
                                     large_change_min_tested = 20,
@@ -411,7 +488,19 @@ add_prevalence_qc_flags <- function(data,
     resid_threshold_small <- resid_threshold
   }
 
-  out <- dplyr::as_tibble(data) %>%
+  out <- dplyr::as_tibble(data)
+  rule_resid <- if ('pearson_resid_scaled' %in% names(out)) out$pearson_resid_scaled else out$pearson_resid
+  out$.rule_resid <- rule_resid
+  # Chance of zero positives under the model. TRUE (always implausible) when
+  # there is no model, which reproduces the count-only rule.
+  out$.zero_implausible <- if ('p_hat' %in% names(out)) {
+    dispersion <- if ('resid_dispersion' %in% names(out)) out$resid_dispersion else 1
+    (1 - out$p_hat)^(out$tested / dispersion) < all_negative_max_probability
+  } else {
+    TRUE
+  }
+
+  out <- out %>%
     dplyr::group_by(facility_id) %>%
     dplyr::arrange(month_date, .by_group = TRUE) %>%
     dplyr::mutate(
@@ -425,8 +514,9 @@ add_prevalence_qc_flags <- function(data,
       residual_cutoff = dplyr::if_else(
         tested >= resid_large_n, resid_threshold_large, resid_threshold_small
       ),
-      flag_resid_extreme = !is.na(pearson_resid) & abs(pearson_resid) > residual_cutoff,
-      flag_all_negative_large_n = tested >= all_negative_min_tested & positive == 0,
+      flag_resid_extreme = !is.na(.rule_resid) & abs(.rule_resid) > residual_cutoff,
+      flag_all_negative_large_n = tested >= all_negative_min_tested & positive == 0 &
+        .zero_implausible,
       flag_all_positive_large_n = tested >= all_positive_min_tested & positive == tested,
       flag_large_monthly_prevalence_change = !is.na(monthly_prev_change) &
         (!large_change_require_adjacent | previous_month_is_adjacent) &
@@ -443,7 +533,7 @@ add_prevalence_qc_flags <- function(data,
     ) %>%
     dplyr::ungroup() %>%
     dplyr::select(-prev_lag, -tested_lag, -month_lag, -previous_month_is_adjacent,
-                  -residual_cutoff, -monthly_prev_change)
+                  -residual_cutoff, -monthly_prev_change, -.rule_resid, -.zero_implausible)
 
   out
 }
@@ -632,18 +722,19 @@ add_temporal_qc_flags <- function(data, require_adjacent_months = TRUE) {
 #'
 #' @param data A data frame with logical, prevalence, temporal, and volume flags.
 #' @param policy Either `conservative_review` or `flags_only`.
-#' @param policy_version Action-policy version. Currently only version 1.
+#' @param policy_version Action-policy version. Only version 2 is supported.
+#'   Version 1 also authorized exclusion of rows with a missing `tested` or
+#'   `positive` count; runs made under it are reproduced by the package version
+#'   recorded in their manifest.
 #'
 #' @return Data with primary action, review priority, accumulated reasons, and
 #'   explicit authorized-exclusion and review flags.
 #' @export
 assign_qc_action <- function(data,
                              policy = c('conservative_review', 'flags_only'),
-                             policy_version = 1L) {
+                             policy_version = 2L) {
   policy <- match.arg(policy)
-  if (!identical(policy_version, 1L)) {
-    rlang::abort('Unsupported action policy version.')
-  }
+  .check_action_policy_version(policy_version)
   out <- dplyr::as_tibble(data)
 
   required_optional <- c(
@@ -704,7 +795,7 @@ assign_qc_action <- function(data,
     )
 
   qc_reason <- rep('', nrow(out))
-  qc_reason <- .append_qc_reason(qc_reason, out$flag_core_invalid, 'impossible or missing core tested/positive counts')
+  qc_reason <- .append_qc_reason(qc_reason, out$flag_core_invalid, 'impossible core tested/positive counts')
   qc_reason <- .append_qc_reason(qc_reason, out$flag_attendance_issue, 'attendance denominator contradiction')
   qc_reason <- .append_qc_reason(qc_reason, out$flag_resid_extreme, 'prevalence residual extreme')
   qc_reason <- .append_qc_reason(qc_reason, out$flag_all_negative_large_n, 'all-negative with large tested count')
@@ -738,10 +829,16 @@ assign_qc_action <- function(data,
 
   group_syms <- rlang::syms(group_vars)
 
+  # Prevalence is taken over rows carrying both counts. A row with tested but no
+  # positive would otherwise add to the denominator and not the numerator.
+  dat$.complete_pair <- !is.na(dat$tested) & !is.na(dat$positive)
+  dat$.kept_pair <- dat$.complete_pair & !dplyr::coalesce(dat$flag_exclude_authorized, FALSE)
+
   dat %>%
     dplyr::group_by(!!!group_syms) %>%
     dplyr::summarise(
       total_rows = dplyr::n(),
+      incomplete_count_rows = sum(!.complete_pair),
       n_any_qc_issue = sum(flag_any_qc_issue, na.rm = TRUE),
       pct_any_qc_issue = 100 * n_any_qc_issue / total_rows,
       core_invalid_rows = sum(flag_core_invalid, na.rm = TRUE),
@@ -758,10 +855,13 @@ assign_qc_action <- function(data,
       total_positive_before_qc = sum(positive, na.rm = TRUE),
       total_tested_after_authorized_exclusions = sum(dplyr::if_else(flag_exclude_authorized, 0, tested), na.rm = TRUE),
       total_positive_after_authorized_exclusions = sum(dplyr::if_else(flag_exclude_authorized, 0, positive), na.rm = TRUE),
-      prevalence_before_qc = .safe_divide(total_positive_before_qc, total_tested_before_qc),
+      prevalence_before_qc = .safe_divide(
+        sum(positive[.complete_pair]),
+        sum(tested[.complete_pair])
+      ),
       prevalence_after_authorized_exclusions = .safe_divide(
-        total_positive_after_authorized_exclusions,
-        total_tested_after_authorized_exclusions
+        sum(positive[.kept_pair]),
+        sum(tested[.kept_pair])
       ),
       .groups = "drop"
     )
@@ -1243,6 +1343,10 @@ run_routine_qc <- function(raw_data,
   summaries$by_month <- summarise_qc_by_month(dat)
   summaries$by_facility <- summarise_qc_by_facility(dat)
   summaries$by_facility_reporting <- summarise_qc_reporting_consistency(dat)
+  for (area in intersect(c('district', 'council'), names(dat))) {
+    summaries[[paste0('count_completeness_by_', area)]] <-
+      summarise_qc_count_completeness(dat, by = area)
+  }
 
   .new_qc_run(
     data_flagged = dat,
