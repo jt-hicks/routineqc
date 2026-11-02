@@ -2,7 +2,7 @@ testthat::test_that('recommended configuration records agreed defaults', {
   config <- routineqc::qc_config()
   testthat::expect_s3_class(config, 'routineqc_config')
   testthat::expect_identical(config$profile, 'recommended')
-  testthat::expect_identical(config$schema_version, 5L)
+  testthat::expect_identical(config$schema_version, 6L)
   testthat::expect_equal(config$prevalence$all_negative_max_probability, 0.001)
   testthat::expect_identical(config$model$min_prediction_coverage, 0.8)
   testthat::expect_equal(config$prevalence$resid_threshold_large, 4)
@@ -12,7 +12,7 @@ testthat::test_that('recommended configuration records agreed defaults', {
   testthat::expect_identical(config$tested_volume$baseline_mode, 'trailing')
   testthat::expect_false(config$tested_volume$baseline_uses_future)
   testthat::expect_identical(config$action_policy$name, 'conservative_review')
-  testthat::expect_identical(config$action_policy$version, 2L)
+  testthat::expect_identical(config$action_policy$version, 3L)
   testthat::expect_invisible(routineqc::validate_qc_config(config))
 })
 
@@ -93,4 +93,14 @@ testthat::test_that('a stored schema 4 configuration without the zero-probabilit
     routineqc::qc_config(prevalence = list(all_negative_max_probability = 0)),
     'must be one number in'
   )
+})
+
+testthat::test_that('policy version 2 is refused for new runs but readable when stored', {
+  testthat::expect_error(routineqc::qc_config(action_policy = list(version = 2L)), 'version 2 is no longer supported')
+  old <- routineqc::qc_config()
+  old$schema_version <- 5L
+  old$action_policy$version <- 2L
+  old$attendance <- NULL
+  old$priority <- NULL
+  testthat::expect_invisible(routineqc:::.validate_qc_config(old, stored = TRUE))
 })

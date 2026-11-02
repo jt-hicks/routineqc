@@ -150,3 +150,28 @@ testthat::test_that('attendance mapping requires an explicit definition', {
     'attendance_definition'
   )
 })
+
+testthat::test_that('attendance flags grade the excess and judge coverage', {
+  dat <- tibble::tibble(
+    month_date = as.Date(c('2014-06-01', rep('2015-06-01', 6))),
+    tested    = c(2,  40, 12, 30, 9,  50, NA),
+    positive  = 0,
+    attending = c(20, 20, 11, 50, 15, 60, 30),
+    attendance_definition = 'first visits'
+  )
+  out <- routineqc::add_attendance_qc_flags(routineqc::flag_logical_errors(dat), coverage_from = '2015-01-01')
+  testthat::expect_equal(out$testing_coverage[1:2], c(0.1, 2))
+  # 40 of 20 is 2x and 20 over; 12 of 11 is a slight excess.
+  testthat::expect_identical(out$flag_tested_gt_attending, c(FALSE, TRUE, TRUE, FALSE, FALSE, FALSE, FALSE))
+  testthat::expect_identical(out$flag_tested_gt_attending_major, c(FALSE, TRUE, FALSE, FALSE, FALSE, FALSE, FALSE))
+  # 2014 is before coverage_from; 30/50 is low; 9/15 is low; 50/60 passes; missing tested is not judged.
+  testthat::expect_identical(out$flag_coverage_low, c(FALSE, FALSE, FALSE, TRUE, TRUE, FALSE, FALSE))
+  testthat::expect_identical(out$flag_coverage_very_low, rep(FALSE, 7))
+  low <- routineqc::add_attendance_qc_flags(routineqc::flag_logical_errors(dat), coverage_min_attending = 20)
+  testthat::expect_identical(low$flag_coverage_very_low, c(TRUE, rep(FALSE, 6)))
+  testthat::expect_false(low$flag_coverage_low[5])
+  testthat::expect_error(
+    routineqc::add_attendance_qc_flags(dat, coverage_low = 0.4, coverage_very_low = 0.5),
+    'Coverage cutoffs'
+  )
+})

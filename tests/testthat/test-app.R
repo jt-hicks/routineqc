@@ -484,3 +484,20 @@ testthat::test_that('attendance tab renders with and without attendance data', {
     testthat::expect_match(output$attendance_state$html, 'carries no attendance data')
   })
 })
+
+testthat::test_that('district marks show only the flags a chart can show, at their priority', {
+  dat <- tibble::tibble(
+    flag_resid_extreme = c(TRUE, FALSE, FALSE, FALSE),
+    flag_tested_gt_attending = c(FALSE, TRUE, FALSE, FALSE),
+    flag_coverage_low = c(FALSE, FALSE, TRUE, FALSE),
+    flag_coverage_very_low = c(FALSE, FALSE, TRUE, FALSE),
+    flag_core_invalid = c(FALSE, FALSE, FALSE, TRUE)
+  )
+  prev <- routineqc:::.district_flag_marks(dat, 'prevalence')
+  testthat::expect_identical(prev$.mark_family, c('prevalence', NA, NA, 'impossible'))
+  testthat::expect_identical(prev$.mark_priority, c('high', 'none', 'none', 'critical'))
+  cov <- routineqc:::.district_flag_marks(dat, 'coverage')
+  testthat::expect_identical(cov$.mark_family, c(NA, 'attendance', 'coverage', NA))
+  testthat::expect_identical(cov$.mark_priority, c('none', 'low', 'medium', 'none'))
+  testthat::expect_s3_class(routineqc:::.district_flag_key('coverage'), 'shiny.tag')
+})

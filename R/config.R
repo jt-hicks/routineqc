@@ -10,6 +10,36 @@
   utils::modifyList(defaults, overrides, keep.null = TRUE)
 }
 
+# Review priority of each flag. A row takes the highest priority among its
+# active flags; a row with signals in two or more domains takes at least
+# `multiple_signals`. Only impossible counts are authorized for exclusion,
+# whatever their priority here.
+.qc_priority_levels <- c('critical', 'high', 'medium', 'low')
+
+.default_qc_priority <- function() {
+  list(
+    positive_gt_tested = 'critical',
+    zero_tested_positive = 'critical',
+    tested_negative = 'critical',
+    positive_negative = 'critical',
+    all_negative_large_n = 'critical',
+    all_positive_large_n = 'critical',
+    resid_extreme = 'high',
+    tested_extreme_high = 'high',
+    tested_extreme_low = 'high',
+    tested_large_jump = 'high',
+    tested_large_drop = 'high',
+    multiple_signals = 'high',
+    large_monthly_prevalence_change = 'medium',
+    tested_gt_attending_major = 'medium',
+    attending_negative = 'medium',
+    coverage_very_low = 'medium',
+    tested_zero_unusual = 'low',
+    tested_gt_attending = 'low',
+    coverage_low = 'low'
+  )
+}
+
 .qc_profile_defaults <- function(profile) {
   recommended <- list(
     model = list(
@@ -33,8 +63,17 @@
     temporal = list(require_adjacent_months = TRUE),
     action_policy = list(
       name = 'conservative_review',
-      version = 2L
+      version = 3L
     ),
+    attendance = list(
+      excess_ratio = 1.5,
+      excess_min = 10,
+      coverage_low = 0.8,
+      coverage_very_low = 0.5,
+      coverage_min_attending = 10,
+      coverage_from = NULL
+    ),
+    priority = .default_qc_priority(),
     tested_volume = list(
       baseline_mode = 'trailing',
       baseline_window_months = 6,
@@ -92,6 +131,13 @@
 #' @param action_policy Named list selecting `conservative_review` or
 #'   `flags_only` and its policy version.
 #' @param tested_volume Named list of tested-volume overrides.
+#' @param attendance Named list of attendance-rule overrides: the ratio and
+#'   absolute excess at which tested above attendance counts as major, the two
+#'   testing-coverage cutoffs, the minimum attendance for a coverage judgement,
+#'   and `coverage_from`, an optional first month (`"YYYY-MM-DD"`) for coverage
+#'   rules.
+#' @param priority Named list overriding the review priority (`critical`,
+#'   `high`, `medium`, `low`) of individual flags. See `docs/ACTION_POLICY.md`.
 #'
 #' @return An object of class `routineqc_config`.
 #' @export
@@ -100,7 +146,9 @@ qc_config <- function(profile = c('recommended', 'operational', 'retrospective',
                       prevalence = list(),
                       temporal = list(),
                       action_policy = list(),
-                      tested_volume = list()) {
+                      tested_volume = list(),
+                      attendance = list(),
+                      priority = list()) {
   profile <- match.arg(profile)
   defaults <- .qc_profile_defaults(profile)
   config <- list(
@@ -110,17 +158,42 @@ qc_config <- function(profile = c('recommended', 'operational', 'retrospective',
     prevalence = .merge_config_section(defaults$prevalence, prevalence, 'prevalence'),
     temporal = .merge_config_section(defaults$temporal, temporal, 'temporal'),
     action_policy = .merge_config_section(defaults$action_policy, action_policy, 'action_policy'),
-    tested_volume = .merge_config_section(defaults$tested_volume, tested_volume, 'tested_volume')
+    tested_volume = .merge_config_section(defaults$tested_volume, tested_volume, 'tested_volume'),
+    attendance = .merge_config_section(defaults$attendance, attendance, 'attendance'),
+    priority = .merge_config_section(defaults$priority, priority, 'priority')
   )
   class(config) <- c('routineqc_config', 'list')
   validate_qc_config(config)
   config
 }
 
-# Schema 5 added prevalence$all_negative_max_probability. A stored schema 4
-# configuration is valid without it; its run applied the count-only rule.
-.qc_config_schema_version <- 5L
+# Schema 5 added prevalence$all_negative_max_probability; schema 6 added the
+# attendance and priority sections. A stored configuration from an earlier
+# schema is valid without what was added after it.
+.qc_config_schema_version <- 6L
 .qc_config_keys_added <- list(`5` = list(prevalence = 'all_negative_max_probability'))
+.qc_config_sections_added <- list(`6` = c('attendance', 'priority'))
+
+.validate_attendance_config <- function(attendance) {
+  numeric_names <- c('excess_ratio', 'excess_min', 'coverage_low',
+                     'coverage_very_low', 'coverage_min_attending')
+  if (any(!vapply(attendance[numeric_names], .is_scalar_number, logical(1)))) {
+    rlang::abort('All attendance numeric settings must be finite scalar numbers.')
+  }
+  if (attendance$excess_ratio < 1 || attendance$excess_min < 0 || attendance$coverage_min_attending < 0) {
+    rlang::abort('`attendance$excess_ratio` must be at least 1 and the minimums non-negative.')
+  }
+  if (attendance$coverage_very_low <= 0 || attendance$coverage_very_low > attendance$coverage_low ||
+      attendance$coverage_low > 1) {
+    rlang::abort('Coverage cutoffs must satisfy 0 < coverage_very_low <= coverage_low <= 1.')
+  }
+  from <- attendance$coverage_from
+  if (!is.null(from) && (!is.character(from) || length(from) != 1L ||
+                         is.na(suppressWarnings(as.Date(from, optional = TRUE))))) {
+    rlang::abort('`attendance$coverage_from` must be NULL or one date as "YYYY-MM-DD".')
+  }
+  invisible(attendance)
+}
 
 .is_scalar_number <- function(x) {
   is.numeric(x) && length(x) == 1L && !is.na(x) && is.finite(x)
@@ -145,7 +218,7 @@ validate_qc_config <- function(config) {
   if (!is.list(config) || !all(required %in% names(config))) {
     rlang::abort('QC configuration is missing required sections.')
   }
-  supported <- if (stored) c(4L, .qc_config_schema_version) else .qc_config_schema_version
+  supported <- if (stored) c(4L, 5L, .qc_config_schema_version) else .qc_config_schema_version
   if (!is.integer(config$schema_version) || length(config$schema_version) != 1L ||
       !config$schema_version %in% supported) {
     rlang::abort('Unsupported QC configuration schema version.')
@@ -163,6 +236,10 @@ validate_qc_config <- function(config) {
         added <- .qc_config_keys_added[[version]][[section]]
         defaults[[section]] <- defaults[[section]][setdiff(names(defaults[[section]]), added)]
       }
+    }
+    for (version in names(.qc_config_sections_added)) {
+      if (config$schema_version >= as.integer(version)) next
+      defaults[.qc_config_sections_added[[version]]] <- NULL
     }
   }
   for (section in names(defaults)) {
@@ -218,6 +295,18 @@ validate_qc_config <- function(config) {
     rlang::abort('`action_policy$name` must be conservative_review or flags_only.')
   }
   .check_action_policy_version(config$action_policy$version, stored = stored)
+  if (!is.null(config$attendance)) .validate_attendance_config(config$attendance)
+  if (!is.null(config$priority)) {
+    bad <- !vapply(config$priority, function(x) {
+      is.character(x) && length(x) == 1L && x %in% .qc_priority_levels
+    }, logical(1))
+    if (any(bad)) {
+      rlang::abort(paste0(
+        'Priority must be one of ', paste(.qc_priority_levels, collapse = ', '),
+        ': ', paste(names(config$priority)[bad], collapse = ', ')
+      ))
+    }
+  }
   tested_numeric_names <- c(
     'baseline_window_months', 'min_roll_n', 'tested_z_threshold',
     'tested_high_ratio', 'tested_low_ratio', 'tested_jump_ratio',

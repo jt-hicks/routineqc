@@ -161,21 +161,31 @@ prepare_qc_data <- function(data,
   )
 }
 
-# Runs are made under version 2 only. A stored version 1 run stays readable:
-# its flags were computed under the old policy and are reported as such.
+# Runs are made under version 3 only. Stored version 1 and 2 runs stay
+# readable: their flags were computed under the old policy and are reported as
+# such. Version 1 authorized exclusion of rows missing a count; version 2 set
+# priority by domain rather than by flag and had no coverage rules.
+.qc_policy_version <- 3L
+
 .check_action_policy_version <- function(version, stored = FALSE) {
-  if (stored && identical(version, 1L)) {
+  if (stored && (identical(version, 1L) || identical(version, 2L))) {
     return(invisible(version))
   }
   if (identical(version, 1L)) {
     rlang::abort(paste(
       'Action policy version 1 is no longer supported. It authorized exclusion',
-      'of rows with a missing tested or positive count; version 2 records',
-      'missingness in `core_count_status` instead. Use version 2, or the',
+      'of rows with a missing tested or positive count; current versions record',
+      'missingness in `core_count_status` instead. Use version 3, or the',
       'routineqc release that produced a version 1 run.'
     ))
   }
-  if (!identical(version, 2L)) {
+  if (identical(version, 2L)) {
+    rlang::abort(paste(
+      'Action policy version 2 is no longer supported for new runs. Version 3',
+      'sets priority per flag from `config$priority` and adds coverage rules.'
+    ))
+  }
+  if (!identical(version, .qc_policy_version)) {
     rlang::abort('Unsupported action policy version.')
   }
   invisible(version)
@@ -236,6 +246,59 @@ flag_logical_errors <- function(data) {
         dplyr::coalesce(FALSE),
       flag_invalid_logical = flag_core_invalid | flag_attendance_issue
     )
+}
+
+#' Add Attendance QC Flags
+#'
+#' Grades tested above attendance and judges testing coverage, tested divided
+#' by attendance. Both need an approved attendance denominator: rows without
+#' one, or without a tested count, are not compared and carry FALSE.
+#'
+#' Tested above attendance is `flag_tested_gt_attending` from
+#' [flag_logical_errors()]; `flag_tested_gt_attending_major` marks the subset
+#' more than `excess_ratio` times attendance and at least `excess_min` over.
+#' Coverage below `coverage_very_low` sets `flag_coverage_very_low`, and below
+#' `coverage_low` sets `flag_coverage_low`. Coverage is judged only where
+#' attendance is at least `coverage_min_attending` and, when `coverage_from` is
+#' given, from that month on.
+#'
+#' @param data A logically flagged QC data frame.
+#' @param excess_ratio,excess_min Thresholds for a major excess.
+#' @param coverage_low,coverage_very_low Coverage cutoffs.
+#' @param coverage_min_attending Minimum attendance for a coverage judgement.
+#' @param coverage_from Optional first month, `"YYYY-MM-DD"`, for coverage rules.
+#'
+#' @return Data with `testing_coverage` and the attendance flags appended.
+#' @export
+add_attendance_qc_flags <- function(data,
+                                    excess_ratio = 1.5,
+                                    excess_min = 10,
+                                    coverage_low = 0.8,
+                                    coverage_very_low = 0.5,
+                                    coverage_min_attending = 10,
+                                    coverage_from = NULL) {
+  .validate_attendance_config(list(
+    excess_ratio = excess_ratio, excess_min = excess_min,
+    coverage_low = coverage_low, coverage_very_low = coverage_very_low,
+    coverage_min_attending = coverage_min_attending, coverage_from = coverage_from
+  ))
+  out <- dplyr::as_tibble(data)
+  .validate_required_columns(out, c('tested', 'month_date'))
+  if (!'attending' %in% names(out)) out$attending <- NA_real_
+  if (!'flag_tested_gt_attending' %in% names(out)) out <- flag_logical_errors(out)
+
+  comparable <- !is.na(out$tested) & !is.na(out$attending)
+  judged <- comparable & out$attending > 0 & out$attending >= coverage_min_attending
+  if (!is.null(coverage_from)) judged <- judged & out$month_date >= as.Date(coverage_from)
+  coverage <- ifelse(comparable & out$attending > 0, out$tested / out$attending, NA_real_)
+
+  out$testing_coverage <- coverage
+  out$flag_tested_gt_attending_major <- dplyr::coalesce(out$flag_tested_gt_attending, FALSE) &
+    comparable & out$tested > excess_ratio * out$attending &
+    (out$tested - out$attending) >= excess_min
+  out$flag_coverage_very_low <- judged & coverage < coverage_very_low
+  out$flag_coverage_low <- judged & coverage < coverage_low
+  out
 }
 
 #' Fit Prevalence GAM
@@ -720,94 +783,130 @@ add_temporal_qc_flags <- function(data, require_adjacent_months = TRUE) {
 #' authorizes exclusion only for impossible core tested/positive records. The
 #' flags-only policy never authorizes exclusion.
 #'
-#' @param data A data frame with logical, prevalence, temporal, and volume flags.
+#' The action names the domain the evidence comes from: prevalence, tested
+#' volume, attendance, or testing coverage, or several at once. The review
+#' priority is set per flag by `priority`: a row takes the highest priority
+#' among its active flags, and a row with evidence in two or more domains takes
+#' at least the `multiple_signals` priority. Priority orders review; it never
+#' authorizes exclusion.
+#'
+#' @param data A data frame with logical, prevalence, temporal, volume, and
+#'   attendance flags.
 #' @param policy Either `conservative_review` or `flags_only`.
-#' @param policy_version Action-policy version. Only version 2 is supported.
-#'   Version 1 also authorized exclusion of rows with a missing `tested` or
-#'   `positive` count; runs made under it are reproduced by the package version
-#'   recorded in their manifest.
+#' @param policy_version Action-policy version. Only version 3 is accepted for
+#'   new runs; see `docs/ACTION_POLICY.md` for what earlier versions did.
+#' @param priority Named list of flag priorities, as in `qc_config()$priority`.
 #'
 #' @return Data with primary action, review priority, accumulated reasons, and
 #'   explicit authorized-exclusion and review flags.
 #' @export
 assign_qc_action <- function(data,
                              policy = c('conservative_review', 'flags_only'),
-                             policy_version = 2L) {
+                             policy_version = 3L,
+                             priority = .default_qc_priority()) {
   policy <- match.arg(policy)
   .check_action_policy_version(policy_version)
+  priority <- utils::modifyList(.default_qc_priority(), priority)
   out <- dplyr::as_tibble(data)
 
-  required_optional <- c(
+  flag_names <- c(
     'flag_core_invalid', 'flag_attendance_issue', 'flag_resid_extreme',
     'flag_all_negative_large_n', 'flag_all_positive_large_n',
     'flag_large_monthly_prevalence_change', 'flag_prevalence_extreme',
     'flag_tested_volume_extreme', 'flag_isolated_extreme',
-    'flag_temporal_context_insufficient'
+    'flag_temporal_context_insufficient', 'flag_positive_gt_tested',
+    'flag_zero_tested_positive', 'flag_tested_negative', 'flag_positive_negative',
+    'flag_tested_extreme_high', 'flag_tested_extreme_low', 'flag_tested_zero_unusual',
+    'flag_tested_large_jump', 'flag_tested_large_drop', 'flag_tested_gt_attending',
+    'flag_tested_gt_attending_major', 'flag_attending_negative',
+    'flag_coverage_low', 'flag_coverage_very_low'
   )
-
-  for (nm in required_optional) {
-    if (!nm %in% names(out)) {
-      out[[nm]] <- FALSE
-    }
+  for (nm in flag_names) {
+    if (!nm %in% names(out)) out[[nm]] <- FALSE
   }
+  on <- function(nm) dplyr::coalesce(as.logical(out[[nm]]), FALSE)
+
+  prevalence_issue <- on('flag_resid_extreme') | on('flag_all_negative_large_n') |
+    on('flag_all_positive_large_n') | on('flag_large_monthly_prevalence_change') |
+    on('flag_prevalence_extreme')
+  tested_issue <- on('flag_tested_volume_extreme')
+  attendance_issue <- on('flag_attendance_issue')
+  coverage_issue <- on('flag_coverage_low') | on('flag_coverage_very_low')
+  core_invalid <- on('flag_core_invalid')
+  n_domains <- as.integer(prevalence_issue) + as.integer(tested_issue) +
+    as.integer(attendance_issue) + as.integer(coverage_issue)
+  multiple <- n_domains >= 2L
+
+  # Highest priority among active flags, as an index into the levels (1 =
+  # critical); 5 means no flag.
+  rank <- rep(5L, nrow(out))
+  raise <- function(active, level) {
+    rank <<- pmin(rank, ifelse(active, match(level, .qc_priority_levels), 5L))
+  }
+  for (key in setdiff(names(priority), 'multiple_signals')) {
+    raise(on(paste0('flag_', key)), priority[[key]])
+  }
+  raise(core_invalid, 'critical')
+  raise(multiple, priority$multiple_signals)
+  # Data carrying only a domain summary flag, without the flags it summarises,
+  # still gets a review priority.
+  raise(rank == 5L & (prevalence_issue | tested_issue | attendance_issue | coverage_issue), 'medium')
+  review_priority <- c(.qc_priority_levels, 'none')[rank]
+
+  qc_action <- dplyr::case_when(
+    core_invalid & policy == 'conservative_review' ~ 'exclude_core_invalid',
+    core_invalid ~ 'review_core_invalid',
+    multiple ~ 'review_multiple_signals',
+    prevalence_issue ~ 'review_prevalence',
+    tested_issue ~ 'review_tested_volume',
+    attendance_issue ~ 'review_attendance',
+    coverage_issue ~ 'review_coverage',
+    TRUE ~ 'retain'
+  )
 
   out <- out %>%
     dplyr::mutate(
-      prevalence_issue = (
-        flag_resid_extreme |
-          flag_all_negative_large_n |
-          flag_all_positive_large_n |
-          flag_large_monthly_prevalence_change |
-          flag_prevalence_extreme |
-          flag_isolated_extreme
-      ) %>% dplyr::coalesce(FALSE),
-      tested_issue = flag_tested_volume_extreme %>% dplyr::coalesce(FALSE),
-      attendance_issue = flag_attendance_issue %>% dplyr::coalesce(FALSE),
-      n_qc_signal_domains = as.integer(attendance_issue) +
-        as.integer(prevalence_issue) + as.integer(tested_issue),
-      multiple_signal_issue = n_qc_signal_domains >= 2L,
-      qc_action = dplyr::case_when(
-        flag_core_invalid & policy == 'conservative_review' ~ 'exclude_core_invalid',
-        flag_core_invalid ~ 'review_core_invalid',
-        multiple_signal_issue ~ 'review_multiple_signals',
-        attendance_issue ~ 'review_attendance',
-        prevalence_issue ~ 'review_prevalence',
-        tested_issue ~ 'review_tested_volume',
-        flag_temporal_context_insufficient ~ 'review_temporal_context',
-        TRUE ~ 'retain'
-      ),
-      review_priority = dplyr::case_when(
-        flag_core_invalid ~ 'critical',
-        multiple_signal_issue ~ 'high',
-        attendance_issue | prevalence_issue | tested_issue ~ 'medium',
-        flag_temporal_context_insufficient ~ 'low',
-        TRUE ~ 'none'
-      ),
+      n_qc_signal_domains = n_domains,
+      qc_action = qc_action,
+      review_priority = review_priority,
       action_policy = policy,
       action_policy_version = policy_version,
       flag_exclude_authorized = qc_action == 'exclude_core_invalid',
       flag_review_recommended = startsWith(qc_action, 'review_'),
-      flag_sensitivity = !flag_core_invalid & (attendance_issue | prevalence_issue | tested_issue),
+      flag_sensitivity = !core_invalid &
+        (attendance_issue | prevalence_issue | tested_issue | coverage_issue),
       flag_any_qc_issue = qc_action != 'retain',
-      flag_tested_only_issue = tested_issue & !prevalence_issue & !attendance_issue & !flag_core_invalid,
-      flag_prevalence_only_issue = prevalence_issue & !tested_issue & !attendance_issue & !flag_core_invalid,
-      flag_combined_tested_prevalence_issue = tested_issue & prevalence_issue & !flag_core_invalid
+      flag_tested_only_issue = tested_issue & !prevalence_issue & !attendance_issue &
+        !coverage_issue & !core_invalid,
+      flag_prevalence_only_issue = prevalence_issue & !tested_issue & !attendance_issue &
+        !coverage_issue & !core_invalid,
+      flag_combined_tested_prevalence_issue = tested_issue & prevalence_issue & !core_invalid
     )
 
   qc_reason <- rep('', nrow(out))
-  qc_reason <- .append_qc_reason(qc_reason, out$flag_core_invalid, 'impossible core tested/positive counts')
-  qc_reason <- .append_qc_reason(qc_reason, out$flag_attendance_issue, 'attendance denominator contradiction')
-  qc_reason <- .append_qc_reason(qc_reason, out$flag_resid_extreme, 'prevalence residual extreme')
-  qc_reason <- .append_qc_reason(qc_reason, out$flag_all_negative_large_n, 'all-negative with large tested count')
-  qc_reason <- .append_qc_reason(qc_reason, out$flag_all_positive_large_n, 'all-positive with large tested count')
-  qc_reason <- .append_qc_reason(qc_reason, out$flag_large_monthly_prevalence_change, 'large adjacent-month prevalence change')
-  qc_reason <- .append_qc_reason(qc_reason, out$flag_isolated_extreme, 'isolated statistical extreme')
-  qc_reason <- .append_qc_reason(qc_reason, out$flag_tested_volume_extreme, 'tested-volume anomaly')
-  qc_reason <- .append_qc_reason(qc_reason, out$flag_temporal_context_insufficient, 'insufficient adjacent-month context')
+  add <- function(active, label) qc_reason <<- .append_qc_reason(qc_reason, active, label)
+  add(on('flag_positive_gt_tested'), 'more positive than tested')
+  add(on('flag_zero_tested_positive'), 'positives with zero tested')
+  add(on('flag_tested_negative') | on('flag_positive_negative'), 'negative count')
+  add(on('flag_all_negative_large_n'), 'no positives where the model expects some')
+  add(on('flag_all_positive_large_n'), 'every test positive')
+  add(on('flag_resid_extreme') & on('flag_isolated_extreme'), 'prevalence outlier, single month')
+  add(on('flag_resid_extreme') & !on('flag_isolated_extreme') & !on('flag_temporal_context_insufficient'),
+      'prevalence outlier, run of months')
+  add(on('flag_temporal_context_insufficient'), 'prevalence outlier at the edge of the series or a gap')
+  add(on('flag_large_monthly_prevalence_change'), 'prevalence jumps between months')
+  add(on('flag_tested_extreme_high'), 'tested far above baseline')
+  add(on('flag_tested_extreme_low'), 'tested far below baseline')
+  add(on('flag_tested_zero_unusual'), 'zero tested at a busy facility')
+  add(on('flag_tested_large_jump'), 'tested jumps from previous month')
+  add(on('flag_tested_large_drop'), 'tested drops from previous month')
+  add(on('flag_tested_gt_attending_major'), 'tested well above attendance')
+  add(on('flag_tested_gt_attending') & !on('flag_tested_gt_attending_major'), 'tested slightly above attendance')
+  add(on('flag_attending_negative'), 'negative attendance')
+  add(on('flag_coverage_very_low'), 'very low testing coverage')
+  add(on('flag_coverage_low') & !on('flag_coverage_very_low'), 'low testing coverage')
   out$qc_reason <- dplyr::if_else(qc_reason == '', 'No QC issue detected', qc_reason)
-
-  out %>%
-    dplyr::select(-prevalence_issue, -tested_issue, -attendance_issue, -multiple_signal_issue)
+  out
 }
 
 .summarise_qc_group <- function(data, group_vars = character(0)) {
@@ -1314,6 +1413,7 @@ run_routine_qc <- function(raw_data,
 
   dat <- prepared %>%
     flag_logical_errors()
+  dat <- do.call(add_attendance_qc_flags, c(list(data = dat), config$attendance))
 
   model <- fit_prevalence_gam(dat, nthreads = nthreads)
 
@@ -1327,7 +1427,8 @@ run_routine_qc <- function(raw_data,
   dat <- assign_qc_action(
     dat,
     policy = config$action_policy$name,
-    policy_version = config$action_policy$version
+    policy_version = config$action_policy$version,
+    priority = config$priority
   )
 
   summaries <- list(by_region = summarise_qc_by_region(dat))

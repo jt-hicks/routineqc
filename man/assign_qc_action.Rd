@@ -7,18 +7,20 @@
 assign_qc_action(
   data,
   policy = c("conservative_review", "flags_only"),
-  policy_version = 2L
+  policy_version = 3L,
+  priority = .default_qc_priority()
 )
 }
 \arguments{
-\item{data}{A data frame with logical, prevalence, temporal, and volume flags.}
+\item{data}{A data frame with logical, prevalence, temporal, volume, and
+attendance flags.}
 
 \item{policy}{Either \code{conservative_review} or \code{flags_only}.}
 
-\item{policy_version}{Action-policy version. Only version 2 is supported.
-Version 1 also authorized exclusion of rows with a missing \code{tested} or
-\code{positive} count; runs made under it are reproduced by the package version
-recorded in their manifest.}
+\item{policy_version}{Action-policy version. Only version 3 is accepted for
+new runs; see \code{docs/ACTION_POLICY.md} for what earlier versions did.}
+
+\item{priority}{Named list of flag priorities, as in \code{qc_config()$priority}.}
 }
 \value{
 Data with primary action, review priority, accumulated reasons, and
@@ -28,4 +30,12 @@ explicit authorized-exclusion and review flags.
 Applies a versioned action policy to factual QC flags. The conservative policy
 authorizes exclusion only for impossible core tested/positive records. The
 flags-only policy never authorizes exclusion.
+}
+\details{
+The action names the domain the evidence comes from: prevalence, tested
+volume, attendance, or testing coverage, or several at once. The review
+priority is set per flag by \code{priority}: a row takes the highest priority
+among its active flags, and a row with evidence in two or more domains takes
+at least the \code{multiple_signals} priority. Priority orders review; it never
+authorizes exclusion.
 }

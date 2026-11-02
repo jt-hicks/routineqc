@@ -10,7 +10,9 @@ qc_config(
   prevalence = list(),
   temporal = list(),
   action_policy = list(),
-  tested_volume = list()
+  tested_volume = list(),
+  attendance = list(),
+  priority = list()
 )
 }
 \arguments{
@@ -27,6 +29,15 @@ qc_config(
 \code{flags_only} and its policy version.}
 
 \item{tested_volume}{Named list of tested-volume overrides.}
+
+\item{attendance}{Named list of attendance-rule overrides: the ratio and
+absolute excess at which tested above attendance counts as major, the two
+testing-coverage cutoffs, the minimum attendance for a coverage judgement,
+and \code{coverage_from}, an optional first month (\code{"YYYY-MM-DD"}) for coverage
+rules.}
+
+\item{priority}{Named list overriding the review priority (\code{critical},
+\code{high}, \code{medium}, \code{low}) of individual flags. See \code{docs/ACTION_POLICY.md}.}
 }
 \value{
 An object of class \code{routineqc_config}.

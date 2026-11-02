@@ -180,6 +180,7 @@ filter_qc_review <- function(data,
     flag_exclude_authorized = 'Whether the active policy authorizes exclusion.',
     flag_review_recommended = 'Whether human review is recommended.',
     flag_core_invalid = 'Impossible core tested/positive counts; missing counts are not flagged.',
+    testing_coverage = 'Tested divided by attendance, where both are reported and attendance is above zero.',
     core_count_status = 'Which of tested and positive are present: complete, missing_positive, missing_tested, or missing_both.',
     flag_resid_extreme = 'Model residual exceeds the configured size-dependent threshold.',
     flag_tested_volume_extreme = 'Tested volume has corroborated evidence of an extreme value.'
@@ -535,7 +536,8 @@ filter_qc_review <- function(data,
             6,
             shiny::radioButtons(
               'district_plot_metric', 'Measure',
-              choices = c('Prevalence' = 'prevalence', 'Number tested' = 'tested'),
+              choices = c('Prevalence' = 'prevalence', 'Number tested' = 'tested',
+                          'Testing coverage' = 'coverage'),
               selected = 'prevalence', inline = TRUE
             ),
             shiny::checkboxInput(
@@ -549,6 +551,7 @@ filter_qc_review <- function(data,
           'District total summed across all reporting facilities, from the source ',
           'data before authorized exclusions. The measure follows the selection above.'
         ),
+        shiny::uiOutput('district_flag_key'),
         shiny::uiOutput('district_plot_ui')
       ),
       shiny::tabPanel(
@@ -955,8 +958,8 @@ filter_qc_review <- function(data,
       )
     } else {
       shiny::p(
-        'View every reporting facility in the selected district. Red marks identify rows ',
-        'recommended for review or authorized exclusion.'
+        'View every reporting facility in the selected district. Each chart marks only ',
+        'the flags it can show, coloured by type and sized by review priority.'
       )
     }
   })
@@ -971,6 +974,9 @@ filter_qc_review <- function(data,
     .plot_district_summary_series(
       data, input$plot_district, .value_or(input$district_plot_metric, 'prevalence')
     )
+  })
+  output$district_flag_key <- shiny::renderUI({
+    .district_flag_key(.value_or(input$district_plot_metric, 'prevalence'))
   })
   output$district_plot_ui <- shiny::renderUI({
     shiny::req(input$plot_district)
@@ -996,7 +1002,8 @@ filter_qc_review <- function(data,
     ))
     .plot_district_facets(
       data, input$plot_district, metric,
-      hide_untested = isTRUE(input$district_hide_untested)
+      hide_untested = isTRUE(input$district_hide_untested),
+      priority = selected_run()$config$priority
     )
   })
   output$configuration <- shiny::renderPrint({ selected_run()$config })

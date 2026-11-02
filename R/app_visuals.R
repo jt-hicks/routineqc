@@ -20,6 +20,8 @@
   switch(mode, flagged = review | exclude, review = review, exclude = exclude)
 }
 
+.if_null <- function(x, default) if (is.null(x)) default else x
+
 .value_or <- function(x, default) {
   if (is.null(x) || length(x) == 0L || any(is.na(x))) default else x
 }
@@ -33,6 +35,7 @@
     review_attendance = 'Review: attendance',
     review_prevalence = 'Review: prevalence',
     review_tested_volume = 'Review: tested volume',
+    review_coverage = 'Review: testing coverage',
     review_temporal_context = 'Review: temporal context'
   )
   out <- unname(labels[x])
@@ -50,6 +53,7 @@
     review_attendance = '#8073ac',
     review_prevalence = '#2c7fb8',
     review_tested_volume = '#fdae61',
+    review_coverage = '#1f5fa8',
     review_temporal_context = '#bdbdbd'
   )
   out <- unname(colors[x])
@@ -469,6 +473,83 @@
     )
 }
 
+# Flag families and the charts they belong on. A chart marks only the evidence
+# it can show: an attendance flag has nothing to say about prevalence.
+.qc_flag_families <- list(
+  impossible = list(
+    label = 'Impossible count', color = '#b3261e',
+    flags = c('core_invalid'), metrics = c('prevalence', 'tested')
+  ),
+  prevalence = list(
+    label = 'Prevalence', color = '#6a4c93',
+    flags = c('resid_extreme', 'all_negative_large_n', 'all_positive_large_n',
+              'large_monthly_prevalence_change'),
+    umbrella = 'prevalence_extreme', metrics = 'prevalence'
+  ),
+  tested = list(
+    label = 'Tested volume', color = '#b8620a',
+    flags = c('tested_extreme_high', 'tested_extreme_low', 'tested_zero_unusual',
+              'tested_large_jump', 'tested_large_drop'),
+    umbrella = 'tested_volume_extreme', metrics = 'tested'
+  ),
+  attendance = list(
+    label = 'Tested above attendance', color = '#2f7d6d',
+    flags = c('tested_gt_attending', 'tested_gt_attending_major', 'attending_negative'),
+    umbrella = 'attendance_issue', metrics = 'coverage'
+  ),
+  coverage = list(
+    label = 'Low testing coverage', color = '#1f5fa8',
+    flags = c('coverage_low', 'coverage_very_low'), metrics = 'coverage'
+  )
+)
+
+.qc_priority_style <- dplyr::tibble(
+  priority = c('critical', 'high', 'medium', 'low'),
+  label = c('Critical', 'High', 'Medium', 'Low'),
+  size = c(3.4, 2.8, 2.4, 1.8),
+  shape = c(16L, 16L, 21L, 21L),
+  stroke = c(0.6, 0.6, 1.3, 0.9)
+)
+
+# For each row, the family to mark on `metric` and its priority there: the
+# highest-priority family among the flags this chart can show.
+.district_flag_marks <- function(data, metric, priority = NULL) {
+  priority <- utils::modifyList(.default_qc_priority(), .if_null(priority, list()))
+  levels <- c(.qc_priority_levels, 'none')
+  on <- function(nm) {
+    col <- paste0('flag_', nm)
+    if (col %in% names(data)) dplyr::coalesce(as.logical(data[[col]]), FALSE) else rep(FALSE, nrow(data))
+  }
+  best_rank <- rep(length(levels), nrow(data))
+  best_family <- rep(NA_character_, nrow(data))
+  for (fam in names(.qc_flag_families)) {
+    spec <- .qc_flag_families[[fam]]
+    if (!metric %in% spec$metrics) next
+    rank <- rep(length(levels), nrow(data))
+    for (f in spec$flags) {
+      level <- if (f == 'core_invalid') 'critical' else .if_null(priority[[f]], 'medium')
+      rank <- pmin(rank, ifelse(on(f), match(level, levels), length(levels)))
+    }
+    if (!is.null(spec$umbrella)) {
+      rank <- pmin(rank, ifelse(on(spec$umbrella) & rank == length(levels), match('medium', levels), length(levels)))
+    }
+    better <- rank < best_rank
+    best_rank[better] <- rank[better]
+    best_family[better] <- fam
+  }
+  dplyr::tibble(.mark_family = best_family, .mark_priority = levels[best_rank])
+}
+
+.district_metric_value <- function(data, metric) {
+  if (metric == 'coverage') {
+    if ('testing_coverage' %in% names(data)) return(data$testing_coverage)
+    if (!'attending' %in% names(data)) return(rep(NA_real_, nrow(data)))
+    return(ifelse(!is.na(data$tested) & !is.na(data$attending) & data$attending > 0,
+                  data$tested / data$attending, NA_real_))
+  }
+  data[[metric]]
+}
+
 .district_plot_data <- function(data, district, hide_untested = FALSE) {
   .validate_required_columns(data, c('district', 'facility_id', 'month_date'))
   if (!rlang::is_bool(hide_untested)) {
@@ -491,12 +572,12 @@
   dat
 }
 
-.plot_district_facets <- function(data, district, metric = c('prevalence', 'tested'),
-                                  hide_untested = FALSE) {
+.plot_district_facets <- function(data, district,
+                                  metric = c('prevalence', 'tested', 'coverage'),
+                                  hide_untested = FALSE, priority = NULL) {
   metric <- match.arg(metric)
   dat <- .district_plot_data(data, district, hide_untested = hide_untested)
-  .validate_required_columns(dat, metric)
-  dat$.metric <- dat[[metric]]
+  dat$.metric <- .district_metric_value(dat, metric)
   dat$.reference <- if (metric == 'prevalence' && 'p_hat' %in% names(dat)) {
     dat$p_hat
   } else if (metric == 'tested' && 'tested_roll_median' %in% names(dat)) {
@@ -504,37 +585,78 @@
   } else {
     NA_real_
   }
+  dat <- dplyr::bind_cols(dat, .district_flag_marks(dat, metric, priority))
+  marks <- dat[!is.na(dat$.mark_family) & !is.na(dat$.metric), , drop = FALSE]
+  marks <- dplyr::left_join(marks, .qc_priority_style, by = c('.mark_priority' = 'priority'))
+  marks$.color <- vapply(marks$.mark_family, function(f) .qc_flag_families[[f]]$color, character(1))
+  # Draw higher priorities last so they sit on top.
+  marks <- marks[order(match(marks$.mark_priority, .qc_priority_levels), decreasing = TRUE), , drop = FALSE]
+
   plot <- ggplot2::ggplot(
     dat, ggplot2::aes(x = month_date, y = .metric, group = facility_id)
-  ) +
-    ggplot2::geom_line(color = '#2c7fb8', na.rm = TRUE) +
+  )
+  if (metric == 'coverage') {
+    plot <- plot +
+      ggplot2::geom_hline(yintercept = 1, color = '#9aa59f', linetype = 'dotted') +
+      ggplot2::geom_hline(yintercept = 0.8, color = '#9aa59f', linetype = 'dashed')
+  }
+  plot <- plot +
+    ggplot2::geom_line(color = '#5d6a63', linewidth = 0.4, na.rm = TRUE) +
     suppressWarnings(
       ggplot2::geom_point(
-        ggplot2::aes(text = .tooltip), color = '#2c7fb8', size = 1.2, na.rm = TRUE
+        ggplot2::aes(text = .tooltip), color = '#5d6a63', size = 0.7, na.rm = TRUE
       )
     ) +
     ggplot2::geom_line(
-      ggplot2::aes(y = .reference), color = '#fdae61', linetype = 'dashed', na.rm = TRUE
-    ) +
-    suppressWarnings(
+      ggplot2::aes(y = .reference), color = '#9aa59f', linetype = 'dashed', na.rm = TRUE
+    )
+  if (nrow(marks) > 0L) {
+    plot <- plot + suppressWarnings(
       ggplot2::geom_point(
-        data = dat[dat$.affected, , drop = FALSE],
-        ggplot2::aes(text = .tooltip), color = '#d73027', shape = 1, size = 2.2,
-        stroke = 0.8, na.rm = TRUE
+        data = marks,
+        ggplot2::aes(text = .tooltip, size = I(size), shape = I(shape),
+                     color = I(.color), fill = I(ifelse(shape == 21L, '#ffffff', .color)),
+                     stroke = I(stroke)),
+        na.rm = TRUE
       )
-    ) +
+    )
+  }
+  y_label <- switch(metric, prevalence = 'Prevalence', tested = 'Number tested',
+                    coverage = 'Tested / first attendance')
+  plot <- plot +
     ggplot2::facet_wrap(~facility_id, ncol = 3, scales = if (metric == 'tested') 'free_y' else 'fixed') +
     ggplot2::theme_minimal() +
-    ggplot2::labs(
-      x = 'Month', y = if (metric == 'prevalence') 'Prevalence' else 'Number tested',
-      title = paste(district, 'facility time series'),
-      subtitle = 'Dashed: model expectation or rolling baseline; red circles: QC-affected rows'
-    )
-  if (metric == 'prevalence') {
+    ggplot2::labs(x = 'Month', y = y_label, title = paste(district, 'facility time series'))
+  if (metric %in% c('prevalence', 'coverage')) {
     plot <- plot + ggplot2::scale_y_continuous(labels = scales::label_percent(accuracy = 1))
   }
   plotly::ggplotly(plot, tooltip = 'text') %>%
-    plotly::layout(margin = list(t = 80))
+    plotly::layout(margin = list(t = 60), showlegend = FALSE)
+}
+
+# Key for the facet marks, as HTML so it reads without hovering.
+.district_flag_key <- function(metric) {
+  fams <- Filter(function(s) metric %in% s$metrics, .qc_flag_families)
+  swatch <- function(color, filled, size) {
+    shiny::tags$span(style = paste0(
+      'display:inline-block;width:', size, 'px;height:', size, 'px;border-radius:50%;',
+      'border:2px solid ', color, ';background:', if (filled) color else '#fff', ';',
+      'vertical-align:middle;margin-right:6px;'
+    ))
+  }
+  item <- function(...) shiny::tags$span(style = 'margin-right:18px;white-space:nowrap;', ...)
+  shiny::div(
+    style = 'margin:6px 0 10px;font-size:13px;line-height:2;',
+    shiny::tags$strong('Flag type: ', style = 'margin-right:8px;'),
+    lapply(fams, function(s) item(swatch(s$color, TRUE, 12), s$label)),
+    shiny::tags$br(),
+    shiny::tags$strong('Priority: ', style = 'margin-right:8px;'),
+    item(swatch('#3f4744', TRUE, 15), 'Critical'),
+    item(swatch('#3f4744', TRUE, 12), 'High'),
+    item(swatch('#3f4744', FALSE, 12), 'Medium'),
+    item(swatch('#3f4744', FALSE, 9), 'Low'),
+    if (metric == 'coverage') item('Dashed line 80%, dotted 100%')
+  )
 }
 
 .district_summary_series <- function(data, district) {
@@ -552,17 +674,28 @@
 }
 
 .plot_district_summary_series <- function(data, district,
-                                          metric = c('prevalence', 'tested')) {
+                                          metric = c('prevalence', 'tested', 'coverage')) {
   metric <- match.arg(metric)
   summary <- .district_summary_series(data, district)
   if (nrow(summary) == 0L) {
     return(NULL)
   }
-  summary$summary_value <- if (metric == 'prevalence') {
-    summary$prevalence_before_qc
-  } else {
-    summary$total_tested_before_qc
+  if (metric == 'coverage') {
+    dat <- dplyr::as_tibble(data)
+    dat <- dat[!is.na(dat$district) & as.character(dat$district) == district, , drop = FALSE]
+    if (!'attending' %in% names(dat)) dat$attending <- NA_real_
+    cov <- dat %>%
+      dplyr::filter(!is.na(tested), !is.na(attending)) %>%
+      dplyr::group_by(month_date) %>%
+      dplyr::summarise(coverage = .safe_divide(sum(tested), sum(attending)), .groups = 'drop')
+    summary <- dplyr::left_join(summary, cov, by = 'month_date')
   }
+  summary$summary_value <- switch(
+    metric,
+    prevalence = summary$prevalence_before_qc,
+    tested = summary$total_tested_before_qc,
+    coverage = summary$coverage
+  )
   hover <- paste0(
     'Month: ', format(summary$month_date, '%Y-%m'),
     '<br>Facility-months reported: ', summary$total_rows,
@@ -575,7 +708,8 @@
     ),
     '<br>Rows with authorized exclusion: ', summary$authorized_exclusion_rows
   )
-  y_title <- if (metric == 'prevalence') 'District prevalence' else 'Total number tested'
+  y_title <- switch(metric, prevalence = 'District prevalence', tested = 'Total number tested',
+                    coverage = 'District testing coverage')
 
   plotly::plot_ly(
     summary, x = ~month_date, y = ~summary_value, type = 'scatter',
@@ -589,7 +723,7 @@
       xaxis = list(title = 'Month'),
       yaxis = list(
         title = y_title,
-        tickformat = if (metric == 'prevalence') '.1%' else NULL,
+        tickformat = if (metric == 'tested') NULL else '.1%',
         rangemode = 'tozero'
       ),
       hovermode = 'closest', margin = list(t = 55), showlegend = FALSE
