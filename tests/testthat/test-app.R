@@ -374,6 +374,26 @@ testthat::test_that('district facets can hide facilities with no testing data', 
   )
 })
 
+testthat::test_that('district facets lay rows out at the height the app gives them', {
+  testthat::expect_identical(routineqc:::.district_plot_height(1), 500)
+  testthat::expect_identical(routineqc:::.district_plot_height(50), 17 * 240)
+
+  facilities <- sprintf('F%02d', 1:30)
+  data <- tidyr::expand_grid(
+    facility_id = facilities, month_date = seq(as.Date('2024-01-01'), by = 'month', length.out = 6)
+  ) %>%
+    dplyr::mutate(
+      district = 'D1', tested = 20, positive = 2, prevalence = 0.1,
+      flag_review_recommended = FALSE, flag_exclude_authorized = FALSE
+    )
+  built <- plotly::plotly_build(routineqc:::.plot_district_facets(data, 'D1', 'prevalence'))
+  testthat::expect_identical(built$x$layout$height, routineqc:::.district_plot_height(30))
+  axes <- grep('^yaxis', names(built$x$layout), value = TRUE)
+  heights <- vapply(axes, function(a) diff(built$x$layout[[a]]$domain), numeric(1))
+  # Without an explicit height every row after the first collapses to a sliver.
+  testthat::expect_gt(min(heights), 0.05)
+})
+
 testthat::test_that('the review queue can be narrowed to a consistency cohort', {
   data <- consistency_app_run()$data_flagged
   all_rows <- routineqc::filter_qc_review(data, flagged_only = FALSE)

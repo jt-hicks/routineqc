@@ -572,6 +572,14 @@
   dat
 }
 
+# Pixel height of the facility facets, three to a row. The app container and
+# ggplotly() must agree on it: without an explicit height ggplotly() lays rows
+# out against a small default, and a district with many facilities collapses
+# every row after the first.
+.district_plot_height <- function(n_facilities) {
+  max(500, ceiling(n_facilities / 3) * 240)
+}
+
 .plot_district_facets <- function(data, district,
                                   metric = c('prevalence', 'tested', 'coverage'),
                                   hide_untested = FALSE, priority = NULL) {
@@ -630,7 +638,10 @@
   if (metric %in% c('prevalence', 'coverage')) {
     plot <- plot + ggplot2::scale_y_continuous(labels = scales::label_percent(accuracy = 1))
   }
-  plotly::ggplotly(plot, tooltip = 'text') %>%
+  plotly::ggplotly(
+    plot, tooltip = 'text',
+    height = .district_plot_height(dplyr::n_distinct(dat$facility_id))
+  ) %>%
     plotly::layout(margin = list(t = 60), showlegend = FALSE)
 }
 

@@ -71,6 +71,13 @@
   and draw no random numbers at their defaults, so existing seeded output is
   unchanged.
 
+## Bug fixes
+
+- The Run Explorer's district page no longer collapses the facility time series
+  of a district with many facilities. `ggplotly()` was not given the height the
+  page allots, so every facet row after the first was squeezed to a sliver; the
+  page and the plot now share one height.
+
 # routineqc 0.1.0
 
 This is the first experimental release candidate. The QC engine, orchestration

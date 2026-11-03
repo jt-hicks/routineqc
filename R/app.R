@@ -985,8 +985,9 @@ filter_qc_review <- function(data,
       hide_untested = isTRUE(input$district_hide_untested)
     )
     facilities <- dplyr::n_distinct(data$facility_id)
-    height <- max(500, ceiling(facilities / 3) * 240)
-    plotly::plotlyOutput('district_plot', height = paste0(height, 'px'))
+    plotly::plotlyOutput(
+      'district_plot', height = paste0(.district_plot_height(facilities), 'px')
+    )
   })
   output$district_plot <- plotly::renderPlotly({
     shiny::req(input$plot_district)
