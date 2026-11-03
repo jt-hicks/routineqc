@@ -37,6 +37,13 @@
   counts. It previously divided all positives by all tested, so a row with
   `tested` but no `positive` pulled prevalence down. Summaries gain
   `incomplete_count_rows`.
+- `flag_large_monthly_prevalence_change` no longer fires on the month after an
+  extreme prevalence month (`flag_prevalence_extreme`) unless that month is
+  extreme itself. The return from an outlier differs from it by construction and
+  was flagged as a second finding: in a saved 452,755-row ANC run, 339 of 860
+  change flags (39%) were of this kind, all on months within the residual
+  cutoff. Entering the outlier, and swings with no outlier at either end, are
+  still flagged.
 
 ## New features
 

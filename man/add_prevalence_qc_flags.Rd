@@ -46,7 +46,10 @@ the count-only rule.}
 
 \item{all_positive_min_tested}{Minimum tested count for an all-positive flag.}
 
-\item{large_change_threshold}{Absolute month-to-month prevalence change threshold.}
+\item{large_change_threshold}{Absolute month-to-month prevalence change threshold.
+A month whose predecessor is itself an extreme prevalence month
+(\code{flag_prevalence_extreme}) is not flagged for the change unless it is
+extreme too: the return from an outlier is not a second finding.}
 
 \item{large_change_min_tested}{Minimum tested count required in both adjacent months.}
 

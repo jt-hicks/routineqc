@@ -520,6 +520,9 @@ add_prevalence_predictions <- function(data, model, min_prediction_coverage = 0.
 #'   the count-only rule.
 #' @param all_positive_min_tested Minimum tested count for an all-positive flag.
 #' @param large_change_threshold Absolute month-to-month prevalence change threshold.
+#'   A month whose predecessor is itself an extreme prevalence month
+#'   (`flag_prevalence_extreme`) is not flagged for the change unless it is
+#'   extreme too: the return from an outlier is not a second finding.
 #' @param large_change_min_tested Minimum tested count required in both adjacent months.
 #' @param large_change_require_adjacent Whether large-change comparisons require
 #'   consecutive calendar months.
@@ -592,7 +595,11 @@ add_prevalence_qc_flags <- function(data,
           flag_resid_extreme |
           flag_all_negative_large_n |
           flag_all_positive_large_n
-      ) %>% dplyr::coalesce(FALSE)
+      ) %>% dplyr::coalesce(FALSE),
+      # The month after an outlier differs from it by construction. Its change
+      # is the outlier's, so it is flagged only if it is itself anomalous.
+      flag_large_monthly_prevalence_change = flag_large_monthly_prevalence_change &
+        !(dplyr::lag(flag_prevalence_extreme, default = FALSE) & !flag_prevalence_extreme)
     ) %>%
     dplyr::ungroup() %>%
     dplyr::select(-prev_lag, -tested_lag, -month_lag, -previous_month_is_adjacent,

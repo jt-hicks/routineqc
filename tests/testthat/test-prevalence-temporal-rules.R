@@ -51,6 +51,31 @@ testthat::test_that('large prevalence changes require volume and adjacent months
   testthat::expect_identical(flagged, 'A')
 })
 
+testthat::test_that('the month after an outlier is not flagged for the change back', {
+  dat <- dplyr::bind_rows(
+    # A: normal, outlier, normal. The return to normal is not flagged.
+    prevalence_fixture(c(40, 40, 40), c(4, 40, 4), c(0, 12, 0), facility = 'A'),
+    # B: a swing with no outlier in either month is still flagged.
+    prevalence_fixture(c(40, 40, 40), c(4, 4, 36), c(0, 0, 0), facility = 'B'),
+    # C: the month after the outlier is itself an outlier, so it keeps its flag.
+    prevalence_fixture(c(40, 40, 40), c(4, 40, 4), c(0, 12, 6), facility = 'C')
+  )
+  out <- routineqc::add_prevalence_qc_flags(dat)
+  change <- function(f) out$flag_large_monthly_prevalence_change[out$facility_id == f]
+  # Entering the outlier is still flagged; leaving it is not.
+  testthat::expect_identical(change('A'), c(FALSE, TRUE, FALSE))
+  testthat::expect_identical(change('B'), c(FALSE, FALSE, TRUE))
+  testthat::expect_identical(change('C'), c(FALSE, TRUE, TRUE))
+  testthat::expect_identical(out$flag_resid_extreme[out$facility_id == 'A'], c(FALSE, TRUE, FALSE))
+})
+
+testthat::test_that('an all-positive month also stops the echo that follows it', {
+  dat <- prevalence_fixture(c(40, 40, 40), c(4, 40, 4), c(0, 0, 0))
+  out <- routineqc::add_prevalence_qc_flags(dat)
+  testthat::expect_identical(out$flag_all_positive_large_n, c(FALSE, TRUE, FALSE))
+  testthat::expect_identical(out$flag_large_monthly_prevalence_change, c(FALSE, TRUE, FALSE))
+})
+
 testthat::test_that('isolated extremes require complete adjacent-month context', {
   dat <- tibble::tibble(
     facility_id = c(rep('A', 3), rep('B', 3)),
