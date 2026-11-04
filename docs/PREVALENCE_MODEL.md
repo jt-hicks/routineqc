@@ -21,6 +21,25 @@ long-term time smooth, and a facility random effect. Basis dimensions may be
 reduced when the data do not support the defaults. Fewer than 50 valid rows or
 fewer than two facilities produces no model rather than an unstable fit.
 
+The structure is simplified before the fit is abandoned. With a single region the
+region term and `by = region` are dropped. The seasonal smooth is kept only when
+every calendar month has at least five valid rows, and the time smooth only with
+at least six distinct months; a warning names what was dropped. If no structure
+can be fitted, `fit_prevalence_gam()` returns `NULL` with a warning and
+`run_routine_qc()` carries on: every row is `model_unavailable`, model-derived
+flags stay false, and the logical, tested-volume, attendance, and count-only
+rules still run.
+
+## Statistical scope: what "operational" covers
+
+"Operational" describes the trailing tested-volume baseline only: it uses
+earlier months, so those flags reflect what was knowable at the reporting date.
+It is not a property of the whole run. The GAM is fitted to every valid row,
+including months after the one being assessed, and the temporal isolation check
+(`flag_isolated_extreme`) reads the following month. A row's
+prevalence flags can therefore change when later data are appended, and a run
+must not be described as using only information available at the time.
+
 ## Row-level assessment status
 
 Every input row is preserved. `model_assessment_eligible` identifies rows with
@@ -66,7 +85,11 @@ The all-negative rule uses the same dispersion. A month with no positives is
 flagged only when `(1 - p_hat)^(tested / resid_dispersion)`, the chance of zero
 positives with the tested count deflated by the dispersion, is below
 `all_negative_max_probability`. Fifty negative tests are unremarkable where the
-model expects 2% positivity and implausible where it expects 20%.
+model expects 2% positivity and implausible where it expects 20%. This
+expression is a heuristic: deflating the exponent by the dispersion is a
+plausible adjustment, not a calibrated probability. It awaits calibration
+against labelled data, and the default threshold of 0.001 should not be read
+as a false-positive rate.
 
 ## Coverage
 

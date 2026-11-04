@@ -4,14 +4,24 @@
 \alias{plot_prevalence_residuals}
 \title{Plot Prevalence Residuals}
 \usage{
-plot_prevalence_residuals(data)
+plot_prevalence_residuals(data, config = NULL)
 }
 \arguments{
-\item{data}{A QC data frame with \code{pearson_resid} and \code{month_date}.}
+\item{data}{A \code{routineqc_run}, or a QC data frame with \code{month_date} and
+\code{pearson_resid} (and \code{pearson_resid_scaled}, when available).}
+
+\item{config}{A \code{\link[=qc_config]{qc_config()}}. Taken from \code{data} when it is a run. For a
+data frame the recommended thresholds are drawn when \code{config} is \code{NULL},
+and the subtitle says so.}
 }
 \value{
 A ggplot object.
 }
 \description{
-Plot Prevalence Residuals
+Plots the residual the prevalence rule was applied to against the cutoffs it
+used. That is the dispersion-scaled residual (\code{pearson_resid_scaled}) when
+the data carry it, and \code{pearson_resid} for runs that predate it. Cutoffs
+follow \code{config$prevalence}: \code{resid_threshold_large} where tested is at least
+\code{resid_large_n} and \code{resid_threshold_small} below it, or the single
+\code{resid_threshold} when set.
 }

@@ -117,6 +117,8 @@ testthat::test_that('a persisted version 1 run stays readable', {
   run$config$action_policy$version <- 1L
   run$manifest$config$action_policy$version <- 1L
   run$manifest$config_fingerprint <- digest::digest(run$manifest$config, algo = 'sha256', serialize = TRUE)
+  # Runs written before build identity was recorded carry no `build`.
+  run$manifest$build <- NULL
   run$manifest$analysis_id <- routineqc:::.analysis_id(
     run$manifest$run_schema_version, run$manifest$package_version,
     run$manifest$input_fingerprint, run$manifest$config_fingerprint

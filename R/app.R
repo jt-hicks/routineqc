@@ -180,6 +180,7 @@ filter_qc_review <- function(data,
     flag_exclude_authorized = 'Whether the active policy authorizes exclusion.',
     flag_review_recommended = 'Whether human review is recommended.',
     flag_core_invalid = 'Impossible core tested/positive counts; missing counts are not flagged.',
+    flag_count_invalid_value = 'A tested or positive value was supplied but is not a valid whole number (malformed text, NaN/Inf, or fractional). Never repaired or excluded automatically; the original is in the *_source column and the reason in *_parse_status.',
     testing_coverage = 'Tested divided by attendance, where both are reported and attendance is above zero.',
     core_count_status = 'Which of tested and positive are present: complete, missing_positive, missing_tested, or missing_both.',
     flag_resid_extreme = 'Model residual exceeds the configured size-dependent threshold.',
@@ -904,35 +905,10 @@ filter_qc_review <- function(data,
   output$residual_plot <- plotly::renderPlotly({
     run <- selected_run()
     data <- run$data_flagged
-    prevalence_config <- run$config$prevalence
-    if (is.null(prevalence_config$resid_threshold)) {
-      data$residual_rule_threshold <- ifelse(
-        data$tested >= prevalence_config$resid_large_n,
-        prevalence_config$resid_threshold_large,
-        prevalence_config$resid_threshold_small
-      )
-      thresholds <- sort(unique(c(
-        -prevalence_config$resid_threshold_small,
-        -prevalence_config$resid_threshold_large,
-        prevalence_config$resid_threshold_large,
-        prevalence_config$resid_threshold_small
-      )))
-    } else {
-      data$residual_rule_threshold <- prevalence_config$resid_threshold
-      thresholds <- c(-prevalence_config$resid_threshold, prevalence_config$resid_threshold)
-    }
-    # Plot the residual the rule was applied to. Runs before 0.1.0.9000 carry
-    # only the unscaled one.
-    scaled <- 'pearson_resid_scaled' %in% names(data)
+    spec <- .residual_rule_spec(data, run$config$prevalence)
+    data$residual_rule_threshold <- spec$row_threshold
     .plot_diagnostic_points(
-      data, if (scaled) 'pearson_resid_scaled' else 'pearson_resid',
-      'Prevalence residual diagnostics',
-      if (scaled) {
-        sprintf('Pearson residual / sqrt(dispersion %.2f)', data$resid_dispersion[[1]])
-      } else {
-        'Pearson residual'
-      },
-      thresholds
+      data, spec$column, 'Prevalence residual diagnostics', spec$label, spec$thresholds
     )
   })
   output$tested_plot <- plotly::renderPlotly({

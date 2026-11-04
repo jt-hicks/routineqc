@@ -59,6 +59,71 @@
   dplyr::if_else(is.na(den) | den == 0, NA_real_, as.numeric(num) / as.numeric(den))
 }
 
+# Prevalence is taken over rows carrying both counts. A row with `tested` but no
+# `positive` would otherwise add to the denominator and not the numerator. The
+# summary tables and every before/after chart use this one definition.
+.pair_prevalence <- function(tested, positive, keep = rep(TRUE, length(tested))) {
+  pair <- !is.na(tested) & !is.na(positive) & keep
+  .safe_divide(sum(positive[pair]), sum(tested[pair]))
+}
+
+.authorized_exclusion <- function(data) {
+  if ('flag_exclude_authorized' %in% names(data)) {
+    dplyr::coalesce(as.logical(data$flag_exclude_authorized), FALSE)
+  } else {
+    rep(FALSE, nrow(data))
+  }
+}
+
+.before_after_prevalence <- function(data) {
+  excluded <- .authorized_exclusion(data)
+  list(
+    before = .pair_prevalence(data$tested, data$positive),
+    after = .pair_prevalence(data$tested, data$positive, !excluded)
+  )
+}
+
+# What the residual rule actually used: the dispersion-scaled residual when the
+# data carry it (as `add_prevalence_qc_flags()` prefers), and the cutoff that
+# applies to each row. Plots draw this so they cannot disagree with the flags.
+.residual_rule_spec <- function(data, prevalence_config) {
+  scaled <- 'pearson_resid_scaled' %in% names(data)
+  single <- prevalence_config$resid_threshold
+  large <- if (is.null(single)) prevalence_config$resid_threshold_large else single
+  small <- if (is.null(single)) prevalence_config$resid_threshold_small else single
+  dispersion <- if ('resid_dispersion' %in% names(data)) {
+    finite <- data$resid_dispersion[is.finite(data$resid_dispersion)]
+    if (length(finite) > 0L) finite[[1]] else NA_real_
+  } else {
+    NA_real_
+  }
+  list(
+    column = if (scaled) 'pearson_resid_scaled' else 'pearson_resid',
+    label = if (scaled && !is.na(dispersion)) {
+      sprintf('Pearson residual / sqrt(dispersion %.2f)', dispersion)
+    } else {
+      'Pearson residual'
+    },
+    thresholds = sort(unique(c(-small, -large, large, small))),
+    row_threshold = ifelse(data$tested >= prevalence_config$resid_large_n, large, small),
+    large = large, small = small, large_n = prevalence_config$resid_large_n
+  )
+}
+
+# Plot helpers accept a run (which carries its configuration) or its flagged
+# data. Without a configuration the recommended thresholds are drawn and the
+# chart says so.
+.plot_input <- function(data, config = NULL) {
+  if (inherits(data, 'routineqc_run')) {
+    if (!is.null(config)) rlang::abort('Supply `config` only with a data frame.')
+    return(list(data = data$data_flagged, config = data$config, assumed = FALSE))
+  }
+  list(
+    data = data, config = if (is.null(config)) qc_config() else config,
+    assumed = is.null(config)
+  )
+}
+
 .validate_required_columns <- function(data, cols) {
   missing_cols <- setdiff(cols, names(data))
   if (length(missing_cols) > 0) {
@@ -70,6 +135,18 @@
 #'
 #' Standardises user-specified columns into a common schema used across QC
 #' functions and appends derived fields without dropping rows.
+#'
+#' Counts are translated without repair, by the same rules as
+#' [adapt_qc_data()]. Each tested and positive value gets a status in
+#' `tested_parse_status` / `positive_parse_status`: `ok`; `missing` (`NA` or a
+#' blank string, genuinely not reported); `malformed` (present but not a number,
+#' such as `"n/a"` or `"1,000"`); `non_finite` (`NaN` or `Inf`); or `fractional`
+#' (a finite number with a fractional part). Malformed and non-finite values
+#' become `NA`; a fractional value is kept as supplied and never rounded.
+#' Factors are read by label, not integer code. The value as supplied is kept in
+#' `tested_source` / `positive_source`. A value that is malformed, non-finite
+#' or fractional is not missing: [flag_logical_errors()] flags it as an invalid
+#' count, and a warning reports how many were found.
 #'
 #' @param data A data frame with raw routine surveillance records.
 #' @param facility_var Facility identifier column.
@@ -84,7 +161,8 @@
 #' @param council_var Optional council column.
 #' @param district_var Optional district column.
 #'
-#' @return A tibble with standardised QC fields appended.
+#' @return A tibble with standardised QC fields appended, including the
+#'   `*_source` and `*_parse_status` columns for tested and positive.
 #' @export
 prepare_qc_data <- function(data,
                             facility_var,
@@ -114,14 +192,35 @@ prepare_qc_data <- function(data,
     rlang::abort('`attendance_definition` must be a non-empty string when `attending_var` is supplied.')
   }
 
+  tested_parsed <- .translate_count_column(data, 'tested', tested_var)
+  positive_parsed <- .translate_count_column(data, 'positive', positive_var)
+  attending_parsed <- if (!is.null(attending_var)) .parse_counts(data[[attending_var]])
+
   out <- dplyr::as_tibble(data) %>%
     dplyr::mutate(
       facility_id = as.character(.data[[facility_var]]),
       region = as.character(.data[[region_var]]),
-      month_date = .coerce_month_date(.data[[month_var]]),
-      tested = suppressWarnings(as.numeric(.data[[tested_var]])),
-      positive = suppressWarnings(as.numeric(.data[[positive_var]]))
+      month_date = .coerce_month_date(.data[[month_var]])
     )
+  out$tested <- tested_parsed$value
+  out$positive <- positive_parsed$value
+  out$tested_source <- tested_parsed$source
+  out$positive_source <- positive_parsed$source
+  out$tested_parse_status <- tested_parsed$status
+  out$positive_parse_status <- positive_parsed$status
+
+  invalid <- c(
+    tested = sum(out$tested_parse_status %in% .count_invalid_statuses),
+    positive = sum(out$positive_parse_status %in% .count_invalid_statuses)
+  )
+  if (any(invalid > 0L) && !(tested_parsed$translated_upstream && positive_parsed$translated_upstream)) {
+    rlang::warn(paste0(
+      invalid[['tested']], ' tested and ', invalid[['positive']], ' positive value(s) are not valid counts ',
+      '(malformed, non-finite or fractional). They are kept, never repaired or dropped, ',
+      'flagged as invalid counts, and the original values stay in `tested_source` and ',
+      '`positive_source` with the reason in `tested_parse_status` and `positive_parse_status`.'
+    ))
+  }
 
   if (!is.null(council_var) && council_var %in% names(out)) {
     out <- dplyr::mutate(out, council = as.character(.data[[council_var]]))
@@ -132,11 +231,8 @@ prepare_qc_data <- function(data,
   }
 
   if (!is.null(attending_var)) {
-    out <- dplyr::mutate(
-      out,
-      attending = suppressWarnings(as.numeric(.data[[attending_var]])),
-      attendance_definition = attendance_definition
-    )
+    out$attending <- attending_parsed$value
+    out$attendance_definition <- attendance_definition
   }
 
   unique_months <- sort(unique(out$month_date))
@@ -208,6 +304,16 @@ prepare_qc_data <- function(data,
 #' a reported `positive` is treated the same way: prevalence is undefined, which
 #' is the consequence that matters.
 #'
+#' A count that was supplied but is not a valid whole number is a different
+#' matter: it is not missing. `flag_count_invalid_value` marks a tested or
+#' positive value whose translation status (see [prepare_qc_data()]) is
+#' `malformed`, `non_finite` or `fractional`, or, for data without that status,
+#' an infinite or fractional value. It does not set `flag_core_invalid` and never
+#' authorizes exclusion: [assign_qc_action()] gives it the action
+#' `review_core_invalid` at critical priority. The value is never repaired. Malformed and
+#' non-finite values are `NA` and so also read as missing in `core_count_status`;
+#' the `*_parse_status` columns say why.
+#'
 #' @param data A prepared QC data frame.
 #'
 #' @return The input data with logical error flags and `core_count_status`
@@ -233,6 +339,11 @@ flag_logical_errors <- function(data) {
       flag_tested_negative = tested < 0,
       flag_positive_negative = positive < 0,
       flag_zero_tested_positive = tested == 0 & positive > 0,
+      flag_count_invalid_value = .count_value_invalid(
+        tested, if ('tested_parse_status' %in% names(out)) tested_parse_status
+      ) | .count_value_invalid(
+        positive, if ('positive_parse_status' %in% names(out)) positive_parse_status
+      ),
       core_count_status = .core_count_status(tested, positive),
       flag_tested_gt_attending = !is.na(tested) & !is.na(attending) & tested > attending,
       flag_attending_negative = !is.na(attending) & attending < 0,
@@ -244,7 +355,7 @@ flag_logical_errors <- function(data) {
           flag_zero_tested_positive
       ) %>%
         dplyr::coalesce(FALSE),
-      flag_invalid_logical = flag_core_invalid | flag_attendance_issue
+      flag_invalid_logical = flag_core_invalid | flag_attendance_issue | flag_count_invalid_value
     )
 }
 
@@ -304,12 +415,23 @@ add_attendance_qc_flags <- function(data,
 #' Fit Prevalence GAM
 #'
 #' Fits a binomial GAM using logically valid rows with both counts present and
-#' tested > 0.
+#' tested > 0. The default model has a region effect, a region-specific
+#' seasonal smooth, a long-run trend smooth and a facility random effect.
+#'
+#' Fitting never aborts the QC run. Single-region data omit the region effect
+#' and use one seasonal smooth. If the default basis dimensions are too large
+#' for the data they are reduced, and if that also fails a smooth is kept only
+#' where the data hold enough distinct months or time points to estimate it; a
+#' warning states what was used. If no model can be fitted the function warns
+#' with the reason and returns `NULL`, and downstream steps record
+#' `prediction_status = "model_unavailable"` and apply only the rules that do
+#' not need a model.
 #'
 #' @param data A prepared and logically flagged data frame.
 #' @param nthreads Number of threads to pass to [mgcv::bam()].
 #'
-#' @return A fitted `mgcv` model, or `NULL` if insufficient data.
+#' @return A fitted `mgcv` model, or `NULL` if insufficient data or the model
+#'   could not be fitted.
 #' @export
 fit_prevalence_gam <- function(data, nthreads = 1) {
   .validate_required_columns(
@@ -332,51 +454,116 @@ fit_prevalence_gam <- function(data, nthreads = 1) {
       region = as.factor(region)
     )
 
-  if (nrow(train) < 50 || dplyr::n_distinct(train$facility_id) < 2 || dplyr::n_distinct(train$region) < 1) {
+  if (nrow(train) < 50 || dplyr::n_distinct(train$facility_id) < 2) {
     warning("Insufficient valid rows to fit prevalence model; returning NULL.", call. = FALSE)
     return(NULL)
   }
 
-  fit_once <- function(k_month = 12, k_time = 40) {
-    mgcv::bam(
-      cbind(positive, tested - positive) ~ region +
-        s(month_num, by = region, bs = "cc", k = k_month) +
-        s(time_index, k = k_time) +
-        s(facility_id, bs = "re"),
-      data = train,
-      family = stats::binomial(),
-      method = "fREML",
-      discrete = TRUE,
-      nthreads = nthreads,
-      knots = list(month_num = c(0.5, 12.5))
+  multi_region <- nlevels(droplevels(train$region)) > 1L
+  month_support <- train %>%
+    dplyr::group_by(region) %>%
+    dplyr::summarise(n_month = dplyr::n_distinct(month_num), .groups = "drop") %>%
+    dplyr::pull(n_month)
+  min_month_support <- min(month_support, na.rm = TRUE)
+  n_time <- dplyr::n_distinct(train$time_index)
+
+  # Each attempt is a seasonal and a trend basis dimension; NULL drops the term.
+  # Single-region data carry no region effect, which has no contrasts to fit.
+  fit_once <- function(k_month, k_time) {
+    terms <- c(
+      if (multi_region) "region",
+      if (!is.null(k_month) && multi_region) {
+        sprintf('s(month_num, by = region, bs = "cc", k = %d)', as.integer(k_month))
+      } else if (!is.null(k_month)) {
+        sprintf('s(month_num, bs = "cc", k = %d)', as.integer(k_month))
+      },
+      if (!is.null(k_time)) sprintf("s(time_index, k = %d)", as.integer(k_time)),
+      's(facility_id, bs = "re")'
     )
+    formula <- stats::as.formula(
+      paste("cbind(positive, tested - positive) ~", paste(terms, collapse = " + "))
+    )
+    args <- list(
+      formula = formula, data = train, family = stats::binomial(),
+      method = "fREML", discrete = TRUE, nthreads = nthreads
+    )
+    if (!is.null(k_month)) args$knots <- list(month_num = c(0.5, 12.5))
+    fit <- do.call(mgcv::bam, args)
+    fit$routineqc_model <- list(
+      region_levels = levels(droplevels(train$region)),
+      facility_levels = levels(droplevels(train$facility_id)),
+      seasonal_k = k_month,
+      trend_k = k_time
+    )
+    fit
   }
 
-  fit <- tryCatch(
-    fit_once(k_month = 12, k_time = 40),
-    error = function(e) {
-      month_support <- train %>%
-        dplyr::group_by(region) %>%
-        dplyr::summarise(n_month = dplyr::n_distinct(month_num), .groups = "drop") %>%
-        dplyr::pull(n_month)
-
-      k_month_fallback <- max(3, min(11, min(month_support, na.rm = TRUE) - 1))
-      k_time_fallback <- max(5, min(40, dplyr::n_distinct(train$time_index) - 1))
-
-      warning(
-        paste0(
-          "Default GAM basis dimensions were too large for the available data; ",
-          "refitting with k_month=", k_month_fallback,
-          " and k_time=", k_time_fallback, "."
-        ),
-        call. = FALSE
-      )
-
-      fit_once(k_month = k_month_fallback, k_time = k_time_fallback)
+  # A failed attempt must not leak mgcv's warnings; a successful one re-emits them.
+  attempt <- function(k_month, k_time) {
+    caught <- list()
+    result <- tryCatch(
+      withCallingHandlers(
+        fit_once(k_month, k_time),
+        warning = function(w) {
+          caught[[length(caught) + 1L]] <<- w
+          invokeRestart("muffleWarning")
+        }
+      ),
+      error = identity
+    )
+    if (!inherits(result, "error")) {
+      for (w in caught) warning(conditionMessage(w), call. = FALSE)
     }
-  )
+    result
+  }
 
-  fit
+  fit <- attempt(12, 40)
+  if (!inherits(fit, "error")) return(fit)
+
+  k_month_reduced <- max(3, min(11, min_month_support - 1))
+  k_time_reduced <- max(5, min(40, n_time - 1))
+  fit <- attempt(k_month_reduced, k_time_reduced)
+  if (!inherits(fit, "error")) {
+    warning(
+      paste0(
+        "Default GAM basis dimensions were too large for the available data; ",
+        "refitting with k_month=", k_month_reduced,
+        " and k_time=", k_time_reduced, "."
+      ),
+      call. = FALSE
+    )
+    return(fit)
+  }
+
+  # Limited temporal support: keep a smooth only where there are enough
+  # distinct months or time points to estimate it.
+  k_month_limited <- if (min_month_support >= 5L) min(11L, min_month_support - 1L) else NULL
+  k_time_limited <- if (n_time >= 6L) min(40L, n_time - 1L) else NULL
+  fit_limited <- attempt(k_month_limited, k_time_limited)
+  if (!inherits(fit_limited, "error")) {
+    warning(
+      paste0(
+        "Prevalence model fitted with reduced temporal structure because of limited ",
+        "temporal support (", min_month_support, " calendar month(s) per region, ",
+        n_time, " time point(s)): seasonal term ",
+        if (is.null(k_month_limited)) "omitted" else paste0("k=", k_month_limited),
+        ", trend term ",
+        if (is.null(k_time_limited)) "omitted" else paste0("k=", k_time_limited), "."
+      ),
+      call. = FALSE
+    )
+    return(fit_limited)
+  }
+
+  warning(
+    paste0(
+      "Prevalence model could not be fitted (", conditionMessage(fit_limited),
+      "); returning NULL. Rows keep `prediction_status = 'model_unavailable'` and only ",
+      "model-free QC rules are applied."
+    ),
+    call. = FALSE
+  )
+  NULL
 }
 
 #' Add Prevalence Predictions
@@ -427,8 +614,9 @@ add_prevalence_predictions <- function(data, model, min_prediction_coverage = 0.
     status[eligible] <- 'model_unavailable'
   } else {
     model_levels <- model$xlevels
-    region_levels <- model_levels$region
-    facility_levels <- model_levels$facility_id
+    stored <- model$routineqc_model
+    region_levels <- if (!is.null(stored$region_levels)) stored$region_levels else model_levels$region
+    facility_levels <- if (!is.null(stored$facility_levels)) stored$facility_levels else model_levels$facility_id
     if (is.null(region_levels)) region_levels <- levels(model$model$region)
     if (is.null(facility_levels)) facility_levels <- levels(model$model$facility_id)
     unseen_region <- eligible & !as.character(out$region) %in% region_levels
@@ -561,7 +749,10 @@ add_prevalence_qc_flags <- function(data,
   # there is no model, which reproduces the count-only rule.
   out$.zero_implausible <- if ('p_hat' %in% names(out)) {
     dispersion <- if ('resid_dispersion' %in% names(out)) out$resid_dispersion else 1
-    (1 - out$p_hat)^(out$tested / dispersion) < all_negative_max_probability
+    # Rows the model did not assess have no expectation: the flag is NA, not evaluated.
+    # With no assessed row at all (model unavailable) the rule is simply off: FALSE.
+    implausible <- (1 - out$p_hat)^(out$tested / dispersion) < all_negative_max_probability
+    if (all(is.na(out$p_hat))) dplyr::coalesce(implausible, FALSE) else implausible
   } else {
     TRUE
   }
@@ -607,6 +798,16 @@ add_prevalence_qc_flags <- function(data,
 
   out
 }
+
+.tested_volume_columns <- c(
+  'tested_baseline_n', 'tested_roll_median', 'tested_roll_mad', 'tested_prev',
+  'tested_baseline_mode', 'baseline_uses_future', 'tested_baseline_ready',
+  'tested_mad_adjusted', 'tested_robust_z', 'tested_to_roll_ratio',
+  'tested_to_prev_ratio', 'flag_tested_high_z', 'flag_tested_high_ratio',
+  'flag_tested_low_z', 'flag_tested_low_ratio', 'flag_tested_extreme_high',
+  'flag_tested_extreme_low', 'flag_tested_zero_unusual', 'flag_tested_large_jump',
+  'flag_tested_large_drop', 'flag_tested_volume_extreme'
+)
 
 .calculate_tested_baseline <- function(tested, month_date, mode, window_months) {
   month_index <- lubridate::year(month_date) * 12L + lubridate::month(month_date)
@@ -689,7 +890,11 @@ add_tested_volume_qc <- function(data,
     rlang::abort('`baseline_uses_future` must agree with `baseline_mode`.')
   }
 
-  out <- dplyr::as_tibble(data) %>%
+  # Recomputing over flagged data replaces the previous baseline, never joins it.
+  prior <- dplyr::as_tibble(data)
+  prior <- prior[setdiff(names(prior), .tested_volume_columns)]
+
+  out <- prior %>%
     dplyr::group_by(facility_id) %>%
     dplyr::arrange(month_date, .by_group = TRUE) %>%
     dplyr::group_modify(~ dplyr::bind_cols(
@@ -823,6 +1028,7 @@ assign_qc_action <- function(data,
     'flag_tested_volume_extreme', 'flag_isolated_extreme',
     'flag_temporal_context_insufficient', 'flag_positive_gt_tested',
     'flag_zero_tested_positive', 'flag_tested_negative', 'flag_positive_negative',
+    'flag_count_invalid_value',
     'flag_tested_extreme_high', 'flag_tested_extreme_low', 'flag_tested_zero_unusual',
     'flag_tested_large_jump', 'flag_tested_large_drop', 'flag_tested_gt_attending',
     'flag_tested_gt_attending_major', 'flag_attending_negative',
@@ -840,6 +1046,7 @@ assign_qc_action <- function(data,
   attendance_issue <- on('flag_attendance_issue')
   coverage_issue <- on('flag_coverage_low') | on('flag_coverage_very_low')
   core_invalid <- on('flag_core_invalid')
+  count_invalid <- on('flag_count_invalid_value') & !core_invalid
   n_domains <- as.integer(prevalence_issue) + as.integer(tested_issue) +
     as.integer(attendance_issue) + as.integer(coverage_issue)
   multiple <- n_domains >= 2L
@@ -853,7 +1060,7 @@ assign_qc_action <- function(data,
   for (key in setdiff(names(priority), 'multiple_signals')) {
     raise(on(paste0('flag_', key)), priority[[key]])
   }
-  raise(core_invalid, 'critical')
+  raise(core_invalid | count_invalid, 'critical')
   raise(multiple, priority$multiple_signals)
   # Data carrying only a domain summary flag, without the flags it summarises,
   # still gets a review priority.
@@ -862,7 +1069,7 @@ assign_qc_action <- function(data,
 
   qc_action <- dplyr::case_when(
     core_invalid & policy == 'conservative_review' ~ 'exclude_core_invalid',
-    core_invalid ~ 'review_core_invalid',
+    core_invalid | count_invalid ~ 'review_core_invalid',
     multiple ~ 'review_multiple_signals',
     prevalence_issue ~ 'review_prevalence',
     tested_issue ~ 'review_tested_volume',
@@ -880,7 +1087,7 @@ assign_qc_action <- function(data,
       action_policy_version = policy_version,
       flag_exclude_authorized = qc_action == 'exclude_core_invalid',
       flag_review_recommended = startsWith(qc_action, 'review_'),
-      flag_sensitivity = !core_invalid &
+      flag_sensitivity = !core_invalid & !count_invalid &
         (attendance_issue | prevalence_issue | tested_issue | coverage_issue),
       flag_any_qc_issue = qc_action != 'retain',
       flag_tested_only_issue = tested_issue & !prevalence_issue & !attendance_issue &
@@ -895,6 +1102,7 @@ assign_qc_action <- function(data,
   add(on('flag_positive_gt_tested'), 'more positive than tested')
   add(on('flag_zero_tested_positive'), 'positives with zero tested')
   add(on('flag_tested_negative') | on('flag_positive_negative'), 'negative count')
+  add(on('flag_count_invalid_value'), 'count is not a valid whole number')
   add(on('flag_all_negative_large_n'), 'no positives where the model expects some')
   add(on('flag_all_positive_large_n'), 'every test positive')
   add(on('flag_resid_extreme') & on('flag_isolated_extreme'), 'prevalence outlier, single month')
@@ -935,10 +1143,9 @@ assign_qc_action <- function(data,
 
   group_syms <- rlang::syms(group_vars)
 
-  # Prevalence is taken over rows carrying both counts. A row with tested but no
-  # positive would otherwise add to the denominator and not the numerator.
+  # Prevalence uses complete tested/positive pairs; see `.pair_prevalence()`.
   dat$.complete_pair <- !is.na(dat$tested) & !is.na(dat$positive)
-  dat$.kept_pair <- dat$.complete_pair & !dplyr::coalesce(dat$flag_exclude_authorized, FALSE)
+  dat$.excluded <- .authorized_exclusion(dat)
 
   dat %>%
     dplyr::group_by(!!!group_syms) %>%
@@ -959,16 +1166,10 @@ assign_qc_action <- function(data,
       sensitivity_flags = sum(flag_sensitivity, na.rm = TRUE),
       total_tested_before_qc = sum(tested, na.rm = TRUE),
       total_positive_before_qc = sum(positive, na.rm = TRUE),
-      total_tested_after_authorized_exclusions = sum(dplyr::if_else(flag_exclude_authorized, 0, tested), na.rm = TRUE),
-      total_positive_after_authorized_exclusions = sum(dplyr::if_else(flag_exclude_authorized, 0, positive), na.rm = TRUE),
-      prevalence_before_qc = .safe_divide(
-        sum(positive[.complete_pair]),
-        sum(tested[.complete_pair])
-      ),
-      prevalence_after_authorized_exclusions = .safe_divide(
-        sum(positive[.kept_pair]),
-        sum(tested[.kept_pair])
-      ),
+      total_tested_after_authorized_exclusions = sum(dplyr::if_else(.excluded, 0, tested), na.rm = TRUE),
+      total_positive_after_authorized_exclusions = sum(dplyr::if_else(.excluded, 0, positive), na.rm = TRUE),
+      prevalence_before_qc = .pair_prevalence(tested, positive),
+      prevalence_after_authorized_exclusions = .pair_prevalence(tested, positive, !.excluded),
       .groups = "drop"
     )
 }
@@ -1058,21 +1259,52 @@ summarise_before_after_qc <- function(data, by = c("overall", "region", "council
 
 #' Run Threshold Sensitivity
 #'
-#' Re-runs selected prevalence and tested QC thresholds over a grid and returns
-#' grouped summaries.
+#' Re-evaluates the prevalence rules and the tested-volume rules over a grid of
+#' thresholds and returns grouped summaries. Only the thresholds in the grid
+#' change: every other setting, the action policy and the review priorities come
+#' from the run's configuration, so the grid is comparable with the run itself.
 #'
-#' @param data A data frame with prepared/predicted columns.
+#' `resid_thresholds` replaces both size-dependent residual cutoffs (as
+#' `resid_threshold` does in [add_prevalence_qc_flags()]) and
+#' `tested_z_thresholds` replaces `tested_z_threshold`. Flags and baseline columns
+#' already on `data` are recomputed, never reused. Attendance and logical flags
+#' do not depend on these thresholds and are carried over unchanged.
+#'
+#' @param data A `routineqc_run`, or its `data_flagged` data frame. Prefer the
+#'   run: a data frame does not carry the configuration.
 #' @param resid_thresholds Vector of residual thresholds.
 #' @param tested_z_thresholds Vector of tested robust-z thresholds.
 #' @param by One of `region`, `council`, `district`, or `month`.
+#' @param config A [qc_config()]. Taken from `data` when it is a run. When
+#'   `data` is a data frame and `config` is `NULL`, the recommended defaults are
+#'   used with the action policy name and tested baseline mode recorded on the
+#'   data, and a message says so.
 #'
 #' @return A tibble with threshold combinations and summary metrics.
 #' @export
 run_threshold_sensitivity <- function(data,
                                       resid_thresholds = c(3, 4, 5),
                                       tested_z_thresholds = c(4, 5, 6),
-                                      by = c("region", "council", "district", "month")) {
+                                      by = c("region", "council", "district", "month"),
+                                      config = NULL) {
   by <- match.arg(by)
+
+  if (inherits(data, "routineqc_run")) {
+    if (!is.null(config)) {
+      rlang::abort("Supply `config` only with a data frame; a run carries its own configuration.")
+    }
+    validate_qc_run(data)
+    config <- data$config
+    data <- data$data_flagged
+  } else if (is.null(config)) {
+    config <- .config_from_flagged_data(data)
+    rlang::inform(paste(
+      "No `config` supplied: using the recommended defaults with the action policy",
+      "and tested baseline mode recorded on the data. Pass the run to use its",
+      "own configuration."
+    ))
+  }
+  validate_qc_config(config)
 
   grid <- tidyr::crossing(
     resid_threshold = resid_thresholds,
@@ -1083,11 +1315,9 @@ run_threshold_sensitivity <- function(data,
     grid$resid_threshold,
     grid$tested_z_threshold,
     function(r_thr, z_thr) {
-      tmp <- data %>%
-        add_prevalence_qc_flags(resid_threshold = r_thr) %>%
-        add_tested_volume_qc(tested_z_threshold = z_thr) %>%
-        add_temporal_qc_flags() %>%
-        assign_qc_action()
+      tmp <- .apply_qc_rules(
+        data, config, resid_threshold = r_thr, tested_z_threshold = z_thr
+      )
 
       summarise_before_after_qc(tmp, by = by) %>%
         dplyr::mutate(
@@ -1096,6 +1326,46 @@ run_threshold_sensitivity <- function(data,
           .before = 1
         )
     }
+  )
+}
+
+# Policy name and baseline mode are recorded per row by the pipeline; nothing
+# else about the configuration can be recovered from flagged data.
+.config_from_flagged_data <- function(data) {
+  recorded <- function(col) {
+    if (col %in% names(data)) {
+      values <- unique(stats::na.omit(as.character(data[[col]])))
+      if (length(values) == 1L) return(values)
+    }
+    NULL
+  }
+  policy <- recorded("action_policy")
+  mode <- recorded("tested_baseline_mode")
+  qc_config(
+    action_policy = if (!is.null(policy)) list(name = policy) else list(),
+    tested_volume = if (!is.null(mode)) {
+      list(baseline_mode = mode, baseline_uses_future = identical(mode, "centered"))
+    } else {
+      list()
+    }
+  )
+}
+
+# The rule steps run on the model's output, in order. Used by the pipeline and
+# by threshold sensitivity so the two cannot drift apart. Overrides replace the
+# configured threshold and nothing else.
+.apply_qc_rules <- function(data, config, resid_threshold = NULL, tested_z_threshold = NULL) {
+  if (!is.null(resid_threshold)) config$prevalence$resid_threshold <- resid_threshold
+  if (!is.null(tested_z_threshold)) config$tested_volume$tested_z_threshold <- tested_z_threshold
+
+  dat <- do.call(add_prevalence_qc_flags, c(list(data = data), config$prevalence))
+  dat <- do.call(add_tested_volume_qc, c(list(data = dat), config$tested_volume))
+  dat <- do.call(add_temporal_qc_flags, c(list(data = dat), config$temporal))
+  assign_qc_action(
+    dat,
+    policy = config$action_policy$name,
+    policy_version = config$action_policy$version,
+    priority = config$priority
   )
 }
 
@@ -1236,34 +1506,76 @@ evaluate_qc_against_truth <- function(data,
 
 #' Plot Prevalence Residuals
 #'
-#' @param data A QC data frame with `pearson_resid` and `month_date`.
+#' Plots the residual the prevalence rule was applied to against the cutoffs it
+#' used. That is the dispersion-scaled residual (`pearson_resid_scaled`) when
+#' the data carry it, and `pearson_resid` for runs that predate it. Cutoffs
+#' follow `config$prevalence`: `resid_threshold_large` where tested is at least
+#' `resid_large_n` and `resid_threshold_small` below it, or the single
+#' `resid_threshold` when set.
+#'
+#' @param data A `routineqc_run`, or a QC data frame with `month_date` and
+#'   `pearson_resid` (and `pearson_resid_scaled`, when available).
+#' @param config A [qc_config()]. Taken from `data` when it is a run. For a
+#'   data frame the recommended thresholds are drawn when `config` is `NULL`,
+#'   and the subtitle says so.
 #'
 #' @return A ggplot object.
 #' @export
-plot_prevalence_residuals <- function(data) {
+plot_prevalence_residuals <- function(data, config = NULL) {
+  input <- .plot_input(data, config)
+  data <- input$data
   .validate_required_columns(data, c("month_date", "pearson_resid"))
+  spec <- .residual_rule_spec(data, input$config$prevalence)
+  data$.residual <- data[[spec$column]]
 
-  ggplot2::ggplot(data, ggplot2::aes(x = month_date, y = pearson_resid)) +
-    ggplot2::geom_hline(yintercept = c(-4, 4), linetype = "dashed", color = "red") +
-    ggplot2::geom_point(alpha = 0.5) +
+  cutoff_text <- if (spec$large == spec$small) {
+    sprintf("|residual| > %s", format(spec$large))
+  } else {
+    sprintf(
+      "|residual| > %s where tested >= %s, > %s otherwise",
+      format(spec$large), format(spec$large_n), format(spec$small)
+    )
+  }
+
+  ggplot2::ggplot(data, ggplot2::aes(x = month_date, y = .data$.residual)) +
+    ggplot2::geom_hline(yintercept = spec$thresholds, linetype = "dashed", color = "red") +
+    ggplot2::geom_point(alpha = 0.5, na.rm = TRUE) +
     ggplot2::theme_minimal() +
-    ggplot2::labs(x = "Month", y = "Pearson residual", title = "Prevalence residual diagnostics")
+    ggplot2::labs(
+      x = "Month", y = spec$label, title = "Prevalence residual diagnostics",
+      subtitle = paste0(
+        "Rule cutoffs: ", cutoff_text,
+        if (input$assumed) " (recommended defaults; configuration not supplied)" else ""
+      )
+    )
 }
 
 #' Plot Tested Robust Z
 #'
-#' @param data A QC data frame with `tested_robust_z` and `month_date`.
+#' @param data A `routineqc_run`, or a QC data frame with `tested_robust_z` and
+#'   `month_date`.
+#' @param config A [qc_config()]. Taken from `data` when it is a run. For a data
+#'   frame the recommended threshold is drawn when `config` is `NULL`.
 #'
 #' @return A ggplot object.
 #' @export
-plot_tested_robust_z <- function(data) {
+plot_tested_robust_z <- function(data, config = NULL) {
+  input <- .plot_input(data, config)
+  data <- input$data
   .validate_required_columns(data, c("month_date", "tested_robust_z"))
+  threshold <- input$config$tested_volume$tested_z_threshold
 
   ggplot2::ggplot(data, ggplot2::aes(x = month_date, y = tested_robust_z)) +
-    ggplot2::geom_hline(yintercept = c(-5, 5), linetype = "dashed", color = "red") +
-    ggplot2::geom_point(alpha = 0.5) +
+    ggplot2::geom_hline(yintercept = c(-threshold, threshold), linetype = "dashed", color = "red") +
+    ggplot2::geom_point(alpha = 0.5, na.rm = TRUE) +
     ggplot2::theme_minimal() +
-    ggplot2::labs(x = "Month", y = "Tested robust z", title = "Tested count robust-z diagnostics")
+    ggplot2::labs(
+      x = "Month", y = "Tested robust z", title = "Tested count robust-z diagnostics",
+      subtitle = paste0(
+        "Rule cutoff: |z| > ", format(threshold),
+        if (input$assumed) " (recommended default; configuration not supplied)" else ""
+      )
+    )
 }
 
 #' Plot Facility Time Series
@@ -1320,6 +1632,11 @@ plot_facility_timeseries <- function(data, facility_id) {
 
 #' Plot Before/After Prevalence
 #'
+#' Prevalence is positives over tested across rows that carry both counts, the
+#' same definition as `prevalence_before_qc` and
+#' `prevalence_after_authorized_exclusions` in the summary tables. A row with a
+#' missing count contributes to neither numerator nor denominator.
+#'
 #' @param data A QC data frame with `flag_exclude_authorized`.
 #'
 #' @return A ggplot object.
@@ -1327,16 +1644,11 @@ plot_facility_timeseries <- function(data, facility_id) {
 plot_before_after_prevalence <- function(data) {
   .validate_required_columns(data, c('tested', 'positive', 'flag_exclude_authorized'))
 
-  before <- .safe_divide(sum(data$positive, na.rm = TRUE), sum(data$tested, na.rm = TRUE))
-
-  keep <- dplyr::as_tibble(data) %>%
-    dplyr::filter(!flag_exclude_authorized)
-
-  after <- .safe_divide(sum(keep$positive, na.rm = TRUE), sum(keep$tested, na.rm = TRUE))
+  values <- .before_after_prevalence(data)
 
   plot_dat <- dplyr::tibble(
     state = c('Source data', 'After authorized exclusions'),
-    prevalence = c(before, after)
+    prevalence = c(values$before, values$after)
   )
 
   ggplot2::ggplot(plot_dat, ggplot2::aes(x = state, y = prevalence, fill = state)) +
@@ -1428,15 +1740,7 @@ run_routine_qc <- function(raw_data,
     dat, model = model,
     min_prediction_coverage = config$model$min_prediction_coverage
   )
-  dat <- do.call(add_prevalence_qc_flags, c(list(data = dat), config$prevalence))
-  dat <- do.call(add_tested_volume_qc, c(list(data = dat), config$tested_volume))
-  dat <- do.call(add_temporal_qc_flags, c(list(data = dat), config$temporal))
-  dat <- assign_qc_action(
-    dat,
-    policy = config$action_policy$name,
-    policy_version = config$action_policy$version,
-    priority = config$priority
-  )
+  dat <- .apply_qc_rules(dat, config)
 
   summaries <- list(by_region = summarise_qc_by_region(dat))
 

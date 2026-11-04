@@ -9,8 +9,13 @@ configuration and is also written to every flagged row.
 The `operational` profile uses only non-missing observations from the preceding
 six calendar months. `recommended` is currently an alias for this profile.
 
-Use this mode for routine monitoring or whenever the result must reflect only
-information available at the reporting date.
+Use this mode for routine monitoring or whenever the tested-volume result must
+reflect only information available at the reporting date.
+
+"Operational" applies to this trailing baseline alone. The prevalence GAM is
+fitted to all rows, including later months, and the isolation check on prevalence
+outliers reads the following month, so a run in this profile is not
+point-in-time end to end; see `docs/PREVALENCE_MODEL.md`.
 
 Limitations:
 

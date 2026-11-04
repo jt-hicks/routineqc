@@ -80,20 +80,61 @@ fingerprint_qc_input <- function(data) {
   as.character(utils::packageVersion('routineqc'))
 }
 
+# Identifies the implementation that produced a run. The package version alone
+# cannot: a development tree and a release share it. `implementation_hash`
+# digests every function in the package namespace, so any code change gives a
+# different value; `source_revision` is the commit recorded in the installed
+# DESCRIPTION when there is one (NA otherwise); the dependency versions are
+# those of the packages that carry the computation.
+.dependency_packages <- c('mgcv', 'dplyr', 'tidyr', 'lubridate', 'rlang', 'digest')
+
+.build_identity <- function() {
+  ns <- asNamespace('routineqc')
+  objects <- sort(ls(ns, all.names = TRUE))
+  functions <- Filter(function(nm) is.function(get(nm, envir = ns)), objects)
+  implementation_hash <- digest::digest(
+    lapply(functions, function(nm) {
+      fn <- get(nm, envir = ns)
+      list(nm, deparse(formals(fn)), deparse(body(fn)))
+    }),
+    algo = 'sha256', serialize = TRUE
+  )
+  description <- utils::packageDescription('routineqc')
+  revision <- NA_character_
+  for (field in c('RemoteSha', 'GithubSHA1', 'git_revision')) {
+    value <- description[[field]]
+    if (!is.null(value) && !is.na(value)) {
+      revision <- as.character(value)
+      break
+    }
+  }
+  versions <- vapply(.dependency_packages, function(pkg) {
+    tryCatch(as.character(utils::packageVersion(pkg)), error = function(e) NA_character_)
+  }, character(1))
+  list(
+    implementation_hash = implementation_hash,
+    source_revision = revision,
+    r_version = paste(R.version$major, R.version$minor, sep = '.'),
+    dependency_versions = as.list(versions)
+  )
+}
+
 .config_fingerprint <- function(config) {
   digest::digest(unclass(config), algo = 'sha256', serialize = TRUE)
 }
 
-.analysis_id <- function(run_schema_version, package_version, input_fingerprint, config_fingerprint) {
-  digest::digest(
-    list(
-      run_schema_version = run_schema_version,
-      package_version = package_version,
-      input_fingerprint = input_fingerprint,
-      config_fingerprint = config_fingerprint
-    ),
-    algo = 'sha256', serialize = TRUE
+# `implementation_hash` is NULL for runs saved before it was recorded; leaving
+# it out of the digest keeps their analysis identity unchanged.
+.analysis_id <- function(run_schema_version, package_version, input_fingerprint,
+                         config_fingerprint, implementation_hash = NULL) {
+  parts <- list(
+    run_schema_version = run_schema_version,
+    package_version = package_version,
+    input_fingerprint = input_fingerprint,
+    config_fingerprint = config_fingerprint
   )
+  if (!is.null(implementation_hash)) parts$implementation_hash <- implementation_hash
+  digest::digest(parts, algo = 'sha256', serialize = TRUE)
 }
 
 .new_qc_run <- function(data_flagged, model, summaries, config, input_data, provenance = list()) {
@@ -101,9 +142,11 @@ fingerprint_qc_input <- function(data) {
   provenance <- .validate_provenance(provenance)
   input_fingerprint <- fingerprint_qc_input(input_data)
   package_version <- .package_version()
+  build <- .build_identity()
   config_fingerprint <- .config_fingerprint(config)
   analysis_id <- .analysis_id(
-    .qc_run_schema_version, package_version, input_fingerprint, config_fingerprint
+    .qc_run_schema_version, package_version, input_fingerprint, config_fingerprint,
+    build$implementation_hash
   )
   created_at_utc <- format(Sys.time(), '%Y-%m-%dT%H:%M:%OS6Z', tz = 'UTC')
   execution_id <- digest::digest(
@@ -123,6 +166,8 @@ fingerprint_qc_input <- function(data) {
     execution_id = execution_id,
     created_at_utc = created_at_utc,
     package_version = package_version,
+    build = build,
+    count_translation = .count_translation_summary(data_flagged),
     input_fingerprint = input_fingerprint,
     config_fingerprint = config_fingerprint,
     input_rows = nrow(input_data),
@@ -233,10 +278,56 @@ validate_qc_run <- function(run) {
   }
   expected_analysis_id <- .analysis_id(
     manifest$run_schema_version, manifest$package_version,
-    manifest$input_fingerprint, manifest$config_fingerprint
+    manifest$input_fingerprint, manifest$config_fingerprint,
+    manifest$build$implementation_hash
   )
   if (!identical(manifest$analysis_id, expected_analysis_id)) {
     rlang::abort('QC run analysis identity does not match its manifest components.')
+  }
+  .validate_run_consistency(run)
+  invisible(run)
+}
+
+# Internal consistency of the stored results. The action, exclusion and review
+# columns must agree with each other, and, for runs that record their
+# implementation (older runs do not, and their summaries were computed by
+# earlier rules), the summaries must equal a recomputation from the data.
+# It does not re-run the model or the rules, so it detects tampering or
+# mixed-up pieces, not a different but self-consistent analysis.
+.validate_run_consistency <- function(run) {
+  data <- run$data_flagged
+  action_columns <- c(
+    'qc_action', 'flag_exclude_authorized', 'flag_review_recommended', 'flag_any_qc_issue'
+  )
+  if (all(action_columns %in% names(data))) {
+    action <- as.character(data$qc_action)
+    consistent <-
+      !anyNA(action) &&
+      identical(as.logical(data$flag_exclude_authorized), action == 'exclude_core_invalid') &&
+      identical(as.logical(data$flag_review_recommended), startsWith(action, 'review_')) &&
+      identical(as.logical(data$flag_any_qc_issue), action != 'retain')
+    if (!consistent) {
+      rlang::abort('QC run actions, exclusion flags and review flags are inconsistent.')
+    }
+    if ('flag_core_invalid' %in% names(data) &&
+        any(data$flag_exclude_authorized & !dplyr::coalesce(data$flag_core_invalid, FALSE))) {
+      rlang::abort('QC run authorizes exclusion for a row without invalid core counts.')
+    }
+  }
+  if (is.null(run$manifest$build$implementation_hash) || !is.list(run$summaries)) {
+    return(invisible(run))
+  }
+  recompute <- list(
+    by_region = summarise_qc_by_region, by_month = summarise_qc_by_month,
+    by_facility = summarise_qc_by_facility, by_council = summarise_qc_by_council,
+    by_district = summarise_qc_by_district
+  )
+  for (nm in intersect(names(recompute), names(run$summaries))) {
+    expected <- recompute[[nm]](data)
+    if (!isTRUE(all.equal(as.data.frame(run$summaries[[nm]]), as.data.frame(expected),
+                          check.attributes = FALSE))) {
+      rlang::abort(paste0('QC run summary `', nm, '` does not match its data.'))
+    }
   }
   invisible(run)
 }

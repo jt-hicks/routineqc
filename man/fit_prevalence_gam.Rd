@@ -12,9 +12,21 @@ fit_prevalence_gam(data, nthreads = 1)
 \item{nthreads}{Number of threads to pass to \code{\link[mgcv:bam]{mgcv::bam()}}.}
 }
 \value{
-A fitted \code{mgcv} model, or \code{NULL} if insufficient data.
+A fitted \code{mgcv} model, or \code{NULL} if insufficient data or the model
+could not be fitted.
 }
 \description{
 Fits a binomial GAM using logically valid rows with both counts present and
-tested > 0.
+tested > 0. The default model has a region effect, a region-specific
+seasonal smooth, a long-run trend smooth and a facility random effect.
+}
+\details{
+Fitting never aborts the QC run. Single-region data omit the region effect
+and use one seasonal smooth. If the default basis dimensions are too large
+for the data they are reduced, and if that also fails a smooth is kept only
+where the data hold enough distinct months or time points to estimate it; a
+warning states what was used. If no model can be fitted the function warns
+with the reason and returns \code{NULL}, and downstream steps record
+\code{prediction_status = "model_unavailable"} and apply only the rules that do
+not need a model.
 }

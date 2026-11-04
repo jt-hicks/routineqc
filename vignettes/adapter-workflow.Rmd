@@ -89,8 +89,9 @@ attendance checks.
 
 ## Action policy
 
-The default `conservative_review` policy authorizes exclusion only for
-impossible or missing tested/positive counts. Other anomalies remain evidence
+The default `conservative_review` policy (version 3) authorizes exclusion only
+for impossible tested/positive counts. A missing count is reporting, not an
+error, and is not excluded. Other anomalies remain evidence
 for review. To keep every decision external to the package, pass a flags-only
 configuration:
 

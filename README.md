@@ -9,8 +9,10 @@
 
 The goal of routineqc is to provide reusable quality-control tools for
 routine health facility-month surveillance data. It is designed to help
-identify likely data-entry anomalies while preserving raw records and
-appending QC flags.
+identify likely data-entry anomalies. Rows are never dropped and no
+value is overwritten: QC flags are appended, and a count as originally
+supplied stays available in `tested_source` / `positive_source` (it is
+translated to numbers beside it, see below).
 
 ## Status: experimental (0.1.0)
 
@@ -21,9 +23,16 @@ production tool.
 
 - **Anomaly flags are evidence for review, not automatic proof of a
   data-entry error.** Only impossible core tested/positive counts are
-  auto-excluded under the default `conservative_review` policy;
-  attendance, statistical, temporal, and tested-volume signals remain
-  review-only.
+  auto-excluded under the default `conservative_review` policy (action
+  policy version 3, configuration schema 6); attendance, coverage,
+  statistical, temporal, and tested-volume signals remain review-only. A
+  missing count is reporting, not error, and is neither flagged nor
+  excluded.
+- **“Operational” means a trailing tested-volume baseline only.** The
+  prevalence GAM is fitted to all rows including later months, and the
+  temporal isolation check reads the following month, so prevalence
+  flags can change when later data arrive. The dispersion-adjusted
+  all-negative rule is a heuristic that awaits calibration.
 - The prevalence model, tested-volume baselines, and action policy have
   been validated against synthetic fixtures only; no upstream production
   pipeline has yet been integrated (see `MIGRATION.md`).
@@ -131,10 +140,10 @@ qc$summaries$by_region
 #> # A tibble: 4 × 21
 #>   region   total_rows incomplete_count_rows n_any_qc_issue pct_any_qc_issue
 #>   <chr>         <int>                 <int>          <int>            <dbl>
-#> 1 Region_A        130                     0             10             7.69
-#> 2 Region_B        141                     0              3             2.13
-#> 3 Region_C        103                     0              7             6.80
-#> 4 Region_D        106                     0              5             4.72
+#> 1 Region_A        130                     0              6             4.62
+#> 2 Region_B        141                     0              2             1.42
+#> 3 Region_C        103                     0              6             5.83
+#> 4 Region_D        106                     0              4             3.77
 #> # ℹ 16 more variables: core_invalid_rows <int>, attendance_issue_rows <int>,
 #> #   prevalence_extreme_rows <int>, tested_volume_extreme_rows <int>,
 #> #   tested_only_issues <int>, prevalence_only_issues <int>,
@@ -295,8 +304,13 @@ qc <- run_qc_adapter(adapted)
 ```
 
 Adapter errors block QC without deleting records. Count-conversion
-warnings do not block QC: the converted `NA` values remain available to
-the logical checks.
+problems do not block QC and no value is repaired. Each count gets a
+status (`tested_parse_status`, `positive_parse_status`): `missing` (not
+reported) is distinguished from `malformed`, `non_finite`, and
+`fractional` values. The original is kept in `tested_source` /
+`positive_source`, factors are read by label, and a value that is
+reported but not a valid whole number is flagged
+`flag_count_invalid_value` for review.
 
 The default `conservative_review` policy authorizes exclusion only for
 impossible core tested/positive records. Attendance contradictions and
@@ -376,8 +390,10 @@ The smoke fixture contains three districts with eight facilities each
 and 12 to 24 months per facility. Pass an output directory as the first
 argument and add `--launch` to open the generated run immediately.
 
-routineqc preserves raw data and appends QC outputs as additional
-columns rather than deleting records.
+routineqc appends QC outputs as additional columns rather than deleting
+records, and keeps each tested and positive value as supplied in a
+`*_source` column. The numeric `tested` / `positive` are translations of
+those, not the originals.
 
 Anomaly flags are evidence for review, not automatic proof of error. See
 `docs/ACTION_POLICY.md` and `docs/TESTED_VOLUME_BASELINES.md` for policy

@@ -41,9 +41,23 @@ prepare_qc_data(
 \item{district_var}{Optional district column.}
 }
 \value{
-A tibble with standardised QC fields appended.
+A tibble with standardised QC fields appended, including the
+\verb{*_source} and \verb{*_parse_status} columns for tested and positive.
 }
 \description{
 Standardises user-specified columns into a common schema used across QC
 functions and appends derived fields without dropping rows.
+}
+\details{
+Counts are translated without repair, by the same rules as
+\code{\link[=adapt_qc_data]{adapt_qc_data()}}. Each tested and positive value gets a status in
+\code{tested_parse_status} / \code{positive_parse_status}: \code{ok}; \code{missing} (\code{NA} or a
+blank string, genuinely not reported); \code{malformed} (present but not a number,
+such as \code{"n/a"} or \code{"1,000"}); \code{non_finite} (\code{NaN} or \code{Inf}); or \code{fractional}
+(a finite number with a fractional part). Malformed and non-finite values
+become \code{NA}; a fractional value is kept as supplied and never rounded.
+Factors are read by label, not integer code. The value as supplied is kept in
+\code{tested_source} / \code{positive_source}. A value that is malformed, non-finite
+or fractional is not missing: \code{\link[=flag_logical_errors]{flag_logical_errors()}} flags it as an invalid
+count, and a warning reports how many were found.
 }

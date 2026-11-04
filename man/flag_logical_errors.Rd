@@ -29,4 +29,14 @@ can be summarised per facility and area by
 without marking individual records for exclusion. A missing \code{tested} alongside
 a reported \code{positive} is treated the same way: prevalence is undefined, which
 is the consequence that matters.
+
+A count that was supplied but is not a valid whole number is a different
+matter: it is not missing. \code{flag_count_invalid_value} marks a tested or
+positive value whose translation status (see \code{\link[=prepare_qc_data]{prepare_qc_data()}}) is
+\code{malformed}, \code{non_finite} or \code{fractional}, or, for data without that status,
+an infinite or fractional value. It does not set \code{flag_core_invalid} and never
+authorizes exclusion: \code{\link[=assign_qc_action]{assign_qc_action()}} gives it the action
+\code{review_core_invalid} at critical priority. The value is never repaired. Malformed and
+non-finite values are \code{NA} and so also read as missing in \code{core_count_status};
+the \verb{*_parse_status} columns say why.
 }

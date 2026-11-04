@@ -23,9 +23,20 @@ does report: tested-volume checks still run on a row with `tested` but no
 `positive`. Its prevalence is `NA`, and prevalence summaries use only rows
 carrying both counts.
 
-This is policy version 2. Version 1 also authorized exclusion of rows missing
-either count; it is no longer supported, and a version 1 run is reproduced by
-the routineqc release recorded in its manifest.
+This is policy version 3, the only version accepted for new runs. Version 3
+sets `review_priority` per flag from the configurable `config$priority` (a
+configuration schema 6 setting) rather than per domain, and adds the testing
+coverage actions below. Version 1 authorized exclusion of rows missing either
+count and version 2 set priority by domain with no coverage rules. Neither is
+supported for new runs, but stored version 1 and 2 runs remain readable and keep
+their original flags; a run is reproduced by the routineqc release recorded in
+its manifest.
+
+A count that is supplied but is not a valid whole number (malformed text, `NaN`,
+`Inf`, or a fractional value) is not missing and is not impossible as reported
+either. It is kept unrepaired, with the original in `tested_source` /
+`positive_source`, and `flag_count_invalid_value` routes it to
+`review_core_invalid` at critical priority. It never authorizes exclusion.
 
 Attendance contradictions are review-only, even with an approved attendance
 definition. They can reflect a problem with the external attendance denominator
@@ -49,12 +60,13 @@ underlying evidence.
 | Action | Priority | Meaning |
 |---|---|---|
 | `exclude_core_invalid` | critical | Conservative policy authorizes exclusion of an unusable core record |
-| `review_core_invalid` | critical | Flags-only policy routes an unusable core record to review |
-| `review_multiple_signals` | high | At least two independent domains among attendance, prevalence, and tested volume are active |
+| `review_core_invalid` | critical | Flags-only policy routes an unusable core record to review; also a reported count that is not a valid whole number under either policy |
+| `review_multiple_signals` | high | At least two independent domains among attendance, prevalence, tested volume, and coverage are active |
 | `review_attendance` | medium | Attendance contradiction without another active domain |
+| `review_coverage` | medium | Low or very low testing coverage against attendance, without another active domain |
 | `review_prevalence` | medium | Prevalence/statistical issue without another active domain |
 | `review_tested_volume` | medium | Tested-volume issue without another active domain |
-| `review_temporal_context` | low | Temporal context is insufficient without another active issue |
+| `review_temporal_context` | low | Legacy label shown by the app for stored runs; version 3 never assigns it (temporal context only qualifies `qc_reason`) |
 | `retain` | none | This policy recommends neither review nor exclusion |
 
 `retain` does not certify correctness. It only means that the configured rules
@@ -65,7 +77,9 @@ and policy did not recommend action.
 - `flag_exclude_authorized` is the sole package field authorizing exclusion.
 - `flag_review_recommended` identifies review actions.
 - `action_policy` and `action_policy_version` are written to every row.
-- `review_priority` supports queue ordering but does not alter data.
+- `review_priority` supports queue ordering but does not alter data. The level
+  shown is the highest priority among the active flags, using the defaults or
+  `config$priority`.
 - `qc_reason` records all evidence even when one primary action is selected.
 
 Reporting-consistency strictness (`docs/REPORTING_CONSISTENCY.md`) selects a
