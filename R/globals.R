@@ -1,5 +1,5 @@
 utils::globalVariables(c(
-  '.action', '.affected', '.comparable', '.complete_pair', '.kept_pair', '.over', '.color', '.mark_family', '.mark_priority', 'shape', 'size', 'stroke', 'testing_coverage', '.rule_resid', '.zero_implausible', '.metric', '.reference', '.tooltip', '.value',
+  '.action', '.affected', '.comparable', '.complete_pair', '.kept_pair', '.over', '.color', '.mark_family', '.mark_priority', 'shape', 'size', 'stroke', 'testing_coverage', '.rule_resid', '.zero_implausible', '.excluded', '.invalid_count', '.count_ok', '.tested_original', 'flag_count_invalid_value', 'tested_parse_status', 'positive_parse_status', '.metric', '.reference', '.tooltip', '.value',
   'action_policy', 'attendance_issue', 'attending', 'comparable_rows',
   'excess_tested', 'facilities_tested_gt_attending', 'prop_tested_gt_attending', 'tested_gt_attending_rows', 'council', 'district',
   'burden', 'color',

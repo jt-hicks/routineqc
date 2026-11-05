@@ -8,22 +8,38 @@ run_threshold_sensitivity(
   data,
   resid_thresholds = c(3, 4, 5),
   tested_z_thresholds = c(4, 5, 6),
-  by = c("region", "council", "district", "month")
+  by = c("region", "council", "district", "month"),
+  config = NULL
 )
 }
 \arguments{
-\item{data}{A data frame with prepared/predicted columns.}
+\item{data}{A \code{routineqc_run}, or its \code{data_flagged} data frame. Prefer the
+run: a data frame does not carry the configuration.}
 
 \item{resid_thresholds}{Vector of residual thresholds.}
 
 \item{tested_z_thresholds}{Vector of tested robust-z thresholds.}
 
 \item{by}{One of \code{region}, \code{council}, \code{district}, or \code{month}.}
+
+\item{config}{A \code{\link[=qc_config]{qc_config()}}. Taken from \code{data} when it is a run. When
+\code{data} is a data frame and \code{config} is \code{NULL}, the recommended defaults are
+used with the action policy name and tested baseline mode recorded on the
+data, and a message says so.}
 }
 \value{
 A tibble with threshold combinations and summary metrics.
 }
 \description{
-Re-runs selected prevalence and tested QC thresholds over a grid and returns
-grouped summaries.
+Re-evaluates the prevalence rules and the tested-volume rules over a grid of
+thresholds and returns grouped summaries. Only the thresholds in the grid
+change: every other setting, the action policy and the review priorities come
+from the run's configuration, so the grid is comparable with the run itself.
+}
+\details{
+\code{resid_thresholds} replaces both size-dependent residual cutoffs (as
+\code{resid_threshold} does in \code{\link[=add_prevalence_qc_flags]{add_prevalence_qc_flags()}}) and
+\code{tested_z_thresholds} replaces \code{tested_z_threshold}. Flags and baseline columns
+already on \code{data} are recomputed, never reused. Attendance and logical flags
+do not depend on these thresholds and are carried over unchanged.
 }

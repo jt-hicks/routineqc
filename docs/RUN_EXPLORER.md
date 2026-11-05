@@ -31,8 +31,9 @@ must still be treated according to the confidentiality of the source data.
   burden ranks districts by the number or proportion of facilities exceeding
   an adjustable affected-row threshold. Both burden views can switch among
   review-or-exclusion, review only, and authorized exclusion only. An always-visible
-  flow diagram explains the tested/positive validity, attendance, prevalence,
-  temporal, and tested-volume evidence used by the action policy.
+  flow diagram explains the tested/positive validity, attendance, coverage,
+  prevalence, temporal, and tested-volume evidence used by action policy
+  version 3, including the configurable per-flag priority.
 - **Reporting consistency:** facility-level reporting behavior measured from the
   flagged data, covering months without testing, their absent, zero, and missing
   components, the longest gap without testing, and coverage of both the facility

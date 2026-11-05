@@ -13,5 +13,8 @@ plot_before_after_prevalence(data)
 A ggplot object.
 }
 \description{
-Plot Before/After Prevalence
+Prevalence is positives over tested across rows that carry both counts, the
+same definition as \code{prevalence_before_qc} and
+\code{prevalence_after_authorized_exclusions} in the summary tables. A row with a
+missing count contributes to neither numerator nor denominator.
 }

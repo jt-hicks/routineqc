@@ -1,5 +1,67 @@
 # routineqc (development version)
 
+## Reliability fixes
+
+This round fixes defects and tightens validation. It adds no feature and changes
+no statistical rule; the open calibration questions are listed in the pull
+request, not here.
+
+- A model that cannot be fitted no longer stops the run. `fit_prevalence_gam()`
+  handles a single region (the region term is dropped) and limited temporal
+  support (the seasonal and time smooths are dropped when too few months
+  support them). If nothing can be fitted it returns `NULL` with a warning, and
+  `run_routine_qc()` completes the deterministic rules with every row
+  `model_unavailable`.
+- `run_threshold_sensitivity()` accepts a `routineqc_run` (using its
+  configuration) or flagged data, and no longer fails on baseline columns that
+  already exist. Only the thresholds in the grid vary; the configuration and
+  action policy are the run's. With a plain data frame and no `config`, defaults
+  are assumed and a message says so. The bundled report passes the run.
+- Prevalence in the static and interactive before/after charts uses complete
+  tested/positive pairs, as the summary tables do (tested `c(100, 100)` and
+  positive `c(10, NA)` is 10%). `plot_prevalence_residuals()` and
+  `plot_tested_robust_z()` take a run or flagged data and draw the scaled
+  residual and the cutoffs the rules actually use.
+- Counts are parsed by one function shared by `prepare_qc_data()` and
+  `adapt_qc_data()`. A factor is read by label, not integer code
+  (`factor(c("100","200"))` was `1,2`). Each value gets a status in
+  `tested_parse_status` / `positive_parse_status`: `ok`, `missing`,
+  `malformed`, `non_finite` or `fractional`; the supplied value stays in
+  `tested_source` / `positive_source`. Nothing is rounded or dropped.
+  The adapter gains the diagnostic codes `non_finite_count` and
+  `fractional_count`. **Behaviour change:** a malformed, non-finite or
+  fractional count now sets the new `flag_count_invalid_value` and the action
+  `review_core_invalid`; it never authorizes exclusion. Fractional counts used
+  to pass unflagged. `prepare_qc_data()` warns when it finds any. Already-prepared
+  data are judged again from their current numeric values, and are rejected when a
+  value and its `*_parse_status` disagree about whether a count is present.
+  Invalid counts also take no part in testing coverage, the coverage flags or
+  the attendance comparison. Such rows are
+  left out of the model fit, prevalence, tested-volume baseline, impossible-count
+  checks and summary totals, get the new `prediction_status`
+  `ineligible_invalid_count`, and are counted in the new summary column
+  `invalid_count_rows` (`incomplete_count_rows` no longer includes them). Policy
+  version 3 is not bumped; see `docs/ACTION_POLICY.md`.
+- The run manifest records `build` (an implementation hash of the package code
+  and its constants, the source revision when known, and the R, mgcv, dplyr, tidyr, lubridate,
+  rlang and digest versions) and `count_translation`. The implementation hash
+  is part of `analysis_id`, so two implementations of one package version no
+  longer share an identity. Runs saved without these fields still validate and
+  keep their identity. The input fingerprint (schema 2, recorded in the
+  manifest) now covers the count translation; runs without that field are
+  verified with schema 1.
+- `validate_qc_run()` checks that actions, exclusion and review flags agree, and
+  that no exclusion is authorized without invalid core counts. For runs that
+  record an implementation hash it also checks the summaries against the data.
+  See `docs/RUN_ARTIFACTS.md` for what this does and does not guarantee.
+- Documentation, the Run Explorer's flow diagram and flag explanations, and the
+  report now describe action policy 3, configuration schema 6, configurable
+  priorities, coverage actions and missing counts as reporting. They state that
+  "operational" covers the trailing tested-volume baseline only (the GAM and
+  the isolation check use later months) and that the dispersion-adjusted
+  all-negative rule is an uncalibrated heuristic. `docs/PROTOTYPE_COMPARISON.md`
+  is marked historical.
+
 ## Breaking changes
 
 - A missing `tested` or `positive` count is no longer a logical error.

@@ -40,6 +40,7 @@ cat('Tested-volume baseline:', qc_result$config$tested_volume$baseline_mode, '\n
 cat('Baseline uses future reports:', qc_result$config$tested_volume$baseline_uses_future, '\n')
 cat('Action policy:', qc_result$config$action_policy$name, '\n')
 cat('Action policy version:', qc_result$config$action_policy$version, '\n')
+cat('Implementation hash:', qc_result$manifest$build$implementation_hash, '\n')
 cat('Analysis ID:', qc_result$manifest$analysis_id, '\n')
 cat('Execution ID:', qc_result$manifest$execution_id, '\n')
 cat('Input fingerprint:', qc_result$manifest$input_fingerprint, '\n')
@@ -55,6 +56,19 @@ a genuine structural change, and may be contaminated by erroneous earlier
 reports. The centered retrospective baseline uses future information, can change
 when later reports are appended, and must not be interpreted as a real-time
 alert. Missing calendar months reduce baseline evidence in both modes.
+
+"Operational" describes the tested-volume baseline only. The prevalence GAM is
+fitted to all rows, including months after the one assessed, and the temporal
+isolation check reads the following month, so prevalence flags are not
+point-in-time and can change when later reports arrive. The all-negative rule,
+`(1 - p_hat)^(tested / dispersion)` below `all_negative_max_probability`, is a
+dispersion-adjusted heuristic that has not been calibrated.
+
+A missing `tested` or `positive` count is reporting, not error: it is neither
+flagged nor excluded (see `core_count_status`). A count that was reported but is
+not a valid whole number is a different matter and is flagged for review as
+`flag_count_invalid_value`; the original value is in `tested_source` /
+`positive_source`.
 
 ## QC Protocol Summary
 
@@ -95,7 +109,7 @@ qc_result$data_flagged %>%
     isolated_extreme = sum(flag_isolated_extreme, na.rm = TRUE)
   )
 
-plot_prevalence_residuals(qc_result$data_flagged)
+plot_prevalence_residuals(qc_result)
 ```
 
 ## Tested Volume Anomalies
@@ -109,7 +123,7 @@ qc_result$data_flagged %>%
     tested_drop = sum(flag_tested_large_drop, na.rm = TRUE)
   )
 
-plot_tested_robust_z(qc_result$data_flagged)
+plot_tested_robust_z(qc_result)
 ```
 
 ## Combined QC Actions
@@ -155,8 +169,11 @@ plot_before_after_prevalence(qc_result$data_flagged)
 
 ## Threshold Sensitivity
 
+Only the residual and tested robust-z thresholds in the grid vary; every other
+setting, the action policy and the review priorities are the run's own.
+
 ```{r}
-run_threshold_sensitivity(qc_result$data_flagged, by = "region")
+run_threshold_sensitivity(qc_result, by = "region")
 ```
 
 ## Facility Audit

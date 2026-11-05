@@ -134,6 +134,13 @@ validate_qc_adapter_result <- function(result) {
 #' Declaratively maps one source table into canonical routineqc fields without
 #' dropping, aggregating, imputing, or repairing source observations.
 #'
+#' Counts are translated by the rules in [prepare_qc_data()]. The canonical data
+#' keep the supplied value in `tested_source` / `positive_source` and the reason
+#' for any `NA` in `tested_parse_status` / `positive_parse_status`. Diagnostics
+#' (all warnings, none dropping a row) separate `missing_count` (not reported)
+#' from `unparseable_count` (malformed), `non_finite_count` and
+#' `fractional_count`. A fractional count is kept unrounded.
+#'
 #' @param data Source data frame.
 #' @param mapping Named list mapping canonical fields to source column names.
 #' @param identity_strategy Non-empty description of the facility identity used.
@@ -193,16 +200,24 @@ adapt_qc_data <- function(data,
   } else {
     as.character(seq_len(nrow(data)))
   }
+  tested_parsed <- .parse_counts(data[[mapping$tested]])
+  positive_parsed <- .parse_counts(data[[mapping$positive]])
   canonical <- dplyr::tibble(
     facility_id = as.character(data[[mapping$facility_id]]),
     month_date = .coerce_month_date(data[[mapping$month_date]]),
     region = as.character(data[[mapping$region]]),
-    tested = suppressWarnings(as.numeric(data[[mapping$tested]])),
-    positive = suppressWarnings(as.numeric(data[[mapping$positive]]))
+    tested = tested_parsed$value,
+    positive = positive_parsed$value,
+    tested_source = tested_parsed$source,
+    positive_source = positive_parsed$source,
+    tested_parse_status = tested_parsed$status,
+    positive_parse_status = positive_parsed$status
   )
+  attending_parsed <- NULL
   for (field in intersect(.adapter_optional_fields, names(mapping))) {
     if (field == 'attending') {
-      canonical[[field]] <- suppressWarnings(as.numeric(data[[mapping[[field]]]]))
+      attending_parsed <- .parse_counts(data[[mapping[[field]]]])
+      canonical[[field]] <- attending_parsed$value
     } else {
       canonical[[field]] <- as.character(data[[mapping[[field]]]])
     }
@@ -233,21 +248,17 @@ adapt_qc_data <- function(data,
   )
 
   for (field in c('tested', 'positive')) {
-    source <- data[[mapping[[field]]]]
-    bad <- is.na(canonical[[field]])
-    add_diagnostic(
-      which(bad & !is.na(source) & trimws(as.character(source)) != ''),
-      'warning', 'unparseable_count', field
-    )
-    add_diagnostic(
-      which(bad & (is.na(source) | trimws(as.character(source)) == '')),
-      'warning', 'missing_count', field
-    )
+    status <- list(tested = tested_parsed, positive = positive_parsed)[[field]]$status
+    add_diagnostic(which(status == 'missing'), 'warning', 'missing_count', field)
+    add_diagnostic(which(status == 'malformed'), 'warning', 'unparseable_count', field)
+    add_diagnostic(which(status == 'non_finite'), 'warning', 'non_finite_count', field)
+    add_diagnostic(which(status == 'fractional'), 'warning', 'fractional_count', field)
   }
   if ('attending' %in% names(mapping)) {
-    source <- data[[mapping$attending]]
-    bad <- is.na(canonical$attending) & !is.na(source) & trimws(as.character(source)) != ''
-    add_diagnostic(which(bad), 'warning', 'unparseable_attendance', 'attending')
+    add_diagnostic(
+      which(attending_parsed$status %in% c('malformed', 'non_finite')),
+      'warning', 'unparseable_attendance', 'attending'
+    )
   }
 
   duplicate <- !facility_bad & !month_bad & (

@@ -4,10 +4,14 @@
 \alias{plot_tested_robust_z}
 \title{Plot Tested Robust Z}
 \usage{
-plot_tested_robust_z(data)
+plot_tested_robust_z(data, config = NULL)
 }
 \arguments{
-\item{data}{A QC data frame with \code{tested_robust_z} and \code{month_date}.}
+\item{data}{A \code{routineqc_run}, or a QC data frame with \code{tested_robust_z} and
+\code{month_date}.}
+
+\item{config}{A \code{\link[=qc_config]{qc_config()}}. Taken from \code{data} when it is a run. For a data
+frame the recommended threshold is drawn when \code{config} is \code{NULL}.}
 }
 \value{
 A ggplot object.

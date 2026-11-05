@@ -2,6 +2,8 @@
 
 This package is the independent home for the reusable QC engine originally prototyped alongside `anc_data_curation`. It must consume documented canonical inputs and must not depend on that repository's SharePoint paths, raw-file conventions, or release process.
 
+> Phase statuses below record migration history. Current behavior (action policy version 3, configuration schema 6, run schema 2) is described in `docs/ACTION_POLICY.md`, `docs/RUN_ARTIFACTS.md`, and `NEWS.md`. Imputation and reviewer-decision features are not part of the package; a reliability release precedes any such work.
+
 ## Migration phases
 
 | Phase | Deliverable | Status |

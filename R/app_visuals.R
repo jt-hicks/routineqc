@@ -12,11 +12,7 @@
   } else {
     rep(FALSE, nrow(data))
   }
-  exclude <- if ('flag_exclude_authorized' %in% names(data)) {
-    dplyr::coalesce(as.logical(data$flag_exclude_authorized), FALSE)
-  } else {
-    rep(FALSE, nrow(data))
-  }
+  exclude <- .authorized_exclusion(data)
   switch(mode, flagged = review | exclude, review = review, exclude = exclude)
 }
 
@@ -289,10 +285,11 @@
       box(
         'Tested/positive validity checks',
         c(
-          'Missing tested or positive count',
           'Negative tested or positive count',
           'Positive count greater than tested',
-          'Positive count with zero tested'
+          'Positive count with zero tested',
+          'A reported count that is not a whole number (review only, never excluded)',
+          'A missing count is not an error: it is recorded as reporting, not flagged'
         )
       ),
       box(
@@ -300,6 +297,13 @@
         c(
           'Tested exceeds an approved attendance denominator',
           'Attendance is negative'
+        )
+      ),
+      box(
+        'Testing coverage',
+        c(
+          'Tested is low or very low relative to attendance',
+          'Needs an approved attendance denominator; review only'
         )
       ),
       box(
@@ -329,6 +333,10 @@
       shiny::tags$p(
         shiny::tags$strong('Conservative policy: '),
         'invalid tested/positive counts may authorize exclusion; other evidence recommends review.'
+      ),
+      shiny::tags$p(
+        shiny::tags$strong('Priority: '),
+        'each flag has a configurable priority; the highest active flag sets the review priority.'
       ),
       shiny::tags$p(
         shiny::tags$strong('Multiple evidence domains: '),
@@ -453,12 +461,10 @@
 
 .plot_before_after_interactive <- function(data) {
   .validate_required_columns(data, c('tested', 'positive', 'flag_exclude_authorized'))
-  before <- .safe_divide(sum(data$positive, na.rm = TRUE), sum(data$tested, na.rm = TRUE))
-  keep <- !dplyr::coalesce(data$flag_exclude_authorized, FALSE)
-  after <- .safe_divide(sum(data$positive[keep], na.rm = TRUE), sum(data$tested[keep], na.rm = TRUE))
+  values <- .before_after_prevalence(data)
   dat <- dplyr::tibble(
     state = c('Source data', 'After authorized exclusions'),
-    prevalence = c(before, after)
+    prevalence = c(values$before, values$after)
   )
   plotly::plot_ly(
     dat, x = ~state, y = ~prevalence, type = 'bar',
@@ -544,8 +550,9 @@
   if (metric == 'coverage') {
     if ('testing_coverage' %in% names(data)) return(data$testing_coverage)
     if (!'attending' %in% names(data)) return(rep(NA_real_, nrow(data)))
-    return(ifelse(!is.na(data$tested) & !is.na(data$attending) & data$attending > 0,
-                  data$tested / data$attending, NA_real_))
+    tested_ok <- .usable_counts(data)$tested
+    return(ifelse(!is.na(tested_ok) & !is.na(data$attending) & data$attending > 0,
+                  tested_ok / data$attending, NA_real_))
   }
   data[[metric]]
 }
@@ -695,6 +702,7 @@
     dat <- dplyr::as_tibble(data)
     dat <- dat[!is.na(dat$district) & as.character(dat$district) == district, , drop = FALSE]
     if (!'attending' %in% names(dat)) dat$attending <- NA_real_
+    dat$tested <- .usable_counts(dat)$tested
     cov <- dat %>%
       dplyr::filter(!is.na(tested), !is.na(attending)) %>%
       dplyr::group_by(month_date) %>%
@@ -769,6 +777,8 @@
 
 .attendance_comparable <- function(data) {
   dat <- dplyr::as_tibble(data)
+  # Invalid counts are not comparable observations.
+  dat$tested <- .usable_counts(dat)$tested
   dat$.comparable <- !is.na(dat$tested) & !is.na(dat$attending)
   dat$.over <- dat$.comparable & dat$tested > dat$attending
   dat

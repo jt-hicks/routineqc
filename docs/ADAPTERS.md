@@ -36,9 +36,16 @@ Errors block `run_qc_adapter()`. They include missing facility identity or
 region, missing or unparseable month, and duplicate facility-month keys.
 Adapters must not silently aggregate duplicates.
 
-Warnings do not block handoff. Missing or malformed tested/positive cells are
-converted to numeric `NA`, diagnosed, preserved, and subsequently flagged by
-the logical QC protocol.
+Warnings do not block handoff. Counts are translated without repair by the same
+parser as `prepare_qc_data()`. Each tested/positive value carries a status
+(`tested_parse_status`, `positive_parse_status`) and its original in
+`tested_source` / `positive_source`; factors are read by label, never by integer
+code. Diagnostics separate `missing_count` (not reported, not an error),
+`unparseable_count` (malformed), `non_finite_count`, and `fractional_count`.
+Malformed and non-finite values become `NA`; a fractional value is kept as
+supplied. The logical QC protocol flags a malformed, non-finite, or fractional
+count as `flag_count_invalid_value` (review only). A missing count is recorded in
+`core_count_status`, not flagged.
 
 ## Prohibited adapter behavior
 

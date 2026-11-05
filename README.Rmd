@@ -20,7 +20,10 @@ knitr::opts_chunk$set(
 
 The goal of routineqc is to provide reusable quality-control tools for routine
 health facility-month surveillance data. It is designed to help identify likely
-data-entry anomalies while preserving raw records and appending QC flags.
+data-entry anomalies. Rows are never dropped and no value is overwritten: QC
+flags are appended, and a count as originally supplied stays available in
+`tested_source` / `positive_source` (it is translated to numbers beside it, see
+below).
 
 ## Status: experimental (0.1.0)
 
@@ -30,8 +33,15 @@ Treat every output as an aid to review, not a validated production tool.
 
 - **Anomaly flags are evidence for review, not automatic proof of a
   data-entry error.** Only impossible core tested/positive counts are
-  auto-excluded under the default `conservative_review` policy; attendance,
-  statistical, temporal, and tested-volume signals remain review-only.
+  auto-excluded under the default `conservative_review` policy (action policy
+  version 3, configuration schema 6); attendance, coverage, statistical,
+  temporal, and tested-volume signals remain review-only. A missing count is
+  reporting, not error, and is neither flagged nor excluded.
+- **"Operational" means a trailing tested-volume baseline only.** The prevalence
+  GAM is fitted to all rows including later months, and the temporal isolation
+  check reads the following month, so prevalence flags can change when later data
+  arrive. The dispersion-adjusted all-negative rule is a heuristic that awaits
+  calibration.
 - The prevalence model, tested-volume baselines, and action policy have been
   validated against synthetic fixtures only; no upstream production pipeline
   has yet been integrated (see `MIGRATION.md`).
@@ -212,8 +222,13 @@ adapted$diagnostics
 qc <- run_qc_adapter(adapted)
 ```
 
-Adapter errors block QC without deleting records. Count-conversion warnings do
-not block QC: the converted `NA` values remain available to the logical checks.
+Adapter errors block QC without deleting records. Count-conversion problems do
+not block QC and no value is repaired. Each count gets a status
+(`tested_parse_status`, `positive_parse_status`): `missing` (not reported) is
+distinguished from `malformed`, `non_finite`, and `fractional` values. The
+original is kept in `tested_source` / `positive_source`, factors are read by
+label, and a value that is reported but not a valid whole number is flagged
+`flag_count_invalid_value` for review.
 
 The default `conservative_review` policy authorizes exclusion only for
 impossible core tested/positive records. Attendance contradictions and
@@ -290,8 +305,10 @@ The smoke fixture contains three districts with eight facilities each and 12 to
 24 months per facility. Pass an output directory as the first argument and add
 `--launch` to open the generated run immediately.
 
-routineqc preserves raw data and appends QC outputs as additional columns
-rather than deleting records.
+routineqc appends QC outputs as additional columns rather than deleting
+records, and keeps each tested and positive value as supplied in a `*_source`
+column. The numeric `tested` / `positive` are translations of those, not
+the originals.
 
 Anomaly flags are evidence for review, not automatic proof of error. See
 `docs/ACTION_POLICY.md` and `docs/TESTED_VOLUME_BASELINES.md` for policy and

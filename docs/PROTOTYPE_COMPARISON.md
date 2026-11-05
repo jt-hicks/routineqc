@@ -6,6 +6,13 @@ comparison, not a request to preserve pipeline-specific loading or output code.
 
 Audit date: 4 August 2026.
 
+> **Historical document.** This audit describes the package as of its audit
+> date, against action policy version 1. It is kept as a record and does not
+> describe current behavior: policy version 3, configuration schema 6,
+> per-flag priorities, coverage actions, missing counts as reporting rather than
+> errors, and dispersion-adjusted residuals all postdate it. For current
+> behavior see `docs/ACTION_POLICY.md` and `docs/PREVALENCE_MODEL.md`.
+
 ## Outcome
 
 The package contains counterparts for every reusable prototype layer, but it is

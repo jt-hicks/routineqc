@@ -43,3 +43,11 @@ warning diagnostics remain visible but do not drop rows.
 Declaratively maps one source table into canonical routineqc fields without
 dropping, aggregating, imputing, or repairing source observations.
 }
+\details{
+Counts are translated by the rules in \code{\link[=prepare_qc_data]{prepare_qc_data()}}. The canonical data
+keep the supplied value in \code{tested_source} / \code{positive_source} and the reason
+for any \code{NA} in \code{tested_parse_status} / \code{positive_parse_status}. Diagnostics
+(all warnings, none dropping a row) separate \code{missing_count} (not reported)
+from \code{unparseable_count} (malformed), \code{non_finite_count} and
+\code{fractional_count}. A fractional count is kept unrounded.
+}
