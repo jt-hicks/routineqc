@@ -1,6 +1,6 @@
 Package: routineqc
 Title: Reusable Quality Control for Routine Surveillance Data
-Version: 0.2.0
+Version: 0.2.0.9000
 Authors@R:
     person("Joseph T", "Hicks", , "jthicks@imperial.ac.uk", role = c("aut", "cre"))
 Description: Reusable tools for identifying likely data-entry anomalies in
