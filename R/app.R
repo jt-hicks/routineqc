@@ -324,9 +324,16 @@ filter_qc_review <- function(data,
     shiny::titlePanel('routineqc Run Explorer'),
     shiny::p('Read-only local review of validated persisted QC runs.'),
     shiny::uiOutput('run_selector'),
-    shiny::tabsetPanel(
+    .dashboard_ui(.qc_legacy_tabs())
+  )
+}
+
+# The original panels, kept with their input and output ids and regrouped
+# under the four views and Run details by `.dashboard_ui()`.
+.qc_legacy_tabs <- function() {
+    list(
       shiny::tabPanel(
-        'Overview',
+        'Action summary',
         shiny::tableOutput('overview'),
         shiny::fluidRow(
           shiny::column(6, plotly::plotlyOutput('action_plot', height = '430px')),
@@ -529,7 +536,7 @@ filter_qc_review <- function(data,
         )
       ),
       shiny::tabPanel(
-        'District',
+        'District grid',
         shiny::uiOutput('district_state'),
         shiny::fluidRow(
           shiny::column(6, shiny::selectInput('plot_district', 'District', choices = NULL)),
@@ -561,7 +568,6 @@ filter_qc_review <- function(data,
         shiny::h4('Safe provenance'), shiny::verbatimTextOutput('provenance')
       )
     )
-  )
 }
 
 .qc_app_server <- function(input, output, session, run_dir) {
@@ -985,6 +991,8 @@ filter_qc_review <- function(data,
   })
   output$configuration <- shiny::renderPrint({ selected_run()$config })
   output$provenance <- shiny::renderPrint({ selected_run()$manifest$provenance })
+
+  .dashboard_server(input, output, session, selected_run)
 
   invisible(list(selected_run = selected_run, review_data = review_data))
 }
