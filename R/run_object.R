@@ -1,7 +1,8 @@
 .qc_run_schema_version <- 2L
 .qc_manifest_schema_version <- 2L
+.qc_fingerprint_schema_version <- 2L
 
-.normalise_fingerprint_data <- function(data) {
+.normalise_fingerprint_data <- function(data, schema_version = 1L) {
   required_fields <- c('facility_id', 'month_date', 'region', 'tested', 'positive')
   optional_fields <- c(
     'district', 'council', 'facility_name', 'attending',
@@ -13,8 +14,19 @@
         nm %in% names(data) && any(!is.na(data[[nm]]))
       }, logical(1))
   ]
-  fields <- c(required_fields, supplied_optional)
+  # From schema 2 the count translation is part of the input: a missing count
+  # and a malformed one are both NA in `tested`, but are acted on differently.
+  translation_fields <- if (schema_version >= 2L) {
+    intersect(
+      c('tested_source', 'positive_source', 'tested_parse_status', 'positive_parse_status'),
+      names(data)
+    )
+  } else {
+    character()
+  }
+  fields <- c(required_fields, supplied_optional, translation_fields)
   out <- as.data.frame(data[fields], stringsAsFactors = FALSE)
+  for (nm in translation_fields) out[[nm]] <- as.character(out[[nm]])
   for (nm in names(out)) {
     if (inherits(out[[nm]], 'Date')) {
       out[[nm]] <- format(out[[nm]], '%Y-%m-%d')
@@ -38,14 +50,22 @@
 #' data; it is not encryption and does not make confidential data safe to share.
 #'
 #' @param data Canonical prepared QC input.
+#' @param schema_version Fingerprint schema. Version 2 (the default) also covers
+#'   the count translation (`*_source` and `*_parse_status`) when present, so
+#'   a missing and a malformed count differ. Version 1 is kept to validate runs
+#'   saved before it existed.
 #'
 #' @return A SHA-256 hexadecimal string.
 #' @export
-fingerprint_qc_input <- function(data) {
+fingerprint_qc_input <- function(data, schema_version = .qc_fingerprint_schema_version) {
   validate_qc_input(data)
-  normalized <- .normalise_fingerprint_data(data)
+  if (!schema_version %in% c(1L, 2L)) {
+    rlang::abort('`schema_version` must be 1 or 2.')
+  }
+  normalized <- .normalise_fingerprint_data(data, schema_version)
   digest::digest(
-    list(fingerprint_schema_version = 1L, fields = names(normalized), data = normalized),
+    list(fingerprint_schema_version = as.integer(schema_version),
+         fields = names(normalized), data = normalized),
     algo = 'sha256', serialize = TRUE
   )
 }
@@ -82,8 +102,8 @@ fingerprint_qc_input <- function(data) {
 
 # Identifies the implementation that produced a run. The package version alone
 # cannot: a development tree and a release share it. `implementation_hash`
-# digests every function in the package namespace, so any code change gives a
-# different value; `source_revision` is the commit recorded in the installed
+# digests every function and constant data object in the package namespace, so
+# a code or rule-constant change gives a different value; `source_revision` is the commit recorded in the installed
 # DESCRIPTION when there is one (NA otherwise); the dependency versions are
 # those of the packages that carry the computation.
 .dependency_packages <- c('mgcv', 'dplyr', 'tidyr', 'lubridate', 'rlang', 'digest')
@@ -91,12 +111,22 @@ fingerprint_qc_input <- function(data) {
 .build_identity <- function() {
   ns <- asNamespace('routineqc')
   objects <- sort(ls(ns, all.names = TRUE))
-  functions <- Filter(function(nm) is.function(get(nm, envir = ns)), objects)
+  values <- lapply(stats::setNames(objects, objects), function(nm) get(nm, envir = ns))
+  functions <- names(Filter(is.function, values))
+  # Constants that rules read (for example the statuses counted as invalid)
+  # change decisions as surely as code does, so they are part of the identity.
+  constants <- names(Filter(function(x) {
+    !is.function(x) && !is.environment(x) && (is.atomic(x) || is.list(x))
+  }, values))
+  constants <- constants[!startsWith(constants, '.__') & constants != '.packageName']
   implementation_hash <- digest::digest(
-    lapply(functions, function(nm) {
-      fn <- get(nm, envir = ns)
-      list(nm, deparse(formals(fn)), deparse(body(fn)))
-    }),
+    list(
+      functions = lapply(functions, function(nm) {
+        fn <- values[[nm]]
+        list(nm, deparse(formals(fn)), deparse(body(fn)))
+      }),
+      constants = lapply(constants, function(nm) list(nm, values[[nm]]))
+    ),
     algo = 'sha256', serialize = TRUE
   )
   description <- utils::packageDescription('routineqc')
@@ -169,6 +199,7 @@ fingerprint_qc_input <- function(data) {
     build = build,
     count_translation = .count_translation_summary(data_flagged),
     input_fingerprint = input_fingerprint,
+    input_fingerprint_schema_version = .qc_fingerprint_schema_version,
     config_fingerprint = config_fingerprint,
     input_rows = nrow(input_data),
     input_facilities = dplyr::n_distinct(input_data$facility_id),
@@ -250,7 +281,13 @@ validate_qc_run <- function(run) {
   if (!identical(as.integer(manifest$input_rows), as.integer(nrow(run$data_flagged)))) {
     rlang::abort('QC run row count does not match its manifest.')
   }
-  if (!identical(manifest$input_fingerprint, fingerprint_qc_input(run$data_flagged))) {
+  fingerprint_schema <- if (is.null(manifest$input_fingerprint_schema_version)) {
+    1L
+  } else {
+    as.integer(manifest$input_fingerprint_schema_version)
+  }
+  if (!identical(manifest$input_fingerprint,
+                 fingerprint_qc_input(run$data_flagged, fingerprint_schema))) {
     rlang::abort('QC run data does not match its input fingerprint.')
   }
   prediction_columns <- c(
@@ -299,7 +336,14 @@ validate_qc_run <- function(run) {
   action_columns <- c(
     'qc_action', 'flag_exclude_authorized', 'flag_review_recommended', 'flag_any_qc_issue'
   )
-  if (all(action_columns %in% names(data))) {
+  missing_action <- setdiff(action_columns, names(data))
+  if (length(missing_action) > 0L) {
+    rlang::abort(paste0(
+      'QC run data is missing required action fields: ',
+      paste(missing_action, collapse = ', '), '.'
+    ))
+  }
+  {
     action <- as.character(data$qc_action)
     consistent <-
       !anyNA(action) &&

@@ -402,15 +402,17 @@ add_attendance_qc_flags <- function(data,
   if (!'attending' %in% names(out)) out$attending <- NA_real_
   if (!'flag_tested_gt_attending' %in% names(out)) out <- flag_logical_errors(out)
 
-  comparable <- !is.na(out$tested) & !is.na(out$attending)
+  # An invalid count is reviewed as such; it is not a coverage observation.
+  tested_ok <- .usable_counts(out)$tested
+  comparable <- !is.na(tested_ok) & !is.na(out$attending)
   judged <- comparable & out$attending > 0 & out$attending >= coverage_min_attending
   if (!is.null(coverage_from)) judged <- judged & out$month_date >= as.Date(coverage_from)
-  coverage <- ifelse(comparable & out$attending > 0, out$tested / out$attending, NA_real_)
+  coverage <- ifelse(comparable & out$attending > 0, tested_ok / out$attending, NA_real_)
 
   out$testing_coverage <- coverage
   out$flag_tested_gt_attending_major <- dplyr::coalesce(out$flag_tested_gt_attending, FALSE) &
-    comparable & out$tested > excess_ratio * out$attending &
-    (out$tested - out$attending) >= excess_min
+    comparable & tested_ok > excess_ratio * out$attending &
+    (tested_ok - out$attending) >= excess_min
   out$flag_coverage_very_low <- judged & coverage < coverage_very_low
   out$flag_coverage_low <- judged & coverage < coverage_low
   out

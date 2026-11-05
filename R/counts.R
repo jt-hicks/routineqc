@@ -74,10 +74,25 @@
   source_col <- paste0(field, '_source')
   status_col <- paste0(field, '_parse_status')
   if (identical(source_var, field) && all(c(source_col, status_col) %in% names(data))) {
+    value <- as.numeric(data[[field]])
+    status <- as.character(data[[status_col]])
+    if (anyNA(status) || !all(status %in% .count_status_levels)) {
+      rlang::abort(sprintf('`%s` holds values that are not a known count status.', status_col))
+    }
+    # Prepared data may have been edited since translation, so the value is
+    # judged again. The source and the recorded reason for an NA are kept.
+    has_value <- status %in% c('ok', 'fractional')
+    if (any(has_value & is.na(value)) || any(!has_value & !is.na(value))) {
+      rlang::abort(sprintf(
+        '`%s` and `%s` disagree about which counts are present; re-prepare from the original data.',
+        field, status_col
+      ))
+    }
+    status[has_value] <- .parse_counts(value[has_value])$status
     return(list(
-      value = as.numeric(data[[field]]),
+      value = value,
       source = data[[source_col]],
-      status = as.character(data[[status_col]]),
+      status = status,
       translated_upstream = TRUE
     ))
   }

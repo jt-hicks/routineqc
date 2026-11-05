@@ -4,10 +4,15 @@
 \alias{fingerprint_qc_input}
 \title{Fingerprint Canonical QC Input}
 \usage{
-fingerprint_qc_input(data)
+fingerprint_qc_input(data, schema_version = .qc_fingerprint_schema_version)
 }
 \arguments{
 \item{data}{Canonical prepared QC input.}
+
+\item{schema_version}{Fingerprint schema. Version 2 (the default) also covers
+the count translation (\verb{*_source} and \verb{*_parse_status}) when present, so
+a missing and a malformed count differ. Version 1 is kept to validate runs
+saved before it existed.}
 }
 \value{
 A SHA-256 hexadecimal string.

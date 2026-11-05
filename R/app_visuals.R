@@ -550,8 +550,9 @@
   if (metric == 'coverage') {
     if ('testing_coverage' %in% names(data)) return(data$testing_coverage)
     if (!'attending' %in% names(data)) return(rep(NA_real_, nrow(data)))
-    return(ifelse(!is.na(data$tested) & !is.na(data$attending) & data$attending > 0,
-                  data$tested / data$attending, NA_real_))
+    tested_ok <- .usable_counts(data)$tested
+    return(ifelse(!is.na(tested_ok) & !is.na(data$attending) & data$attending > 0,
+                  tested_ok / data$attending, NA_real_))
   }
   data[[metric]]
 }
@@ -701,6 +702,7 @@
     dat <- dplyr::as_tibble(data)
     dat <- dat[!is.na(dat$district) & as.character(dat$district) == district, , drop = FALSE]
     if (!'attending' %in% names(dat)) dat$attending <- NA_real_
+    dat$tested <- .usable_counts(dat)$tested
     cov <- dat %>%
       dplyr::filter(!is.na(tested), !is.na(attending)) %>%
       dplyr::group_by(month_date) %>%
@@ -775,6 +777,8 @@
 
 .attendance_comparable <- function(data) {
   dat <- dplyr::as_tibble(data)
+  # Invalid counts are not comparable observations.
+  dat$tested <- .usable_counts(dat)$tested
   dat$.comparable <- !is.na(dat$tested) & !is.na(dat$attending)
   dat$.over <- dat$.comparable & dat$tested > dat$attending
   dat

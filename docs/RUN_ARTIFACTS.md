@@ -10,7 +10,11 @@ runs with configuration schema 4 or 5 or policy version 1 or 2 stay readable.
 ## Identities
 
 - `input_fingerprint` is a deterministic SHA-256 digest of normalized canonical
-  fields. Row order does not affect it; changes to relevant values do.
+  fields. Row order does not affect it; changes to relevant values do. From
+  fingerprint schema 2 (recorded as `input_fingerprint_schema_version`) it also
+  covers `tested_source`, `positive_source` and the two `*_parse_status`
+  columns, so a missing count and a malformed one, both `NA` in `tested`, give
+  different fingerprints. Runs without that field are verified with schema 1.
 - `analysis_id` deterministically combines the input fingerprint, configuration
   fingerprint, package version, run schema, and `build$implementation_hash`.
   Runs saved before the build identity was recorded omit that last part, so
@@ -25,7 +29,8 @@ make confidential source data safe to share.
 
 The package version alone cannot tell a development tree from a release, so the
 manifest's `build` records `implementation_hash` (a digest of every function in
-the package namespace, so any code change alters it), `source_revision` (the
+the package namespace and of its constant data objects, such as the statuses
+counted as invalid, so a change to either alters it), `source_revision` (the
 commit in the installed DESCRIPTION, `NA` for a plain local install), the R
 version, and the versions of mgcv, dplyr, tidyr, lubridate, rlang, and digest.
 Two implementations therefore cannot share an `analysis_id` silently. The
@@ -72,7 +77,9 @@ agree with one another:
 
 - the configuration, row count, input fingerprint, model-assessment counts, and
   analysis identity match the manifest;
-- `flag_exclude_authorized` is true exactly for `qc_action == "exclude_core_invalid"`,
+- the flagged data carry `qc_action`, `flag_exclude_authorized`,
+  `flag_review_recommended` and `flag_any_qc_issue` (a run missing any of them
+  is rejected, not skipped), and `flag_exclude_authorized` is true exactly for `qc_action == "exclude_core_invalid"`,
   `flag_review_recommended` exactly for `review_*` actions, `flag_any_qc_issue`
   exactly for any action but `retain`, and no exclusion is authorized for a row
   without `flag_core_invalid`;
