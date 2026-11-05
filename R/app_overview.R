@@ -202,7 +202,8 @@
   plotly::layout(plot, barmode = 'stack', xaxis = list(title = 'Share of records', tickformat = '.0%',
                                                         range = c(0, 1)),
                  yaxis = list(title = '', autorange = 'reversed'),
-                 legend = list(orientation = 'h', y = -0.25), margin = list(l = 170))
+                 legend = list(orientation = 'h', y = -0.25), margin = list(l = 170)) %>%
+    plotly::style(textposition = 'none')
 }
 
 .plot_unit_family_heatmap <- function(matrix, max_units = 40L) {
@@ -235,5 +236,6 @@
   }
   plotly::layout(plot, barmode = 'stack', xaxis = list(title = ''),
                  yaxis = list(title = 'Records flagged for review', tickformat = '.0%'),
-                 legend = list(orientation = 'h', y = -0.2))
+                 legend = list(orientation = 'h', y = -0.2)) %>%
+    plotly::style(textposition = 'none')
 }

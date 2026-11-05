@@ -1,5 +1,24 @@
 # routineqc (development version)
 
+## Dashboard redesign
+
+- The explorer is reorganised into Overview, Explore data, Filter impact, QC
+  guide and Run details. Existing panels and their behaviour are kept inside
+  these views. See `docs/RUN_EXPLORER.md`.
+- Explore data adds cascading National to Facility navigation, four measures
+  computed from matched totals (never averaged facility percentages), explicit
+  gaps, facility reporting states, click-through flag explanations and drill-down.
+- Filter impact compares hypothetical QC scenarios against reported estimates
+  without altering any stored data, with optional, clearly labelled imputation.
+- New exported functions: `qc_scenario()`, `qc_scenario_presets()`,
+  `describe_qc_scenarios()`, `apply_qc_scenario()`, `qc_aggregate_metrics()`,
+  `compare_qc_scenario()`, `qc_impute_scenario()`, `summarise_qc_imputation()`,
+  `qc_scenario_results()`, `simulate_qc_truth()`, `evaluate_qc_recovery()` and
+  `evaluate_qc_recovery_grid()`. See `docs/ANALYTICAL_SCENARIOS.md`.
+- No run schema, policy or configuration change; saved runs remain readable.
+  Because new functions are part of the implementation, new runs record a new
+  implementation hash.
+
 # routineqc 0.2.0
 
 ## Reliability fixes

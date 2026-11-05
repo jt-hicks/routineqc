@@ -49,5 +49,12 @@ utils::globalVariables(c(
   'passes_strictness', 'prevalence_after_authorized_exclusions',
   'prevalence_before_qc', 'prop_reported_dataset_window',
   'prop_with_testing_dataset_window', 'prop_without_testing_facility_window',
-  'summary_value'
+  'summary_value',
+  '.att_use', '.cov_a', '.cov_t', '.imp_pair_t', '.imp_tested', '.n_att', '.n_cov', '.n_pair',
+  '.n_tested_use', '.pair_p', '.pair_t', '.rows', '.tested_use', 'authorizes_exclusion', 'ci_high',
+  'ci_low', 'counts_in_doubt', 'coverage', 'coverage_attendance', 'coverage_rows', 'coverage_tested',
+  'covered', 'definition', 'domain', 'error', 'facility_months', 'field', 'high_priority_rows',
+  'matched_tested_from_imputation', 'needs', 'pair_rows', 'positive_matched', 'positive_status',
+  'positivity', 'positivity_se', 'priority', 'prop_tested_from_imputation', 'review_rows', 'scenario',
+  'share_flagged', 'status', 'tested_matched', 'tested_status', 'tested_total', 'unit'
 ))

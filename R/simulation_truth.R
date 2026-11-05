@@ -224,7 +224,7 @@ evaluate_qc_recovery <- function(sim, scenarios = qc_scenario_presets(),
     for (lv in levels) {
       res <- qc_scenario_results(flagged, scn, lv, monthly = FALSE, imputation = imp)
       res <- .with_unit(res, lv)
-      res <- dplyr::left_join(res, setNames(truth_by_level[[lv]], c('unit', 'truth')), by = 'unit')
+      res <- dplyr::left_join(res, stats::setNames(truth_by_level[[lv]], c('unit', 'truth')), by = 'unit')
       res$scenario <- scn$name
       res$level <- lv
       res$error <- res$positivity - res$truth

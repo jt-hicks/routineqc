@@ -195,7 +195,7 @@
     }
     return(plotly::layout(plot, barmode = 'stack', yaxis = list(visible = FALSE),
                           xaxis = list(title = ''), legend = list(orientation = 'h', y = -0.5),
-                          margin = list(t = 5, b = 30)))
+                          margin = list(t = 5, b = 30)) %>% plotly::style(textposition = 'none'))
   }
   silent <- pmax(series$facilities_expected - series$facilities_reporting, 0L)
   hover <- paste0(format(series$month_date, '%b %Y'), '<br>Reporting: ', series$facilities_reporting,
@@ -214,7 +214,8 @@
       yaxis2 = list(overlaying = 'y', side = 'right', title = 'Flagged rows', rangemode = 'tozero',
                     showgrid = FALSE),
       legend = list(orientation = 'h', y = -0.4), margin = list(t = 5, b = 30)
-    )
+    ) %>%
+    plotly::style(textposition = 'none')
 }
 
 .plot_explore_panels <- function(series, points_by_metric = NULL) {

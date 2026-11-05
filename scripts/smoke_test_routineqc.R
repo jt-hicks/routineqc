@@ -109,6 +109,16 @@ for (level in c('any_testing', 'moderate', 'complete')) {
   cat('  Cohort', level, ':', sum(cohort$passes_strictness), 'of', nrow(cohort),
       'facilities\n')
 }
+cat('\nAnalytical scenarios:\n')
+before <- qc_run$data_flagged
+scenario_cmp <- compare_qc_scenario(before, qc_scenario_presets()$strict)
+stopifnot(identical(before, qc_run$data_flagged), all(c('reported', 'filtered_missing') %in% scenario_cmp$version))
+cat('  Scenario rows:', nrow(scenario_cmp), '(stored data unchanged)\n')
+imputed <- qc_impute_scenario(before, qc_scenario_presets()$moderate, method = 'expected', seed = 1L)
+imputed_summary <- summarise_qc_imputation(imputed, 'national', monthly = FALSE)
+stopifnot(nrow(imputed_summary) == 1L, !is.na(imputed_summary$positivity))
+cat('  Expected-value imputed positivity:', round(imputed_summary$positivity, 4), '\n')
+
 cat('Run artifact:', written$run, '\n')
 cat('JSON manifest:', written$manifest, '\n\n')
 print(list_qc_runs(output_dir))

@@ -235,7 +235,8 @@
   plotly::layout(plot, barmode = 'group',
                  xaxis = list(title = '', categoryorder = 'array', categoryarray = summary$scenario),
                  yaxis = list(title = 'Change in positivity (percentage points)', zeroline = TRUE),
-                 legend = list(orientation = 'h', y = -0.2))
+                 legend = list(orientation = 'h', y = -0.2)) %>%
+    plotly::style(textposition = 'none')
 }
 
 .plot_impact_retention <- function(summary) {
@@ -245,7 +246,8 @@
                      text = sprintf('%.1f%% of tested counts retained', 100 * summary$share_tested_retained),
                      hoverinfo = 'text') %>%
     plotly::layout(xaxis = list(title = '', categoryorder = 'array', categoryarray = summary$scenario),
-                   yaxis = list(title = 'Share of reported tested counts', tickformat = '.0%', range = c(0, 1)))
+                   yaxis = list(title = 'Share of reported tested counts', tickformat = '.0%', range = c(0, 1))) %>%
+    plotly::style(textposition = 'none')
 }
 
 .plot_impact_units <- function(changes, n = 15L) {
@@ -259,5 +261,6 @@
                                 ifelse(top$thin, '<br>Few pairs retained: interpret with care', '')),
                   hoverinfo = 'text') %>%
     plotly::layout(xaxis = list(title = 'Change in positivity (percentage points)'),
-                   yaxis = list(title = ''))
+                   yaxis = list(title = '')) %>%
+    plotly::style(textposition = 'none')
 }

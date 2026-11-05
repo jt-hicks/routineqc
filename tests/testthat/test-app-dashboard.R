@@ -29,5 +29,12 @@ testthat::test_that('dashboard views render and navigation cascades', {
     testthat::expect_match(output$ex_breadcrumb, fac, fixed = TRUE)
     suppressWarnings(session$setInputs(ex_reset = 1))
     testthat::expect_identical(output$ex_breadcrumb, 'National')
+
+    suppressWarnings(session$setInputs(
+      fi_method = 'expected', fi_mode = 'retrospective', fi_n = 4, fi_seed = 3, fi_run_imputation = 1
+    ))
+    testthat::expect_match(output$fi_imputation_note$html, 'expected')
+    testthat::expect_match(output$fi_imputation_note$html, 'no uncertainty')
+    testthat::expect_true(length(output$fi_series) > 0L)
   })
 })

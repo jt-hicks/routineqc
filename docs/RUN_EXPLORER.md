@@ -22,7 +22,38 @@ must still be treated according to the confidentiality of the source data.
 
 ## Views
 
-- **Overview:** a compact run summary, a QC-action donut across all rows, and a
+The dashboard has four views and a run-details page. The original panels are
+unchanged and now sit inside them.
+
+- **Overview** (*Data usability*, then the earlier *Action summary*): how much of
+  the run can be assessed, and where review effort concentrates. Each check
+  reports records assessed and not flagged, assessed and flagged, and not
+  assessed (missing or unusable inputs, insufficient history, prediction
+  unavailable). A record a check could not assess is never shown as passing, and
+  there is no composite quality score. Expected facility-months are inferred
+  from each facility's first to last report unless a schedule is supplied; the
+  page says so.
+- **Explore data** (*Explorer*, then *Review queue*, *Diagnostics*, *District
+  grid*): cascading National, Region, Council or District, Facility navigation
+  with a breadcrumb and reset. Four measures (positivity, tested, attendance,
+  coverage) are computed as totals over matched records, never as averages of
+  facility percentages. Months without a valid value are gaps, not zeros. A
+  facility selection shows its reporting states (reported, zero tested, missing
+  count, invalid count, absent) and marks flagged records; clicking a mark, or a
+  row of the review table, explains the flags with the thresholds of the run.
+  The table of units one level down drills down when a row is selected.
+- **Filter impact:** how stricter hypothetical QC choices change aggregate
+  estimates. See `docs/ANALYTICAL_SCENARIOS.md`. The earlier *Reporting
+  consistency* panel sits here too.
+- **QC guide:** every flag, by issue family, searchable, with the thresholds
+  actually used by the selected run (runs saved without some settings show the
+  current defaults and say so), the context modifiers, and the flag, priority and
+  action distinction.
+- **Run details:** configuration, provenance and the *Attendance* panel.
+
+The earlier panels are described below.
+
+- **Action summary:** a compact run summary, a QC-action donut across all rows, and a
   separate bar chart counting each individual QC reason among affected rows.
   Rows with multiple reasons contribute to each applicable reason bar; the
   reason chart therefore describes evidence frequency rather than a mutually

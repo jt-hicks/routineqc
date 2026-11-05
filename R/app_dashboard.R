@@ -67,7 +67,8 @@
     ),
     shiny::uiOutput('ex_chart_ui'),
     shiny::helpText(
-      'Gaps are months with no valid value, not zeros. Click a marked point to see why it was flagged.'
+      'Gaps are months with no valid value, not zeros. Select a facility to mark its flagged records, ',
+      'then click a marked point to see why it was flagged; the table below lists flagged records for any selection.'
     ),
     plotly::plotlyOutput('ex_strip', height = '150px'),
     shiny::h4(shiny::textOutput('ex_children_title', inline = TRUE)),
@@ -190,7 +191,7 @@
     shiny::updateSelectInput(session, 'ex_region', choices = c('All regions' = '', ch$region),
                              selected = .if_null(sel$region, ''))
     shiny::updateSelectInput(session, 'ex_mid', label = mid_label,
-                             choices = stats::setNames(c('', ch$mid), c(paste('All', tolower(mid_label)), ch$mid)),
+                             choices = stats::setNames(c('', ch$mid), c(paste0('All ', tolower(mid_label), 's'), ch$mid)),
                              selected = .if_null(sel$mid, ''))
     shiny::updateSelectizeInput(session, 'ex_facility',
                                 choices = c('All facilities' = '', ch$facility),
@@ -230,7 +231,7 @@
   output$ex_breadcrumb <- shiny::renderText(.nav_breadcrumb(selection(), mid_field_r()))
 
   points_for <- function(metric) {
-    if (!isTRUE(input$ex_points)) return(NULL)
+    if (!isTRUE(input$ex_points) || is.null(.nav_normalise(selection())$facility)) return(NULL)
     .explore_flagged_points(data_r(), selection(), metric)
   }
   output$ex_chart_ui <- shiny::renderUI({
@@ -323,10 +324,9 @@
     comp <- .reporting_completeness(data_r())
     shiny::tags$div(
       class = 'alert alert-info',
-      sprintf('%s of %s expected facility-months have a usable tested count (%.1f%%). ',
+      sprintf('%s of %s expected facility-months have a usable tested count (%.1f%%). The expected months are %s.',
               format(comp$reporting, big.mark = ','), format(comp$expected, big.mark = ','),
-              100 * comp$share),
-      'Window ', comp$basis, '.'
+              100 * comp$share, comp$basis)
     )
   })
   output$ov_assessment_plot <- plotly::renderPlotly(.plot_assessment(.assessment_summary(data_r())))
