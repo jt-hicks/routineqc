@@ -297,7 +297,7 @@ apply_qc_scenario <- function(data, scenario, priority = .default_qc_priority())
 
 .aggregate_group_vars <- function(level) {
   switch(level, national = character(), region = 'region', council = 'council',
-         district = 'district', facility = c('facility_id', 'region', 'council'))
+         district = 'district', facility = 'facility_id')
 }
 
 #' Aggregate QC Metrics

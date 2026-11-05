@@ -59,7 +59,7 @@ simulate_qc_truth <- function(n_regions = 3, councils_per_region = 3,
   hier$facility <- sprintf('R%02d_C%02d_F%02d', hier$r, hier$c, hier$f)
   hier$log_volume <- stats::rnorm(nrow(hier), log(90), 0.6)
   hier$fac_effect <- stats::rnorm(nrow(hier), 0, 0.25)
-  hier$rate <- stats::runif(nrow(hier), 0.3, 0.8)
+  hier$rate <- stats::runif(nrow(hier), 0.7, 0.98)
   council_effect <- stats::setNames(stats::rnorm(n_regions * councils_per_region, 0, 0.4),
                                     unique(hier$council))
   region_effect <- stats::setNames(stats::rnorm(n_regions, -1.2, 0.3), unique(hier$region))
