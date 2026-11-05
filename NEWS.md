@@ -1,4 +1,4 @@
-# routineqc 0.1.1
+# routineqc 0.2.0
 
 ## Reliability fixes
 
