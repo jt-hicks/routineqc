@@ -50,11 +50,15 @@ and complete model predictors.
 
 - `assessed`
 - `ineligible_core_counts`
+- `ineligible_invalid_count`: `tested` or `positive` was supplied but is
+  malformed, non-finite or fractional. Review-only; see
+  `tested_parse_status` / `positive_parse_status`.
 - `ineligible_missing_counts`: `tested` or `positive` is missing. This is not a
   QC finding; see `core_count_status` and `summarise_qc_count_completeness()`.
 - `ineligible_nonpositive_tested`
 - `ineligible_missing_predictor`
-- `model_unavailable`
+- `model_unavailable`: no model could be fitted. Given only to rows that would
+  otherwise be eligible; every other row keeps its own ineligibility status.
 - `unseen_region`
 - `unseen_facility`
 - `prediction_error`

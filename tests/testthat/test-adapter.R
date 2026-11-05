@@ -65,7 +65,7 @@ testthat::test_that('malformed counts are diagnosed without dropping rows or blo
   testthat::expect_equal(nrow(run$data_flagged), nrow(source))
   testthat::expect_false(run$data_flagged$flag_core_invalid[2])
   testthat::expect_identical(run$data_flagged$core_count_status[2], 'missing_tested')
-  testthat::expect_identical(run$data_flagged$prediction_status[2], 'ineligible_missing_counts')
+  testthat::expect_identical(run$data_flagged$prediction_status[2], 'ineligible_invalid_count')
   testthat::expect_false(run$data_flagged$flag_exclude_authorized[2])
   testthat::expect_identical(run$manifest$provenance$adapter, 'synthetic_example')
 })

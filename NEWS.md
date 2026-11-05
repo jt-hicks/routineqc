@@ -32,7 +32,12 @@ request, not here.
   `fractional_count`. **Behaviour change:** a malformed, non-finite or
   fractional count now sets the new `flag_count_invalid_value` and the action
   `review_core_invalid`; it never authorizes exclusion. Fractional counts used
-  to pass unflagged. `prepare_qc_data()` warns when it finds any.
+  to pass unflagged. `prepare_qc_data()` warns when it finds any. Such rows are
+  left out of the model fit, prevalence, tested-volume baseline, impossible-count
+  checks and summary totals, get the new `prediction_status`
+  `ineligible_invalid_count`, and are counted in the new summary column
+  `invalid_count_rows` (`incomplete_count_rows` no longer includes them). Policy
+  version 3 is not bumped; see `docs/ACTION_POLICY.md`.
 - The run manifest records `build` (an implementation hash of the package code,
   the source revision when known, and the R, mgcv, dplyr, tidyr, lubridate,
   rlang and digest versions) and `count_translation`. The implementation hash

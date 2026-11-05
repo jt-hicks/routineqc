@@ -77,9 +77,10 @@
 
 .before_after_prevalence <- function(data) {
   excluded <- .authorized_exclusion(data)
+  usable <- .usable_counts(data)
   list(
-    before = .pair_prevalence(data$tested, data$positive),
-    after = .pair_prevalence(data$tested, data$positive, !excluded)
+    before = .pair_prevalence(usable$tested, usable$positive),
+    after = .pair_prevalence(usable$tested, usable$positive, !excluded)
   )
 }
 
@@ -236,13 +237,14 @@ prepare_qc_data <- function(data,
   }
 
   unique_months <- sort(unique(out$month_date))
+  usable <- .usable_counts(dplyr::mutate(out, flag_count_invalid_value = NULL))
 
   out %>%
     dplyr::mutate(
       year = lubridate::year(month_date),
       month_num = lubridate::month(month_date),
       time_index = match(month_date, unique_months),
-      prevalence = .safe_divide(positive, tested)
+      prevalence = .safe_divide(usable$positive, usable$tested)
     )
 }
 
@@ -333,19 +335,21 @@ flag_logical_errors <- function(data) {
     rlang::abort('Non-missing `attending` values require a non-missing `attendance_definition`.')
   }
 
+  invalid_count <- .row_count_invalid(out[setdiff(names(out), 'flag_count_invalid_value')])
+  # A count that is not a valid whole number takes no part in the impossible-count
+  # tests: it is reviewed as an invalid value, never excluded on its numbers.
+  tested_ok <- dplyr::if_else(invalid_count, NA_real_, out$tested)
+  positive_ok <- dplyr::if_else(invalid_count, NA_real_, out$positive)
+
   out %>%
     dplyr::mutate(
-      flag_positive_gt_tested = positive > tested,
-      flag_tested_negative = tested < 0,
-      flag_positive_negative = positive < 0,
-      flag_zero_tested_positive = tested == 0 & positive > 0,
-      flag_count_invalid_value = .count_value_invalid(
-        tested, if ('tested_parse_status' %in% names(out)) tested_parse_status
-      ) | .count_value_invalid(
-        positive, if ('positive_parse_status' %in% names(out)) positive_parse_status
-      ),
+      flag_positive_gt_tested = positive_ok > tested_ok,
+      flag_tested_negative = tested_ok < 0,
+      flag_positive_negative = positive_ok < 0,
+      flag_zero_tested_positive = tested_ok == 0 & positive_ok > 0,
+      flag_count_invalid_value = invalid_count,
       core_count_status = .core_count_status(tested, positive),
-      flag_tested_gt_attending = !is.na(tested) & !is.na(attending) & tested > attending,
+      flag_tested_gt_attending = !is.na(tested_ok) & !is.na(attending) & tested_ok > attending,
       flag_attending_negative = !is.na(attending) & attending < 0,
       flag_attendance_issue = flag_tested_gt_attending | flag_attending_negative,
       flag_core_invalid = (
@@ -446,7 +450,7 @@ fit_prevalence_gam <- function(data, nthreads = 1) {
 
   train <- train %>%
     dplyr::filter(
-      !flag_core_invalid, !is.na(positive), tested > 0,
+      !flag_core_invalid, !.row_count_invalid(train), !is.na(positive), tested > 0,
       !is.na(month_num), !is.na(time_index)
     ) %>%
     dplyr::mutate(
@@ -600,9 +604,14 @@ add_prevalence_predictions <- function(data, model, min_prediction_coverage = 0.
   missing_predictor <- is.na(out$facility_id) | is.na(out$region) |
     is.na(out$month_num) | is.na(out$time_index)
   missing_counts <- is.na(out$tested) | is.na(out$positive)
-  eligible <- !out$flag_core_invalid & !missing_counts & out$tested > 0 & !missing_predictor
+  invalid_count <- .row_count_invalid(out)
+  eligible <- !out$flag_core_invalid & !invalid_count & !missing_counts & out$tested > 0 &
+    !missing_predictor
+  # Every ineligible row keeps its own reason; `model_unavailable` is only ever
+  # given to a row that is otherwise eligible.
   status <- dplyr::case_when(
     out$flag_core_invalid ~ 'ineligible_core_counts',
+    invalid_count ~ 'ineligible_invalid_count',
     missing_counts ~ 'ineligible_missing_counts',
     out$tested <= 0 ~ 'ineligible_nonpositive_tested',
     missing_predictor ~ 'ineligible_missing_predictor',
@@ -745,6 +754,7 @@ add_prevalence_qc_flags <- function(data,
   out <- dplyr::as_tibble(data)
   rule_resid <- if ('pearson_resid_scaled' %in% names(out)) out$pearson_resid_scaled else out$pearson_resid
   out$.rule_resid <- rule_resid
+  out$.count_ok <- !.row_count_invalid(out)
   # Chance of zero positives under the model. TRUE (always implausible) when
   # there is no model, which reproduces the count-only rule.
   out$.zero_implausible <- if ('p_hat' %in% names(out)) {
@@ -772,9 +782,9 @@ add_prevalence_qc_flags <- function(data,
         tested >= resid_large_n, resid_threshold_large, resid_threshold_small
       ),
       flag_resid_extreme = !is.na(.rule_resid) & abs(.rule_resid) > residual_cutoff,
-      flag_all_negative_large_n = tested >= all_negative_min_tested & positive == 0 &
+      flag_all_negative_large_n = .count_ok & tested >= all_negative_min_tested & positive == 0 &
         .zero_implausible,
-      flag_all_positive_large_n = tested >= all_positive_min_tested & positive == tested,
+      flag_all_positive_large_n = .count_ok & tested >= all_positive_min_tested & positive == tested,
       flag_large_monthly_prevalence_change = !is.na(monthly_prev_change) &
         (!large_change_require_adjacent | previous_month_is_adjacent) &
         tested >= large_change_min_tested &
@@ -794,7 +804,8 @@ add_prevalence_qc_flags <- function(data,
     ) %>%
     dplyr::ungroup() %>%
     dplyr::select(-prev_lag, -tested_lag, -month_lag, -previous_month_is_adjacent,
-                  -residual_cutoff, -monthly_prev_change, -.rule_resid, -.zero_implausible)
+                  -residual_cutoff, -monthly_prev_change, -.rule_resid, -.zero_implausible,
+                  -.count_ok)
 
   out
 }
@@ -893,6 +904,10 @@ add_tested_volume_qc <- function(data,
   # Recomputing over flagged data replaces the previous baseline, never joins it.
   prior <- dplyr::as_tibble(data)
   prior <- prior[setdiff(names(prior), .tested_volume_columns)]
+  # Invalid counts are left out of the baseline and the tested-volume rules;
+  # `tested` itself is restored unchanged afterwards.
+  prior$.tested_original <- prior$tested
+  prior$tested <- .usable_counts(prior)$tested
 
   out <- prior %>%
     dplyr::group_by(facility_id) %>%
@@ -944,6 +959,8 @@ add_tested_volume_qc <- function(data,
       ) %>% dplyr::coalesce(FALSE)
     )
 
+  out$tested <- out$.tested_original
+  out$.tested_original <- NULL
   out
 }
 
@@ -1144,6 +1161,12 @@ assign_qc_action <- function(data,
   group_syms <- rlang::syms(group_vars)
 
   # Prevalence uses complete tested/positive pairs; see `.pair_prevalence()`.
+  # A row holding an invalid count contributes to no total or prevalence; it is
+  # counted in `invalid_count_rows` instead.
+  dat$.invalid_count <- .row_count_invalid(dat)
+  usable <- .usable_counts(dat)
+  dat$tested <- usable$tested
+  dat$positive <- usable$positive
   dat$.complete_pair <- !is.na(dat$tested) & !is.na(dat$positive)
   dat$.excluded <- .authorized_exclusion(dat)
 
@@ -1151,7 +1174,8 @@ assign_qc_action <- function(data,
     dplyr::group_by(!!!group_syms) %>%
     dplyr::summarise(
       total_rows = dplyr::n(),
-      incomplete_count_rows = sum(!.complete_pair),
+      incomplete_count_rows = sum(!.complete_pair & !.invalid_count),
+      invalid_count_rows = sum(.invalid_count),
       n_any_qc_issue = sum(flag_any_qc_issue, na.rm = TRUE),
       pct_any_qc_issue = 100 * n_any_qc_issue / total_rows,
       core_invalid_rows = sum(flag_core_invalid, na.rm = TRUE),

@@ -86,6 +86,32 @@
   parsed
 }
 
+# Whether a row's tested or positive is a reported value that is not a valid
+# whole number. Prefers the flag when the data carry it, so every stage agrees.
+.row_count_invalid <- function(data) {
+  if ('flag_count_invalid_value' %in% names(data)) {
+    return(dplyr::coalesce(as.logical(data[['flag_count_invalid_value']]), FALSE))
+  }
+  invalid <- rep(FALSE, nrow(data))
+  for (field in c('tested', 'positive')) {
+    if (field %in% names(data)) {
+      invalid <- invalid | .count_value_invalid(data[[field]], data[[paste0(field, '_parse_status')]])
+    }
+  }
+  invalid
+}
+
+# `tested`/`positive` with rows holding an invalid count set to NA, for use in
+# calculations. The data themselves are never changed.
+.usable_counts <- function(data) {
+  invalid <- .row_count_invalid(data)
+  mask <- function(field) {
+    if (!field %in% names(data)) return(rep(NA_real_, nrow(data)))
+    dplyr::if_else(invalid, NA_real_, as.numeric(data[[field]]))
+  }
+  list(tested = mask('tested'), positive = mask('positive'))
+}
+
 .count_translation_summary <- function(data) {
   out <- list()
   for (field in c('tested', 'positive')) {

@@ -106,3 +106,94 @@ testthat::test_that('adapter translation survives prepare_qc_data without overwr
   testthat::expect_identical(out$tested_source, c('n/a', '10'))
   testthat::expect_identical(out$tested_parse_status, c('malformed', 'ok'))
 })
+
+invalid_count_run <- function(config = routineqc::qc_config()) {
+  sim <- routineqc::simulate_qc_data(n_facilities = 8, n_months = 24, seed = 11)
+  sim$tested <- as.character(sim$tested)
+  sim$positive <- as.character(sim$positive)
+  sim$tested[5] <- '50.5'
+  sim$tested[6] <- 'n/a'
+  sim$positive[7] <- 'Inf'
+  sim$tested[8] <- NA
+  sim$positive[9] <- '9999'
+  sim$tested[9] <- '10'
+  suppressWarnings(routineqc::run_routine_qc(
+    sim, facility_var = 'facility', region_var = 'region', month_var = 'month',
+    tested_var = 'tested', positive_var = 'positive', config = config, nthreads = 1
+  ))
+}
+
+testthat::test_that('invalid counts stay traceable and review-only, with distinct statuses', {
+  run <- invalid_count_run()
+  d <- run$data_flagged
+  testthat::expect_equal(nrow(d), 8 * 24)
+  testthat::expect_identical(d$tested_source[5:6], c('50.5', 'n/a'))
+  testthat::expect_identical(d$positive_source[7], 'Inf')
+  testthat::expect_equal(d$tested[5], 50.5)
+  testthat::expect_identical(d$tested_parse_status[5:6], c('fractional', 'malformed'))
+  testthat::expect_true(all(d$flag_count_invalid_value[5:7]))
+  testthat::expect_false(any(d$flag_count_invalid_value[8]))
+  testthat::expect_identical(d$prediction_status[5:7], rep('ineligible_invalid_count', 3))
+  testthat::expect_identical(d$prediction_status[8], 'ineligible_missing_counts')
+  testthat::expect_identical(d$prediction_status[9], 'ineligible_core_counts')
+  testthat::expect_true(all(d$qc_action[5:7] == 'review_core_invalid'))
+  testthat::expect_false(any(d$flag_exclude_authorized[5:7]))
+  testthat::expect_identical(d$qc_action[9], 'exclude_core_invalid')
+  testthat::expect_false(any(d$model_assessment_eligible[5:9]))
+})
+
+testthat::test_that('invalid counts are left out of every calculation', {
+  run <- invalid_count_run()
+  d <- run$data_flagged
+  usable <- !d$flag_count_invalid_value & !is.na(d$tested) & !is.na(d$positive) & !d$flag_exclude_authorized
+  expected_before <- sum(d$positive[!d$flag_count_invalid_value & !is.na(d$tested) & !is.na(d$positive)]) /
+    sum(d$tested[!d$flag_count_invalid_value & !is.na(d$tested) & !is.na(d$positive)])
+  before <- routineqc:::.before_after_prevalence(d)$before
+  testthat::expect_equal(before, expected_before)
+  testthat::expect_equal(
+    sum(run$summaries$by_region$invalid_count_rows), sum(d$flag_count_invalid_value)
+  )
+  testthat::expect_equal(
+    sum(run$summaries$by_region$total_tested_before_qc),
+    sum(d$tested[!d$flag_count_invalid_value], na.rm = TRUE)
+  )
+  # The fractional value neither enters the model nor the tested-volume baseline.
+  refit <- routineqc::fit_prevalence_gam(d, nthreads = 1)
+  testthat::expect_equal(
+    nrow(refit$model),
+    sum(!d$flag_core_invalid & !d$flag_count_invalid_value & !is.na(d$positive) & d$tested > 0,
+        na.rm = TRUE)
+  )
+  facility <- d$facility_id[5]
+  later <- d[d$facility_id == facility & d$month_date > d$month_date[5], ]
+  trailing_n <- later$tested_baseline_n[1]
+  clean <- d
+  clean$tested[5] <- NA
+  clean <- routineqc::add_tested_volume_qc(clean)
+  after_clean <- clean[clean$facility_id == facility & clean$month_date > d$month_date[5], ]
+  testthat::expect_identical(after_clean$tested_baseline_n[1], trailing_n)
+})
+
+testthat::test_that('model_unavailable is only given to otherwise eligible rows', {
+  sim <- routineqc::simulate_qc_data(n_facilities = 8, n_months = 24, seed = 11)
+  sim$tested <- as.character(sim$tested)
+  sim$tested[1] <- '50.5'
+  sim$tested[2] <- NA
+  sim$tested[3] <- '0'
+  sim$positive[3] <- '4'
+  prepared <- suppressWarnings(routineqc::prepare_qc_data(
+    sim, facility_var = 'facility', region_var = 'region', month_var = 'month',
+    tested_var = 'tested', positive_var = 'positive'
+  ))
+  out <- routineqc::add_prevalence_predictions(routineqc::flag_logical_errors(prepared), NULL)
+  testthat::expect_identical(
+    out$prediction_status[1:3],
+    c('ineligible_invalid_count', 'ineligible_missing_counts', 'ineligible_core_counts')
+  )
+  rest <- out[-(1:3), ]
+  testthat::expect_identical(
+    rest$prediction_status,
+    ifelse(rest$flag_core_invalid, 'ineligible_core_counts', 'model_unavailable')
+  )
+  testthat::expect_identical(out$model_assessment_eligible, out$prediction_status == 'model_unavailable')
+})

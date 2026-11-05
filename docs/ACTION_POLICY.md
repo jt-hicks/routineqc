@@ -38,6 +38,26 @@ either. It is kept unrepaired, with the original in `tested_source` /
 `positive_source`, and `flag_count_invalid_value` routes it to
 `review_core_invalid` at critical priority. It never authorizes exclusion.
 
+Such a row is left out of every calculation that needs a count: the prevalence
+model fit, prevalence, the prevalence rules, the tested-volume baseline and
+rules, the impossible-count and attendance checks, and the summary totals. It
+is counted in the summary column `invalid_count_rows` and in no other count
+column. `tested` and `positive` themselves keep the supplied numeric value (or
+`NA` for malformed and non-finite text); the original stays in `*_source`.
+
+### Versioning decision
+
+Policy version 3 and configuration schema 6 are unchanged by this release. The
+reason is that nothing a stored run depends on was reinterpreted: version 3 had
+no rule for these values, the new flag and its action only add a path for rows
+that were previously unflagged or treated as missing, and every earlier flag,
+priority and coverage action keeps its meaning. Runs saved before the change
+carry no `flag_count_invalid_value` column and still validate. The consequence
+is that two builds of version 3 can act differently on invalid counts. They are
+told apart by the `implementation_hash` in the manifest, which is part of
+`analysis_id`, not by the policy version. A later change that reinterprets an
+existing flag, priority or action must bump the policy version.
+
 Attendance contradictions are review-only, even with an approved attendance
 definition. They can reflect a problem with the external attendance denominator
 rather than with the tested/positive record.
