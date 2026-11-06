@@ -15,8 +15,8 @@ qc_scenario_presets(handling = "missing", fill_preexisting = FALSE)
 A named list of \code{qc_scenario} objects, ordered relaxed to strict.
 }
 \description{
-Four presets from relaxed to strict. With the handling settings held fixed,
-each preset keeps a subset of the facilities and a subset of the
-contributions of the one before, so the retained sets are nested. The exact
-rules are the arguments shown here; nothing is hidden.
+Four presets from relaxed to strict. All facilities are included regardless
+of reporting completeness. With handling settings held fixed, each preset
+retains a subset of the count contributions of the one before. Flags omit
+only their affected counts on the flagged facility-month.
 }

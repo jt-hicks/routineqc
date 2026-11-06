@@ -8,8 +8,7 @@
   scenarios
 }
 
-# Applies every scenario once, to the whole dataset, so facility eligibility
-# does not depend on which geography is being viewed.
+# Applies every scenario once, to the whole dataset, before selecting geography.
 .impact_apply <- function(data, scenarios, priority = .default_qc_priority()) {
   lapply(scenarios, function(s) apply_qc_scenario(data, s, priority))
 }
@@ -152,9 +151,9 @@
     low = 'counts behind every flag omitted'
   )
   paste0(
-    'Facilities: ', if (length(fac) == 0L) 'all included' else paste(fac, collapse = '; '),
-    '. Observations: ', omit, '. A flag omits only the count(s) it puts in doubt, and an invalid count ',
-    'is always left out of calculations.'
+    'Facilities: ', if (length(fac) == 0L) 'all included; no reporting-completeness filter' else paste(fac, collapse = '; '),
+    '. Facility-month observations: ', omit, '. A flag omits only the count(s) it puts in doubt; ',
+    'other months are unchanged. Invalid counts are always left out of calculations.'
   )
 }
 

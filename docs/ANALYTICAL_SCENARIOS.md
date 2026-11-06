@@ -11,13 +11,14 @@ counts are left out of calculations. `qc_scenario_presets()` gives four
 (`relaxed`, `moderate`, `strict`, `very_strict`); `describe_qc_scenarios()`
 prints the exact rules, and the dashboard shows them.
 
-- Facility criteria use all available reports, not the current geography filter.
-  The share of months without testing and longest gap use each facility's own
-  first-to-last reported window. Presets also require absolute minimums of 6,
-  12 or 18 tested months (except relaxed), so a recently reporting facility can
-  still be excluded on that basis. No dataset-span percentage is required.
-- Observation rules omit counts behind flags up to a priority. A flag omits only
-  the count or counts it puts in doubt. Invalid counts are never used.
+- All four presets include facilities regardless of their reporting history.
+  At each facility-month, observation rules omit only the counts targeted by
+  applicable flags and authorized exclusions. Other months remain unchanged,
+  pre-existing missing counts remain missing, and invalid counts are never used.
+  Positivity requires both tested and positive, so omitting one also makes the
+  pair unavailable without removing the other count.
+- Explicit custom `qc_scenario()` facility criteria remain available for callers
+  who deliberately request them, but are not used in dashboard presets.
 - These scenarios are separate from the *reporting-consistency* strictness
   cohorts, which serve a separate review purpose.
 
@@ -79,4 +80,5 @@ below the nominal level, and informative missingness is not fully corrected.
 
 No run schema changed. The new functions read existing runs; runs saved before
 this work are valid and the guide falls back to current defaults for sections
-they lack.
+they lack. Preset results recomputed with this version may differ from earlier
+versions because facilities are no longer excluded for reporting completeness.

@@ -35,5 +35,11 @@ test_that("unit changes rank by absolute change and plots build", {
   expect_s3_class(.plot_impact_units(ch), 'plotly')
   res <- .impact_compute(applied, .impact_geography(list(), data))
   expect_s3_class(.plot_impact_series(res, 'strict'), 'plotly')
-  expect_match(.describe_scenario_rules(.impact_scenarios()$strict), 'at least 12 months')
+  rules <- lapply(.impact_scenarios(), .describe_scenario_rules)
+  for (rule in rules) {
+    expect_match(rule, 'no reporting-completeness filter')
+    expect_match(rule, 'Facility-month observations')
+    expect_match(rule, 'only the count\\(s\\) it puts in doubt')
+    expect_false(grepl('at least [0-9]+ months', rule))
+  }
 })

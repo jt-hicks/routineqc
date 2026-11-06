@@ -42,8 +42,10 @@ unchanged and now sit inside them.
   count, invalid count, absent) and marks flagged records; clicking a mark, or a
   row of the review table, explains the flags with the thresholds of the run.
   The table of units one level down drills down when a row is selected.
-- **Filter impact:** how stricter hypothetical QC choices change aggregate
-  estimates. See `docs/ANALYTICAL_SCENARIOS.md`. The earlier *Reporting
+- **Filter impact:** how hypothetical observation-level QC choices change aggregate
+  estimates. All preset scenarios include facilities regardless of reporting
+  completeness; flags omit only affected counts in each facility-month. See
+  `docs/ANALYTICAL_SCENARIOS.md`. The earlier *Reporting
   consistency* panel sits here too.
 - **QC guide:** every flag, by issue family, searchable, with the thresholds
   actually used by the selected run (runs saved without some settings show the

@@ -91,7 +91,8 @@
       'hypothetical and is applied to a copy of the data: no observation, flag or stored action is changed. ',
       'Positivity is always total positives over total tested for records where both counts are usable, never ',
       'an average of facility percentages. The geography follows the selection in Explore data. ',
-      'Stricter scenarios can require an absolute minimum number of testing months, including for recent facilities.'
+      'All facilities are included regardless of reporting history. Each scenario omits only affected counts ',
+      'in flagged facility-months according to its priority and authorized-exclusion rules.'
     ),
     shiny::strong(shiny::textOutput('fi_geography', inline = TRUE)),
     shiny::fluidRow(
@@ -144,7 +145,6 @@
     shiny::h4('What each scenario keeps and removes'),
     shiny::helpText(
       'Omitted counts are individual tested or positive values taken out of the calculation. ',
-      'Removed with facility counts both values of every record of a facility outside the cohort. ',
       'Missing before QC are gaps that existed in the data and are unaffected by QC.'
     ),
     DT::DTOutput('fi_table'),
@@ -405,6 +405,7 @@
   })
   output$fi_table <- DT::renderDT({
     s <- summary_r()
+    s <- s[, setdiff(names(s), c('facilities_eligible', 'removed_with_facility')), drop = FALSE]
     DT::datatable(s, rownames = FALSE, options = list(scrollX = TRUE, dom = 't')) %>%
       DT::formatPercentage(intersect(c('positivity_reported', 'positivity_filtered', 'positivity_imputed',
                                        'share_tested_retained', 'ci_low', 'ci_high',

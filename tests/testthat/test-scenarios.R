@@ -13,17 +13,22 @@ scenario_data <- function() {
   d
 }
 
-testthat::test_that('scenario eligibility does not use dataset-span percentages', {
+testthat::test_that('scenario presets include facilities regardless of reporting history', {
   data <- scenario_data()
   data <- data[data$facility_id != 'F4' | data$month_date >= as.Date('2024-07-01'), ]
   early <- data[data$facility_id == 'F1' & data$month_date == as.Date('2024-01-01'), ]
   early$month_date <- as.Date('2010-01-01')
   data <- dplyr::bind_rows(data, early)
   scenarios <- routineqc::qc_scenario_presets()
-  moderate <- routineqc::apply_qc_scenario(data, scenarios$moderate)
-  strict <- routineqc::apply_qc_scenario(data, scenarios$strict)
-  testthat::expect_true(all(moderate$scn_facility_eligible[moderate$facility_id == 'F4']))
-  testthat::expect_false(any(strict$scn_facility_eligible[strict$facility_id == 'F4']))
+  for (scenario in scenarios) {
+    testthat::expect_true(all(is.na(unlist(scenario$eligibility))), info = scenario$name)
+    testthat::expect_true(all(routineqc::apply_qc_scenario(data, scenario)$scn_facility_eligible),
+                          info = scenario$name)
+  }
+  custom <- routineqc::qc_scenario('custom', min_months_with_testing = 12)
+  testthat::expect_false(any(routineqc::apply_qc_scenario(data, custom)$scn_facility_eligible[
+    data$facility_id == 'F4'
+  ]))
 })
 
 testthat::test_that('positivity uses matched tested/positive pairs only', {
@@ -121,7 +126,7 @@ testthat::test_that('pre-existing missingness is kept apart from QC-created miss
   testthat::expect_identical(scn$scn_tested_state[1:3], c('missing', 'qc_omitted', 'invalid'))
 })
 
-testthat::test_that('scenario presets give nested cohorts and nested omissions', {
+testthat::test_that('scenario presets include every facility and give nested omissions', {
   d <- scenario_data()
   set.seed(4)
   d$tested[sample(nrow(d), 3)] <- 0
@@ -147,10 +152,72 @@ testthat::test_that('scenario presets give nested cohorts and nested omissions',
     rb <- sum(routineqc:::.scenario_frame(b, 'filtered')$tested, na.rm = TRUE)
     testthat::expect_true(rb <= ra)
   }
-  testthat::expect_true(sum(!scn$very_strict$scn_facility_eligible) >
-                          sum(!scn$relaxed$scn_facility_eligible))
+  testthat::expect_true(all(vapply(scn, function(x) all(x$scn_facility_eligible), logical(1))))
   rules <- routineqc::describe_qc_scenarios(presets)
   testthat::expect_identical(rules$scenario, ordered)
+})
+
+testthat::test_that('long gaps do not discard later unflagged facility-month counts', {
+  months <- seq.Date(as.Date('2018-01-01'), as.Date('2025-12-01'), by = 'month')
+  data <- tidyr::expand_grid(facility_id = c('early-gap', 'other'), month_date = months)
+  data$region <- 'R1'
+  data$council <- 'C1'
+  data$tested <- 100
+  data$positive <- 10
+  data$tested[data$facility_id == 'early-gap' & data$month_date < as.Date('2022-04-01')] <- NA_real_
+  data$positive[data$facility_id == 'early-gap' & data$month_date < as.Date('2022-04-01')] <- NA_real_
+  data$flag_exclude_authorized <- FALSE
+  data$flag_resid_extreme <- data$facility_id == 'early-gap' & data$month_date == as.Date('2023-02-01')
+  data$flag_tested_extreme_high <- data$facility_id == 'early-gap' & data$month_date == as.Date('2023-03-01')
+  data$flag_coverage_low <- data$facility_id == 'early-gap' & data$month_date == as.Date('2023-04-01')
+  data$flag_exclude_authorized[data$facility_id == 'early-gap' & data$month_date == as.Date('2023-05-01')] <- TRUE
+  data$qc_action <- ifelse(data$flag_exclude_authorized, 'exclude_core_invalid', 'retain')
+  original <- data
+  old <- routineqc::qc_scenario('old-moderate', omit_through = 'high',
+                                max_prop_without_testing = 0.5, min_months_with_testing = 6)
+  before <- routineqc::apply_qc_scenario(data, old)
+  scenarios <- routineqc::qc_scenario_presets()
+  after <- routineqc::apply_qc_scenario(data, scenarios$moderate)
+  frame <- routineqc:::.scenario_frame(after, 'filtered')
+  index <- function(date) which(data$facility_id == 'early-gap' & data$month_date == as.Date(date))
+  testthat::expect_false(any(before$scn_facility_eligible[data$facility_id == 'early-gap']))
+  testthat::expect_true(all(after$scn_facility_eligible))
+  testthat::expect_identical(after$scn_tested_state[index('2020-01-01')], 'missing')
+  testthat::expect_identical(after$scn_positive_state[index('2020-01-01')], 'missing')
+  testthat::expect_equal(frame$tested[index('2024-01-01')], 100)
+  testthat::expect_equal(frame$positive[index('2024-01-01')], 10)
+  testthat::expect_equal(frame$tested[index('2023-02-01')], 100)
+  testthat::expect_true(is.na(frame$positive[index('2023-02-01')]))
+  testthat::expect_true(is.na(frame$tested[index('2023-03-01')]))
+  testthat::expect_equal(frame$positive[index('2023-03-01')], 10)
+  testthat::expect_true(frame$coverage_ok[index('2023-04-01')])
+  testthat::expect_true(is.na(frame$tested[index('2023-05-01')]))
+  testthat::expect_true(is.na(frame$positive[index('2023-05-01')]))
+  reprioritized <- routineqc::apply_qc_scenario(
+    data, scenarios$moderate, priority = list(resid_extreme = 'low')
+  )
+  testthat::expect_false(reprioritized$scn_omit_positive[index('2023-02-01')])
+  testthat::expect_true(reprioritized$scn_omit_tested[index('2023-05-01')])
+  testthat::expect_true(reprioritized$scn_omit_positive[index('2023-05-01')])
+  strictest <- routineqc::apply_qc_scenario(data, scenarios$very_strict)
+  testthat::expect_false(routineqc:::.scenario_frame(strictest, 'filtered')$coverage_ok[index('2023-04-01')])
+  testthat::expect_identical(data, original)
+  for (column in names(data)) testthat::expect_identical(after[[column]], original[[column]], info = column)
+
+  aggregate <- function(scn) routineqc::qc_aggregate_metrics(
+    routineqc:::.scenario_frame(scn, 'filtered'), 'council', monthly = TRUE
+  )
+  old_series <- aggregate(before)
+  new_series <- aggregate(after)
+  for (date_string in c('2022-04-01', '2024-01-01', '2025-12-01')) {
+    date <- as.Date(date_string)
+    testthat::expect_equal(old_series$tested_total[old_series$month_date == date], 100)
+    testthat::expect_equal(new_series$tested_total[new_series$month_date == date], 200)
+    testthat::expect_equal(new_series$pair_rows[new_series$month_date == date], 2L)
+  }
+  testthat::expect_equal(new_series$tested_total[new_series$month_date == as.Date('2023-02-01')], 200)
+  testthat::expect_equal(new_series$pair_rows[new_series$month_date == as.Date('2023-02-01')], 1L)
+  testthat::expect_equal(new_series$tested_total[new_series$month_date == as.Date('2023-03-01')], 100)
 })
 
 testthat::test_that('applying a scenario mutates neither observations nor stored actions', {

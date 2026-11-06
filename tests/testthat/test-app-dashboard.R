@@ -41,6 +41,9 @@ testthat::test_that('dashboard views render and navigation cascades', {
     testthat::expect_true(length(output$fi_series) > 0L)
     testthat::expect_true(length(output$fi_strictness) > 0L)
     testthat::expect_true(length(output$fi_table) > 0L)
+    testthat::expect_false(grepl('removed_with_facility|facilities_eligible', output$fi_table))
+    testthat::expect_match(output$fi_rules, 'no reporting-completeness filter')
+    testthat::expect_match(output$fi_rules, 'Facility-month observations')
     testthat::expect_match(output$gd_catalog, 'Flag')
     testthat::expect_match(output$fi_imputation_note$html, 'Imputation has not been run')
 

@@ -13,9 +13,12 @@
 - Reporting-consistency cohorts no longer require a percentage of the dataset
   month span; `complete_panel` is now an alias of `complete`. Dataset-span
   measures remain descriptive, and explicit overrides for that former
-  criterion now error. Absolute minimum-month criteria are unchanged.
+  criterion now error. Absolute minimum-month overrides remain available for
+  reporting-consistency cohorts.
 - Filter impact compares hypothetical QC scenarios against reported estimates
   without altering any stored data, with optional, clearly labelled imputation.
+  Presets omit affected counts in flagged facility-months; they no longer
+  exclude facilities based on reporting completeness.
 - New exported functions: `qc_scenario()`, `qc_scenario_presets()`,
   `describe_qc_scenarios()`, `apply_qc_scenario()`, `qc_aggregate_metrics()`,
   `compare_qc_scenario()`, `qc_impute_scenario()`, `summarise_qc_imputation()`,

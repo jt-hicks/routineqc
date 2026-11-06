@@ -119,10 +119,10 @@ qc_scenario <- function(name = 'custom',
 
 #' Analytical Scenario Presets
 #'
-#' Four presets from relaxed to strict. With the handling settings held fixed,
-#' each preset keeps a subset of the facilities and a subset of the
-#' contributions of the one before, so the retained sets are nested. The exact
-#' rules are the arguments shown here; nothing is hidden.
+#' Four presets from relaxed to strict. All facilities are included regardless
+#' of reporting completeness. With handling settings held fixed, each preset
+#' retains a subset of the count contributions of the one before. Flags omit
+#' only their affected counts on the flagged facility-month.
 #'
 #' @param handling Handling method applied to every preset.
 #' @param fill_preexisting Passed to [qc_scenario()].
@@ -134,14 +134,9 @@ qc_scenario_presets <- function(handling = 'missing', fill_preexisting = FALSE) 
                                           fill_preexisting = fill_preexisting)
   list(
     relaxed = make('relaxed', omit_through = 'authorized'),
-    moderate = make('moderate', omit_through = 'high',
-                    max_prop_without_testing = 0.5, min_months_with_testing = 6),
-    strict = make('strict', omit_through = 'medium',
-                  max_prop_without_testing = 0.25, max_gap_months = 3,
-                  min_months_with_testing = 12),
-    very_strict = make('very_strict', omit_through = 'low',
-                       max_prop_without_testing = 0.1, max_gap_months = 2,
-                       min_months_with_testing = 18)
+    moderate = make('moderate', omit_through = 'high'),
+    strict = make('strict', omit_through = 'medium'),
+    very_strict = make('very_strict', omit_through = 'low')
   )
 }
 
