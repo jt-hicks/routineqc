@@ -13,6 +13,19 @@ scenario_data <- function() {
   d
 }
 
+testthat::test_that('scenario eligibility does not use dataset-span percentages', {
+  data <- scenario_data()
+  data <- data[data$facility_id != 'F4' | data$month_date >= as.Date('2024-07-01'), ]
+  early <- data[data$facility_id == 'F1' & data$month_date == as.Date('2024-01-01'), ]
+  early$month_date <- as.Date('2010-01-01')
+  data <- dplyr::bind_rows(data, early)
+  scenarios <- routineqc::qc_scenario_presets()
+  moderate <- routineqc::apply_qc_scenario(data, scenarios$moderate)
+  strict <- routineqc::apply_qc_scenario(data, scenarios$strict)
+  testthat::expect_true(all(moderate$scn_facility_eligible[moderate$facility_id == 'F4']))
+  testthat::expect_false(any(strict$scn_facility_eligible[strict$facility_id == 'F4']))
+})
+
 testthat::test_that('positivity uses matched tested/positive pairs only', {
   d <- scenario_data()[1:2, ]
   d$tested <- c(100, 100)

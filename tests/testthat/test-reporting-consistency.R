@@ -131,6 +131,7 @@ testthat::test_that('strictness levels are ordered presets with documented crite
       'complete', 'complete_panel')
   )
   testthat::expect_true(all(is.na(unlist(levels[levels$level == 'all', -1]))))
+  testthat::expect_true(all(is.na(levels$min_prop_with_testing_dataset_window)))
 })
 
 testthat::test_that('the most lenient level requires only one tested month', {
@@ -152,16 +153,38 @@ testthat::test_that('the most severe levels require no month without testing', {
   panel <- routineqc::summarise_qc_reporting_consistency(
     consistency_fixture(), strictness = 'complete_panel'
   )
-  testthat::expect_identical(panel$facility_id[panel$passes_strictness], 'F1')
+  testthat::expect_identical(panel$facility_id[panel$passes_strictness], c('F1', 'F5'))
 })
 
-testthat::test_that('a short but internally complete history fails dataset coverage', {
-  moderate <- routineqc::summarise_qc_reporting_consistency(
-    consistency_fixture(), strictness = 'moderate'
+testthat::test_that('short internally complete histories pass every cohort irrespective of dataset span', {
+  data <- consistency_fixture()
+  early <- tibble::tibble(
+    facility_id = 'early', month_date = as.Date('2010-01-01'), tested = 10, positive = 1
   )
-  short <- moderate[moderate$facility_id == 'F5', ]
-  testthat::expect_equal(short$prop_without_testing_facility_window, 0)
-  testthat::expect_false(short$passes_strictness)
+  extended <- dplyr::bind_rows(data, early)
+  cache <- routineqc::summarise_qc_reporting_consistency(extended)
+  testthat::expect_lt(cache$prop_with_testing_dataset_window[cache$facility_id == 'F5'], 0.02)
+  for (level in routineqc::qc_consistency_levels()$level) {
+    result <- routineqc::summarise_qc_reporting_consistency(extended, strictness = level)
+    testthat::expect_true(result$passes_strictness[result$facility_id == 'F5'], info = level)
+    testthat::expect_true('F5' %in% routineqc::filter_qc_facilities(
+      extended, strictness = level
+    )$facility_id, info = level)
+    testthat::expect_true('F5' %in% routineqc::filter_qc_facilities(
+      extended, strictness = level, consistency = cache
+    )$facility_id, info = level)
+    original <- routineqc::summarise_qc_reporting_consistency(data, strictness = level)
+    testthat::expect_identical(
+      result$passes_strictness[result$facility_id %in% original$facility_id],
+      original$passes_strictness, info = level
+    )
+  }
+  incomplete <- routineqc::summarise_qc_reporting_consistency(extended, strictness = 'complete')
+  testthat::expect_false(incomplete$passes_strictness[incomplete$facility_id == 'F2'])
+  cache$prop_with_testing_dataset_window <- NULL
+  testthat::expect_true('F5' %in% routineqc::filter_qc_facilities(
+    extended, strictness = 'complete', consistency = cache
+  )$facility_id)
 })
 
 testthat::test_that('no filtering is applied at the all level', {
@@ -193,13 +216,20 @@ testthat::test_that('threshold overrides are applied at their boundaries', {
   )
 })
 
-testthat::test_that('an override replaces the level threshold it names', {
-  relaxed <- routineqc::summarise_qc_reporting_consistency(
-    consistency_fixture(), strictness = 'complete_panel',
-    min_prop_with_testing_dataset_window = 0
+testthat::test_that('dataset-span overrides fail explicitly even with cached measurements', {
+  data <- consistency_fixture()
+  cache <- routineqc::summarise_qc_reporting_consistency(data)
+  testthat::expect_error(
+    routineqc::summarise_qc_reporting_consistency(data, min_prop_with_testing_dataset_window = 0.5),
+    'no longer supported'
   )
-  testthat::expect_identical(
-    relaxed$facility_id[relaxed$passes_strictness], c('F1', 'F5')
+  testthat::expect_error(
+    routineqc::filter_qc_facilities(data, min_prop_with_testing_dataset_window = 0.5),
+    'no longer supported'
+  )
+  testthat::expect_error(
+    routineqc::filter_qc_facilities(data, min_prop_with_testing_dataset_window = 0.5, consistency = cache),
+    'no longer supported'
   )
 })
 

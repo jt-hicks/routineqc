@@ -20,7 +20,10 @@ qc_scenario(
 
 \item{max_prop_without_testing, max_gap_months, min_months_with_testing}{Facility-eligibility criteria (\code{NA} = not applied). A facility is eligible
 when it meets every applied criterion, so stricter values always give a
-subset of the facilities. They are measured over the whole dataset.}
+subset of the facilities. They use all available reports, not a display
+filter. Proportions and gaps use each facility's first-to-last reported
+window; the minimum tested-month count is absolute and can exclude a
+recently reporting facility.}
 
 \item{omit_through}{How far QC flags are turned into omissions: \code{"none"},
 \code{"authorized"} (what the stored policy authorizes), or flags up to

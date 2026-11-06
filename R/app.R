@@ -244,6 +244,11 @@ filter_qc_review <- function(data,
   if (is.null(x) || length(x) == 0L || any(is.na(x))) NULL else x
 }
 
+.consistency_choices <- function() {
+  levels <- qc_consistency_levels()$level
+  levels[levels != 'complete_panel']
+}
+
 .consistency_column_definitions <- function() {
   c(
     facility_id = 'Stable facility identifier used for grouping and model effects.',
@@ -401,12 +406,12 @@ filter_qc_review <- function(data,
             4,
             shiny::selectInput(
               'consistency_strictness', 'Strictness',
-              choices = qc_consistency_levels()$level, selected = 'all'
+              choices = .consistency_choices(), selected = 'all'
             ),
             shiny::helpText(
-              'Leave an override blank to use the selected level. Levels are not ',
-              'strictly nested: a short but internally complete history can pass ',
-              'complete while failing moderate.'
+              'Leave an override blank to use the selected level. Reporting gaps ',
+              "are measured within each facility's observed reporting window, not ",
+              'against the dataset-wide span.'
             )
           ),
           shiny::column(
@@ -427,13 +432,6 @@ filter_qc_review <- function(data,
             shiny::numericInput(
               'consistency_min_months', 'Min months with testing', value = NA,
               min = 0, step = 1
-            )
-          ),
-          shiny::column(
-            2,
-            shiny::numericInput(
-              'consistency_min_coverage', 'Min dataset-span coverage', value = NA,
-              min = 0, max = 1, step = 0.05
             )
           )
         ),
@@ -506,7 +504,7 @@ filter_qc_review <- function(data,
             3,
             shiny::selectInput(
               'review_strictness', 'Reporting-consistency cohort',
-              choices = qc_consistency_levels()$level, selected = 'all'
+              choices = .consistency_choices(), selected = 'all'
             )
           ),
           shiny::column(3, shiny::checkboxInput('use_date_filter', 'Apply reporting-month filter', FALSE)),
@@ -658,7 +656,7 @@ filter_qc_review <- function(data,
       .null_if_na(input$consistency_max_prop),
       .null_if_na(input$consistency_max_gap),
       .null_if_na(input$consistency_min_months),
-      .null_if_na(input$consistency_min_coverage),
+      NULL,
       .null_if_na(input$consistency_max_incomplete)
     )
     metrics$passes_reporting <- .reporting_pass(metrics, thresholds)

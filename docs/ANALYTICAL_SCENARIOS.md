@@ -11,13 +11,15 @@ counts are left out of calculations. `qc_scenario_presets()` gives four
 (`relaxed`, `moderate`, `strict`, `very_strict`); `describe_qc_scenarios()`
 prints the exact rules, and the dashboard shows them.
 
-- Facility criteria (share of months without testing, longest gap, months with
-  testing) are measured over the whole dataset. Stricter values keep a subset of
-  facilities.
+- Facility criteria use all available reports, not the current geography filter.
+  The share of months without testing and longest gap use each facility's own
+  first-to-last reported window. Presets also require absolute minimums of 6,
+  12 or 18 tested months (except relaxed), so a recently reporting facility can
+  still be excluded on that basis. No dataset-span percentage is required.
 - Observation rules omit counts behind flags up to a priority. A flag omits only
   the count or counts it puts in doubt. Invalid counts are never used.
 - These scenarios are separate from the *reporting-consistency* strictness
-  cohorts, which remain non-nested review cohorts and are not reinterpreted.
+  cohorts, which serve a separate review purpose.
 
 `apply_qc_scenario()` adds scenario columns to a copy. `qc_aggregate_metrics()`
 aggregates at national, region, council, district or facility level and by

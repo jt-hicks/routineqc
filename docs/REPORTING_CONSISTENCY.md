@@ -38,8 +38,8 @@ Gap length and the within-window proportion are measured against each facility's
 **own reporting window**, from its first to its last reported month. A facility that
 joined the programme late is not penalised for months before it existed.
 
-That alone would hide a facility with three internally complete months, so
-proportions are also reported against the **dataset-wide month span**:
+Proportions are also reported against the **dataset-wide month span** as
+descriptive context. They are never used to select a review cohort:
 
 | Column | Denominator | Answers |
 |---|---|---|
@@ -89,24 +89,24 @@ standpoint they are the same loss.
 functions, the Run Explorer control, and this document. `NA` means a criterion is not
 applied. A facility passes when every applied criterion holds.
 
-| Level | Max proportion without testing | Max gap | Min months with testing | Min dataset-span coverage | Max proportion incomplete counts |
-|---|---|---|---|---|---|
-| `all` | - | - | - | - | - |
-| `any_testing` | - | - | 1 | - | - |
-| `lenient` | 0.50 | 3 | 1 | 0.25 | 0.50 |
-| `moderate` | 0.20 | 2 | 1 | 0.50 | 0.20 |
-| `near_complete` | 0.05 | 1 | 1 | 0.75 | 0.05 |
-| `complete` | 0 | 0 | 1 | - | 0 |
-| `complete_panel` | 0 | 0 | 1 | 1.00 | 0 |
+| Level | Max proportion without testing | Max gap | Min months with testing | Max proportion incomplete counts |
+|---|---|---|---|---|
+| `all` | - | - | - | - |
+| `any_testing` | - | - | 1 | - |
+| `lenient` | 0.50 | 3 | 1 | 0.50 |
+| `moderate` | 0.20 | 2 | 1 | 0.20 |
+| `near_complete` | 0.05 | 1 | 1 | 0.05 |
+| `complete` | 0 | 0 | 1 | 0 |
+| `complete_panel` (legacy alias) | 0 | 0 | 1 | 0 |
 
-`passes_reporting` records the first four criteria and `passes_completeness` the
+`passes_reporting` records the first three criteria and `passes_completeness` the
 last; `passes_strictness` requires both.
 
 `any_testing` is the most lenient useful level: it admits any facility with at least
 one month of testing, so it excludes only facilities that never tested. `complete`
-means no month without testing inside the facility's own window. `complete_panel`
-additionally requires testing in every month of the dataset span and is the most
-severe.
+means no month without testing inside the facility's own window. The legacy
+`complete_panel` name remains available as an alias for `complete`; it no longer
+requires testing throughout the dataset span and is not shown in dashboard controls.
 
 Every threshold is overridable, so the presets are a starting point rather than
 policy:
@@ -116,11 +116,18 @@ summarise_qc_reporting_consistency(qc$data_flagged, strictness = 'moderate')
 filter_qc_facilities(qc$data_flagged, strictness = 'all', max_gap_months = 2)
 ```
 
-**The levels are not strictly nested.** A facility with a short but internally
-complete history passes `complete` while failing `moderate`, because `complete`
-judges only its own window and `moderate` also requires dataset-span coverage. Choose
-the level that matches the question being asked, rather than assuming a single
-severity ordering.
+Presets are nested apart from the equivalent `complete` and `complete_panel`
+levels. Extending the dataset with earlier or later reports from other facilities
+does not affect these decisions. A custom minimum number of testing months can
+still exclude a recent facility; it is an absolute threshold, not a dataset-span
+percentage.
+
+The `min_prop_with_testing_dataset_window` argument is retained for API
+compatibility but must be `NULL`: an explicit override now errors rather than
+silently changing or ignoring the requested filter. Its column in
+`qc_consistency_levels()` remains present but is always `NA`. Existing saved runs
+are not modified; current dashboard cohort choices are recalculated using the new
+rules, so cohorts can differ from earlier versions.
 
 ## Cohort selection is not exclusion
 

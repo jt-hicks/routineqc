@@ -159,9 +159,8 @@ consistency[c(
 ```
 
 Gap length uses each facility's own reporting window, so a late joiner is not
-penalised for months before it existed. Proportions are also reported against the
-dataset-wide month span, which is what identifies a facility with only a few
-months of history:
+penalised for months before it existed. Dataset-wide proportions are also reported
+as context, but they are not used to filter facilities:
 
 ```{r consistency-coverage}
 consistency[c(
@@ -171,8 +170,9 @@ consistency[c(
 ```
 
 Named strictness levels select a review cohort, from `any_testing` (any facility
-with at least one month of testing) to `complete_panel` (testing in every month of
-the dataset span). Every threshold is overridable:
+with at least one month of testing) to `complete` (testing in every month of the
+facility's own observed window). `complete_panel` remains a legacy alias for
+`complete`. Other thresholds remain overridable:
 
 ```{r consistency-cohort}
 qc_consistency_levels()

@@ -125,8 +125,9 @@
 #' Returns the named strictness presets used to judge whether a facility reports
 #' consistently enough to enter a review cohort. Levels are ordered from no
 #' filtering to the most severe requirement, and `NA` means a criterion is not
-#' applied. These presets select facilities for review. They never authorize
-#' exclusion of a record and never assign a QC action.
+#' applied. The legacy `complete_panel` level is equivalent to `complete`.
+#' These presets select facilities for review. They never authorize exclusion
+#' of a record and never assign a QC action.
 #'
 #' @return A tibble with one row per level and one column per criterion.
 #' @export
@@ -139,7 +140,7 @@ qc_consistency_levels <- function() {
     max_prop_without_testing = c(NA, NA, 0.5, 0.2, 0.05, 0, 0),
     max_gap_months = c(NA, NA, 3, 2, 1, 0, 0),
     min_months_with_testing = c(NA, 1, 1, 1, 1, 1, 1),
-    min_prop_with_testing_dataset_window = c(NA, NA, 0.25, 0.5, 0.75, NA, 1),
+    min_prop_with_testing_dataset_window = rep(NA_real_, 7),
     max_prop_incomplete_counts = c(NA, NA, 0.5, 0.2, 0.05, 0, 0)
   )
 }
@@ -161,6 +162,11 @@ qc_consistency_levels <- function() {
       '`strictness` must be one of: ', paste(levels$level, collapse = ', '), '.'
     ))
   }
+  if (!is.null(min_prop_with_testing_dataset_window)) {
+    rlang::abort(
+      '`min_prop_with_testing_dataset_window` is no longer supported: dataset-span coverage is not a filtering criterion.'
+    )
+  }
   preset <- levels[levels$level == strictness, , drop = FALSE]
   thresholds <- list(
     max_prop_without_testing = preset$max_prop_without_testing,
@@ -173,7 +179,6 @@ qc_consistency_levels <- function() {
     max_prop_without_testing = max_prop_without_testing,
     max_gap_months = max_gap_months,
     min_months_with_testing = min_months_with_testing,
-    min_prop_with_testing_dataset_window = min_prop_with_testing_dataset_window,
     max_prop_incomplete_counts = max_prop_incomplete_counts
   )
   for (nm in names(overrides)) {
@@ -211,7 +216,7 @@ qc_consistency_levels <- function() {
 .reporting_pass <- function(consistency, thresholds) {
   required <- c(
     'prop_without_testing_facility_window', 'longest_gap_months',
-    'months_with_testing', 'prop_with_testing_dataset_window'
+    'months_with_testing'
   )
   .validate_required_columns(consistency, required)
   pass <- rep(TRUE, nrow(consistency))
@@ -224,10 +229,6 @@ qc_consistency_levels <- function() {
   }
   if (!is.na(thresholds$min_months_with_testing)) {
     pass <- pass & consistency$months_with_testing >= thresholds$min_months_with_testing
-  }
-  if (!is.na(thresholds$min_prop_with_testing_dataset_window)) {
-    pass <- pass &
-      consistency$prop_with_testing_dataset_window >= thresholds$min_prop_with_testing_dataset_window
   }
   pass
 }
@@ -242,8 +243,8 @@ qc_consistency_levels <- function() {
 #'
 #' Gap length is measured within each facility own reporting window, from its
 #' first to its last reported month. Proportions are reported against both that
-#' window and the dataset-wide month span, so a facility with only a few months
-#' of history can be identified even when those months are internally complete.
+#' window and the dataset-wide month span. Dataset-span proportions are
+#' descriptive only and are not used to select a review cohort.
 #'
 #' When `positive` is present, count completeness is measured too: among rows
 #' reporting at least one count, the proportion missing `positive` or `tested`
@@ -263,10 +264,9 @@ qc_consistency_levels <- function() {
 #'   consecutive months without testing.
 #' @param min_months_with_testing Optional override for the minimum number of
 #'   months with testing.
-#' @param min_prop_with_testing_dataset_window Optional override for the minimum
-#'   proportion of the dataset-wide month span in which a facility must have
-#'   testing. This criterion is scale-free, so it identifies a facility with a
-#'   short history even when that history is internally complete.
+#' @param min_prop_with_testing_dataset_window Retained for compatibility but
+#'   must be `NULL`. Dataset-span coverage is no longer a filtering criterion;
+#'   supplying an override produces an error.
 #' @param max_prop_incomplete_counts Optional override for the maximum
 #'   proportion of rows with exactly one of `tested` and `positive` missing.
 #'   Requires `positive` in `data`.
@@ -334,7 +334,8 @@ summarise_qc_reporting_consistency <- function(data,
 #' @param max_prop_without_testing Optional threshold override.
 #' @param max_gap_months Optional threshold override.
 #' @param min_months_with_testing Optional threshold override.
-#' @param min_prop_with_testing_dataset_window Optional threshold override.
+#' @param min_prop_with_testing_dataset_window Retained for compatibility but
+#'   must be `NULL`; dataset-span coverage is no longer a filtering criterion.
 #' @param max_prop_incomplete_counts Optional threshold override.
 #' @param consistency Optional precomputed output of
 #'   [summarise_qc_reporting_consistency()] used as a measurement cache. The

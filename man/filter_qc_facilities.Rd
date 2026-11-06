@@ -26,7 +26,8 @@ filter_qc_facilities(
 
 \item{min_months_with_testing}{Optional threshold override.}
 
-\item{min_prop_with_testing_dataset_window}{Optional threshold override.}
+\item{min_prop_with_testing_dataset_window}{Retained for compatibility but
+must be \code{NULL}; dataset-span coverage is no longer a filtering criterion.}
 
 \item{max_prop_incomplete_counts}{Optional threshold override.}
 

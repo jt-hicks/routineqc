@@ -1,3 +1,23 @@
+testthat::test_that('facility selector updates synchronously without a server-side reload', {
+  data <- dashboard_fixture()$data
+  facility <- as.character(data$facility_id[[1]])
+  selection <- routineqc:::.nav_set(data, routineqc:::.nav_empty(), 'facility', facility)
+  session <- shiny::MockShinySession$new()
+  messages <- list()
+  session$sendInputMessage <- function(inputId, message) {
+    messages[[inputId]] <<- message
+  }
+
+  routineqc:::.dashboard_sync_inputs(session, data, selection)
+
+  testthat::expect_identical(messages$ex_facility$value, facility)
+  testthat::expect_true(is.character(messages$ex_facility$options))
+  testthat::expect_match(messages$ex_facility$options, facility, fixed = TRUE)
+  testthat::expect_null(messages$ex_facility$url)
+  testthat::expect_identical(messages$ex_region$value, selection$region)
+  testthat::expect_identical(messages$ex_mid$value, selection$mid)
+})
+
 testthat::test_that('dashboard views render and navigation cascades', {
   directory <- tempfile('routineqc-dash-')
   dir.create(directory)

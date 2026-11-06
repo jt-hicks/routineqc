@@ -68,7 +68,8 @@ The earlier panels are described below.
 - **Reporting consistency:** facility-level reporting behavior measured from the
   flagged data, covering months without testing, their absent, zero, and missing
   components, the longest gap without testing, and coverage of both the facility
-  reporting window and the dataset-wide month span. A strictness selector with
+  reporting window and the dataset-wide month span (descriptive only, not a
+  filtering criterion). A strictness selector with
   optional threshold overrides reports how many facilities fall inside the chosen
   cohort, and a chart groups facilities by their longest gap. Strictness selects a
   review cohort; it never authorizes exclusion and never changes the stored run.

@@ -90,7 +90,8 @@
       'What would change in the aggregate estimates if stricter QC decisions were applied? Each scenario is ',
       'hypothetical and is applied to a copy of the data: no observation, flag or stored action is changed. ',
       'Positivity is always total positives over total tested for records where both counts are usable, never ',
-      'an average of facility percentages. The geography follows the selection in Explore data.'
+      'an average of facility percentages. The geography follows the selection in Explore data. ',
+      'Stricter scenarios can require an absolute minimum number of testing months, including for recent facilities.'
     ),
     shiny::strong(shiny::textOutput('fi_geography', inline = TRUE)),
     shiny::fluidRow(
@@ -179,24 +180,28 @@
   )
 }
 
+.dashboard_sync_inputs <- function(session, data, sel) {
+  ch <- .nav_choices(data, sel)
+  mid_label <- .if_null(.nav_mid_label(.nav_mid_field(data)), 'Council or district')
+  shiny::updateSelectInput(session, 'ex_region', choices = c('All regions' = '', ch$region),
+                           selected = .if_null(sel$region, ''))
+  shiny::updateSelectInput(session, 'ex_mid', label = mid_label,
+                           choices = stats::setNames(c('', ch$mid), c(paste0('All ', tolower(mid_label), 's'), ch$mid)),
+                           selected = .if_null(sel$mid, ''))
+  # Server-side selectize clears the current value while asynchronously loading
+  # options, feeding a transient empty selection back into the navigation.
+  shiny::updateSelectizeInput(session, 'ex_facility',
+                              choices = c('All facilities' = '', ch$facility),
+                              selected = .if_null(sel$facility, ''), server = FALSE)
+}
+
 .dashboard_server <- function(input, output, session, selected_run) {
   data_r <- shiny::reactive(.explore_prepare(selected_run()$data_flagged))
   catalog_r <- shiny::reactive(.qc_flag_catalog(selected_run()$config))
   selection <- shiny::reactiveVal(.nav_empty())
   record <- shiny::reactiveVal(NULL)
 
-  sync_inputs <- function(data, sel) {
-    ch <- .nav_choices(data, sel)
-    mid_label <- .if_null(.nav_mid_label(.nav_mid_field(data)), 'Council or district')
-    shiny::updateSelectInput(session, 'ex_region', choices = c('All regions' = '', ch$region),
-                             selected = .if_null(sel$region, ''))
-    shiny::updateSelectInput(session, 'ex_mid', label = mid_label,
-                             choices = stats::setNames(c('', ch$mid), c(paste0('All ', tolower(mid_label), 's'), ch$mid)),
-                             selected = .if_null(sel$mid, ''))
-    shiny::updateSelectizeInput(session, 'ex_facility',
-                                choices = c('All facilities' = '', ch$facility),
-                                selected = .if_null(sel$facility, ''), server = TRUE)
-  }
+  sync_inputs <- function(data, sel) .dashboard_sync_inputs(session, data, sel)
   move <- function(level, value) {
     data <- data_r()
     current <- selection()

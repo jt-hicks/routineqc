@@ -29,10 +29,9 @@ consecutive months without testing.}
 \item{min_months_with_testing}{Optional override for the minimum number of
 months with testing.}
 
-\item{min_prop_with_testing_dataset_window}{Optional override for the minimum
-proportion of the dataset-wide month span in which a facility must have
-testing. This criterion is scale-free, so it identifies a facility with a
-short history even when that history is internally complete.}
+\item{min_prop_with_testing_dataset_window}{Retained for compatibility but
+must be \code{NULL}. Dataset-span coverage is no longer a filtering criterion;
+supplying an override produces an error.}
 
 \item{max_prop_incomplete_counts}{Optional override for the maximum
 proportion of rows with exactly one of \code{tested} and \code{positive} missing.
@@ -53,8 +52,8 @@ and are also reported separately so the underlying evidence stays visible.
 \details{
 Gap length is measured within each facility own reporting window, from its
 first to its last reported month. Proportions are reported against both that
-window and the dataset-wide month span, so a facility with only a few months
-of history can be identified even when those months are internally complete.
+window and the dataset-wide month span. Dataset-span proportions are
+descriptive only and are not used to select a review cohort.
 
 When \code{positive} is present, count completeness is measured too: among rows
 reporting at least one count, the proportion missing \code{positive} or \code{tested}

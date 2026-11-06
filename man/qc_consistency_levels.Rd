@@ -13,6 +13,7 @@ A tibble with one row per level and one column per criterion.
 Returns the named strictness presets used to judge whether a facility reports
 consistently enough to enter a review cohort. Levels are ordered from no
 filtering to the most severe requirement, and \code{NA} means a criterion is not
-applied. These presets select facilities for review. They never authorize
-exclusion of a record and never assign a QC action.
+applied. The legacy \code{complete_panel} level is equivalent to \code{complete}.
+These presets select facilities for review. They never authorize exclusion
+of a record and never assign a QC action.
 }

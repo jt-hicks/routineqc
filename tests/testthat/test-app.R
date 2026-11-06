@@ -442,6 +442,38 @@ testthat::test_that('reporting consistency tab renders for a persisted run', {
   )
 })
 
+testthat::test_that('dashboard review cohorts include a recently reporting facility', {
+  months <- seq.Date(as.Date('2020-01-01'), by = 'month', length.out = 24)
+  raw <- dplyr::bind_rows(
+    tibble::tibble(facility = 'old', region = 'R1', month = months, tested = 20, positive = 3),
+    tibble::tibble(facility = 'new', region = 'R1', month = tail(months, 2), tested = 20, positive = 3)
+  )
+  run <- suppressWarnings(routineqc::run_routine_qc(
+    raw, facility_var = 'facility', region_var = 'region', month_var = 'month',
+    tested_var = 'tested', positive_var = 'positive', nthreads = 1
+  ))
+  directory <- tempfile('routineqc-recent-facility-')
+  dir.create(directory)
+  on.exit(unlink(directory, recursive = TRUE), add = TRUE)
+  path <- file.path(directory, 'run.rds')
+  routineqc::write_qc_run(run, path)
+  server <- function(input, output, session) {
+    routineqc:::.qc_app_server(input, output, session, run_dir = directory)
+  }
+  shiny::testServer(server, {
+    suppressWarnings(session$setInputs(
+      run_path = path, flagged_only = FALSE, column_set = 'review', use_date_filter = FALSE,
+      review_strictness = 'moderate', consistency_strictness = 'moderate'
+    ))
+    testthat::expect_match(output$review_count, '26 rows displayed')
+    testthat::expect_match(output$consistency_overview, 'Facilities in cohort\\s*</td>\\s*<td[^>]*>\\s*2')
+    suppressWarnings(session$setInputs(review_strictness = 'complete'))
+    testthat::expect_match(output$review_count, '26 rows displayed')
+  })
+  testthat::expect_false('complete_panel' %in% routineqc:::.consistency_choices())
+  testthat::expect_false(grepl('consistency_min_coverage', as.character(routineqc:::.qc_app_ui())))
+})
+
 testthat::test_that('attendance summary compares only rows carrying both counts', {
   dat <- tibble::tibble(
     facility_id = c('F1', 'F1', 'F1', 'F2', 'F2'),
