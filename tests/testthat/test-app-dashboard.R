@@ -19,6 +19,8 @@ testthat::test_that('facility selector updates synchronously without a server-si
 })
 
 testthat::test_that('dashboard views render and navigation cascades', {
+  testthat::expect_match(as.character(routineqc:::.qc_app_ui()),
+                         'class="tab-pane active" data-value="Landing page"', fixed = TRUE)
   directory <- tempfile('routineqc-dash-')
   dir.create(directory)
   on.exit(unlink(directory, recursive = TRUE), add = TRUE)
@@ -37,6 +39,13 @@ testthat::test_that('dashboard views render and navigation cascades', {
     testthat::expect_true(length(output$ex_plot) > 0L)
     testthat::expect_true(length(output$ex_strip) > 0L)
     testthat::expect_match(output$ex_breadcrumb, 'National')
+    testthat::expect_match(output$landing_priorities, 'Critical / high')
+    testthat::expect_true(length(output$landing_regions) > 0L)
+    testthat::expect_match(output$landing_priority_definitions$html, 'High \\(severe\\)')
+    testthat::expect_match(output$landing_series, 'Filtered, imputed')
+    testthat::expect_match(output$landing_imputation_note$html, 'Retrospective model estimates')
+    session$setInputs(landing_metric = 'tested')
+    testthat::expect_match(output$landing_series, 'Tested')
     testthat::expect_true(length(output$ov_assessment_plot) > 0L)
     testthat::expect_true(length(output$fi_series) > 0L)
     testthat::expect_true(length(output$fi_strictness) > 0L)

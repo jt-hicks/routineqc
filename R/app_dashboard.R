@@ -9,6 +9,7 @@
       'Overview',
       nested(
         'overview_tabs',
+        shiny::tabPanel('Landing page', .landing_ui()),
         shiny::tabPanel(
           'Data usability',
           shiny::p(
@@ -17,10 +18,7 @@
             'single quality score.'
           ),
           shiny::uiOutput('ov_completeness'),
-          shiny::fluidRow(
-            shiny::column(6, plotly::plotlyOutput('ov_assessment_plot', height = '360px')),
-            shiny::column(6, plotly::plotlyOutput('ov_trend_plot', height = '360px'))
-          ),
+          plotly::plotlyOutput('ov_assessment_plot', height = '360px'),
           shiny::h4('Where issues concentrate'),
           shiny::helpText('Share of assessed records flagged, by issue family. Hover for the number assessed.'),
           plotly::plotlyOutput('ov_heatmap', height = '420px'),
@@ -336,6 +334,7 @@
   })
   output$ov_assessment_plot <- plotly::renderPlotly(.plot_assessment(.assessment_summary(data_r())))
   output$ov_trend_plot <- plotly::renderPlotly(.plot_overview_trend(.overview_trend(data_r())))
+  .landing_server(input, output, selected_run, data_r, catalog_r)
   output$ov_heatmap <- plotly::renderPlotly(.plot_unit_family_heatmap(.unit_family_matrix(data_r())))
   output$ov_ranked <- DT::renderDT({
     r <- .ranked_units(data_r())

@@ -165,6 +165,7 @@
   d <- results[results$scenario %in% c('reported', scenario), ]
   spec <- .explore_metrics[[metric]]
   plot <- plotly::plot_ly()
+  line_types <- c(reported = 'solid', filtered_missing = 'dash', filtered_imputed = 'dot')
   for (v in c('reported', 'filtered_missing', 'filtered_imputed')) {
     x <- d[d$version == v, ]
     if (nrow(x) == 0L) next
@@ -173,7 +174,8 @@
     if (metric == 'tested') y <- ifelse(x$tested_rows > 0L, y, NA_real_)
     plot <- plotly::add_trace(
       plot, x = x$month_date, y = y, type = 'scatter', mode = 'lines+markers', connectgaps = FALSE,
-      name = .impact_version_labels[[v]], line = list(color = .impact_palette[[v]], width = 2),
+      name = .impact_version_labels[[v]],
+      line = list(color = .impact_palette[[v]], width = 2, dash = line_types[[v]]),
       marker = list(color = .impact_palette[[v]], size = 4),
       text = paste0(format(x$month_date, '%b %Y'), '<br>', .impact_version_labels[[v]], ': ',
                     .format_metric(y, metric)), hoverinfo = 'text'
