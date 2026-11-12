@@ -1,25 +1,6 @@
-# ---- Helper: dummy shapefile ------------------------------------------------
-
-.dummy_region_sf <- function(regions) {
-  n <- length(regions)
-  cols <- max(1L, ceiling(sqrt(n)))
-  polys <- lapply(seq_along(regions), function(i) {
-    row_i <- (i - 1L) %/% cols
-    col_i <- (i - 1L) %% cols
-    sf::st_polygon(list(matrix(c(
-      col_i,       row_i,
-      col_i + 0.9, row_i,
-      col_i + 0.9, row_i + 0.9,
-      col_i,       row_i + 0.9,
-      col_i,       row_i
-    ), ncol = 2L, byrow = TRUE)))
-  })
-  sf::st_sf(region = regions, geometry = sf::st_sfc(polys), crs = 4326)
-}
-
-.landing_region_shapefile <- function(data) {
-  regions <- sort(unique(trimws(as.character(data$region[!is.na(data$region)]))))
-  .dummy_region_sf(regions)
+.landing_region_data <- function(data, region) {
+  if (is.null(region)) return(data)
+  data[trimws(as.character(data$region)) %in% region, , drop = FALSE]
 }
 
 # ---- UI ---------------------------------------------------------------------
@@ -71,6 +52,7 @@
         font-weight: 700; }
       .qc-pill-dismiss:hover { color: #c0392b; }
       .leaflet-container { background: #f0f0f0; }
+      .qc-map-legend > br + div { clear: both; white-space: nowrap; padding-top: 4px; }
     ')),
     shiny::fluidRow(
       shiny::column(4, card(
@@ -86,7 +68,12 @@
           'Testing coverage' = 'coverage'
         ), selected = 'positivity', inline = TRUE),
         shiny::uiOutput('landing_impact_region_pill'),
-        plotly::plotlyOutput('landing_series', height = '265px')
+        plotly::plotlyOutput('landing_series', height = '265px'),
+        shiny::uiOutput('landing_replacement_note'),
+        shiny::tags$details(
+          shiny::tags$summary('Unresolved imputed counts'),
+          DT::DTOutput('landing_replacement_unresolved')
+        )
       ))
     ),
     shiny::fluidRow(
@@ -148,7 +135,8 @@
 
 # ---- Server -----------------------------------------------------------------
 
-.landing_server <- function(input, output, selected_run, data_r, catalog_r, selected_region) {
+.landing_server <- function(input, output, selected_run, data_r, catalog_r, selected_region,
+                            boundaries = NULL) {
   moderate <- qc_scenario_presets()[['moderate']]
 
   # Reset region selection when the run changes.
@@ -158,44 +146,62 @@
 
   # Data filtered to the selected region (for QC filter impact).
   filtered_flagged_r <- shiny::reactive({
-    dat <- selected_run()$data_flagged
-    region <- selected_region()
-    if (!is.null(region)) {
-      dat <- dat[trimws(as.character(dat$region)) == region, , drop = FALSE]
-    }
-    dat
+    .landing_region_data(selected_run()$data_flagged, selected_region())
   })
 
   applied <- shiny::reactive({
-    .impact_apply(filtered_flagged_r(), list(moderate = moderate),
+    data <- filtered_flagged_r()
+    shiny::validate(shiny::need(nrow(data) > 0L, 'No observations in the selected region.'))
+    .impact_apply(data, list(moderate = moderate),
                   .if_null(selected_run()$config$priority, .default_qc_priority()))
   })
   observed <- shiny::reactive(
     .impact_compute(applied(), list(level = 'national', unit = NULL))
   )
 
-  # QC filter impact chart — rename filtered trace and add Imputed placeholder.
+  replacement <- shiny::reactive({
+    result <- .qc_baseline_replacement(applied()[['moderate']])
+    series <- qc_aggregate_metrics(result$frame, 'national', monthly = TRUE)
+    series$scenario <- 'moderate'
+    series$version <- 'qc_baseline'
+    list(series = series, targets = result$targets)
+  })
+
   output$landing_series <- plotly::renderPlotly({
     metric <- .value_or(input$landing_metric, 'positivity')
-    p <- .plot_impact_series(observed(), 'moderate', metric)
-    # Rename 'Filtered, excluded left missing' -> 'Filtered' and move footnote to hover.
-    for (i in seq_along(p$x$data)) {
-      tr <- p$x$data[[i]]
-      if (!is.null(tr$name) && grepl('excluded left missing', tr$name, fixed = TRUE)) {
-        p$x$data[[i]]$name <- 'Filtered'
-        p$x$data[[i]]$text <- paste0(
-          tr$text,
-          '<br><i>Counts flagged critical/high omitted; excluded left missing</i>'
-        )
-      }
-    }
-    # Add Imputed placeholder trace (empty — data not yet computed).
-    p <- plotly::add_trace(
-      p, x = numeric(0), y = numeric(0), type = 'scatter', mode = 'lines',
-      name = 'Imputed', line = list(color = .impact_palette[['filtered_imputed']], dash = 'dot'),
-      hoverinfo = 'skip'
+    series <- dplyr::bind_rows(observed(), replacement()$series)
+    labels <- .impact_version_labels
+    labels[c('filtered_missing', 'qc_baseline')] <- c('Filtered', 'Imputed')
+    .plot_impact_series(series, 'moderate', metric, version_labels = labels)
+  })
+  output$landing_replacement_note <- shiny::renderUI({
+    targets <- replacement()$targets
+    filled <- sum(targets$status == 'replaced')
+    shiny::helpText(
+      'Moderate omits only counts targeted by critical/high priority rules and authorized exclusions. ',
+      sprintf('Imputed (QC baseline replacement): %s of %s targeted tested or positive counts filled; %s unresolved.',
+              format(filled, big.mark = ','), format(nrow(targets), big.mark = ','),
+              format(nrow(targets) - filled, big.mark = ',')),
+      ' Uses the saved GAM probability and rolling tested median without fitting new models or uncertainty intervals. ',
+      'Pre-existing missing values remain missing; attendance is not replaced. The saved expectations may be ',
+      'influenced by suspect observations, and replacements tend to smooth the series.'
     )
-    p
+  })
+  output$landing_replacement_unresolved <- DT::renderDT({
+    targets <- replacement()$targets
+    unresolved <- targets[targets$status != 'replaced', , drop = FALSE]
+    reasons <- c(
+      baseline_unavailable = 'No usable rolling median (missing, invalid or insufficient history)',
+      baseline_below_observed_positive = 'Rolling median is below observed positives; tested left missing',
+      tested_unavailable = 'No usable tested count for the positivity calculation',
+      prediction_unavailable = 'No usable saved GAM probability'
+    )
+    unresolved$status <- unname(reasons[unresolved$status])
+    display <- unresolved[c('facility_id', 'month_date', 'field', 'status', 'tested_baseline',
+                            'observed_positive', 'predicted_probability')]
+    names(display) <- c('Facility', 'Month', 'Targeted count', 'Reason', 'Rolling median tested',
+                        'Observed positives', 'GAM probability')
+    DT::datatable(display, rownames = FALSE, options = list(pageLength = 5, scrollX = TRUE))
   })
 
   # Priority donut.
@@ -230,53 +236,29 @@
 
   # --- Choropleth map ---------------------------------------------------------
 
-  shapefile_r <- shiny::reactive(.landing_region_shapefile(data_r()))
-
   sf_with_data_r <- shiny::reactive({
-    shp <- shapefile_r()
-    summary <- .landing_priority_summary(data_r(), by_region = TRUE)
-    critical_df <- summary[summary$priority == 'critical', c('region', 'share'), drop = FALSE]
-    names(critical_df)[2] <- 'pct_critical'
-    critical_df$pct_critical <- critical_df$pct_critical * 100
-    shp <- merge(shp, critical_df, by = 'region', all.x = TRUE)
-    shp$pct_critical[is.na(shp$pct_critical)] <- 0
-    shp
+    data <- data_r()
+    shares <- .details_unit_share(data, NULL, 'region')
+    region <- trimws(as.character(data$region))
+    critical <- as.character(data$review_priority) %in% 'critical'
+    shares$flagged_records <- vapply(shares$unit, function(unit) {
+      sum(critical & region %in% unit)
+    }, integer(1))
+    shares$share_flagged <- .safe_divide(shares$flagged_records, shares$records)
+    .qc_map_data(boundaries, 'region', shares)
   })
 
-  output$landing_region_map <- leaflet::renderLeaflet({
-    sf_data <- sf_with_data_r()
-    if (nrow(sf_data) == 0L) return(leaflet::leaflet())
-    pal <- leaflet::colorNumeric(
-      palette = c('#fff7bc', '#fe9929', '#d95f0e', '#993404'),
-      domain = c(0, 100), na.color = '#cccccc'
-    )
-    bb <- sf::st_bbox(sf_data)
-    leaflet::leaflet(sf_data,
-      options = leaflet::leafletOptions(zoomControl = TRUE, attributionControl = FALSE)) %>%
-      leaflet::fitBounds(bb[['xmin']], bb[['ymin']], bb[['xmax']], bb[['ymax']]) %>%
-      leaflet::addPolygons(
-        fillColor = ~pal(pct_critical), fillOpacity = 0.8,
-        color = '#ffffff', weight = 1.5,
-        highlightOptions = leaflet::highlightOptions(
-          color = '#17363c', weight = 3, bringToFront = TRUE, fillOpacity = 0.9
-        ),
-        label = ~paste0(region, ': ', round(pct_critical, 1), '% critical'),
-        layerId = ~region
-      ) %>%
-      leaflet::addLegend(
-        pal = pal, values = ~pct_critical, opacity = 0.9,
-        title = '% of records', position = 'bottomright',
-        labFormat = leaflet::labelFormat(suffix = '%')
-      )
-  })
+  output$landing_region_map <- leaflet::renderLeaflet(
+    .plot_qc_map(sf_with_data_r(), 'region', 'flagged critical')
+  )
 
   # Redraw selection highlight via proxy (avoids full map re-render).
   shiny::observeEvent(selected_region(), {
     region <- selected_region()
     proxy <- leaflet::leafletProxy('landing_region_map')
     leaflet::clearGroup(proxy, 'selected_highlight')
-    if (!is.null(region)) {
-      sel <- sf_with_data_r()[sf_with_data_r()$region == region, ]
+    if (!is.null(region) && !is.null(sf_with_data_r())) {
+      sel <- sf_with_data_r()[sf_with_data_r()$unit %in% region, ]
       if (nrow(sel) > 0L) {
         leaflet::addPolygons(proxy,
           data = sel, group = 'selected_highlight',
@@ -285,7 +267,7 @@
         )
       }
     }
-  })
+  }, ignoreNULL = FALSE)
 
   # Map click -> update selected region.
   shiny::observeEvent(input$landing_region_map_shape_click, {

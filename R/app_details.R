@@ -175,7 +175,7 @@
 
 # Share of each unit's records in the selection, for the map.
 .details_unit_share <- function(data, long, field) {
-  unit <- as.character(data[[field]])
+  unit <- trimws(as.character(data[[field]]))
   keep <- !is.na(unit) & trimws(unit) != ''
   units <- sort(unique(unit[keep]))
   u <- factor(ifelse(keep, unit, NA_character_), levels = units)
@@ -355,31 +355,8 @@
 
 # --- map ----------------------------------------------------------------------
 
-# Placeholder polygons until real boundary files are supplied (see
-# `.dummy_region_sf()`); one rectangle per unit, in a grid.
-.dummy_unit_sf <- function(units) {
-  shp <- .dummy_region_sf(units)
-  names(shp)[names(shp) == 'region'] <- 'unit'
-  shp
-}
-
-.details_map <- function(shares) {
-  shp <- merge(.dummy_unit_sf(shares$unit), shares, by = 'unit', all.x = TRUE)
-  if (nrow(shp) == 0L) return(leaflet::leaflet())
-  shp$pct <- 100 * dplyr::coalesce(shp$share_flagged, 0)
-  pal <- leaflet::colorNumeric(c('#fff7bc', '#fe9929', '#d95f0e', '#993404'),
-                               domain = c(0, max(1, shp$pct)), na.color = '#cccccc')
-  bb <- sf::st_bbox(shp)
-  leaflet::leaflet(shp, options = leaflet::leafletOptions(zoomControl = TRUE, attributionControl = FALSE)) %>%
-    leaflet::fitBounds(bb[['xmin']], bb[['ymin']], bb[['xmax']], bb[['ymax']]) %>%
-    leaflet::addPolygons(
-      fillColor = ~pal(pct), fillOpacity = 0.85, color = '#ffffff', weight = 1.5,
-      highlightOptions = leaflet::highlightOptions(color = '#17363c', weight = 3, bringToFront = TRUE),
-      label = ~sprintf('%s: %s of %s records (%.1f%%)', unit, format(flagged_records, big.mark = ','),
-                       format(records, big.mark = ','), pct)
-    ) %>%
-    leaflet::addLegend(pal = pal, values = ~pct, opacity = 0.9, title = '% of records', position = 'bottomright',
-                       labFormat = leaflet::labelFormat(suffix = '%'))
+.details_map <- function(shares, boundaries = NULL, field = 'region') {
+  .plot_qc_map(.qc_map_data(boundaries, field, shares), field, 'with selected flags')
 }
 
 # --- UI -----------------------------------------------------------------------
@@ -471,7 +448,8 @@
 # --- server -------------------------------------------------------------------
 
 # `open_unit(field, unit)` moves Explore data to a unit and shows it.
-.details_server <- function(input, output, session, selected_run, data_r, catalog_r, open_unit = NULL) {
+.details_server <- function(input, output, session, selected_run, data_r, catalog_r, open_unit = NULL,
+                            boundaries = NULL) {
   one <- function(x) if (length(x) == 0L || is.na(x[[1]]) || !nzchar(x[[1]])) NULL else x[[1]]
   long_r <- shiny::reactive(.details_flag_long(data_r(), catalog_r()))
   key_r <- shiny::reactive(one(input$dt_flag))
@@ -531,6 +509,7 @@
 
   map_field_r <- shiny::reactive({
     mid <- .nav_mid_field(data_r())
+    if (!'region' %in% names(data_r()) && !is.null(mid)) return(mid)
     if (identical(input$dt_map_level, 'mid') && !is.null(mid)) mid else 'region'
   })
   output$dt_map_level_ui <- shiny::renderUI({
@@ -540,7 +519,9 @@
                         choices = stats::setNames(c('region', 'mid'), c('Region', .nav_mid_label(mid))))
   })
   output$dt_map_sub <- shiny::renderText(paste0('Share of records with ', phrase_r(), '.'))
-  output$dt_map <- leaflet::renderLeaflet(.details_map(.details_unit_share(data_r(), filtered_r(), map_field_r())))
+  output$dt_map <- leaflet::renderLeaflet(
+    .details_map(.details_unit_share(data_r(), filtered_r(), map_field_r()), boundaries, map_field_r())
+  )
 
   unit_month_r <- shiny::reactive(.details_unit_month(data_r(), filtered_r()))
   output$dt_where_sub <- shiny::renderText(

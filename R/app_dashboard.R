@@ -179,7 +179,7 @@
                               selected = .if_null(sel$facility, ''), server = FALSE)
 }
 
-.dashboard_server <- function(input, output, session, selected_run) {
+.dashboard_server <- function(input, output, session, selected_run, boundaries = NULL) {
   data_r <- shiny::reactive(.explore_prepare(selected_run()$data_flagged))
   catalog_r <- shiny::reactive(.qc_flag_catalog(selected_run()$config))
   selection <- shiny::reactiveVal(.nav_empty())
@@ -311,14 +311,11 @@
   # Overview
   selected_landing_region <- shiny::reactiveVal(NULL)
   output$ov_trend_plot <- plotly::renderPlotly({
-    data <- data_r()
-    region <- selected_landing_region()
-    if (!is.null(region)) {
-      data <- data[trimws(as.character(data$region)) == region, , drop = FALSE]
-    }
+    data <- .landing_region_data(data_r(), selected_landing_region())
+    shiny::validate(shiny::need(nrow(data) > 0L, 'No observations in the selected region.'))
     .plot_overview_trend(.overview_trend(data))
   })
-  .landing_server(input, output, selected_run, data_r, catalog_r, selected_landing_region)
+  .landing_server(input, output, selected_run, data_r, catalog_r, selected_landing_region, boundaries)
 
   # QC details. A row in its ranked table opens that unit in Explore data.
   open_unit <- function(field, unit) {
@@ -331,7 +328,7 @@
     shiny::updateTabsetPanel(session, 'explore_tabs', selected = 'Explorer')
     shiny::updateTabsetPanel(session, 'main_view', selected = 'Explore data')
   }
-  .details_server(input, output, session, selected_run, data_r, catalog_r, open_unit)
+  .details_server(input, output, session, selected_run, data_r, catalog_r, open_unit, boundaries)
 
   # Filter impact
   geography_r <- shiny::reactive(.impact_geography(selection(), data_r()))

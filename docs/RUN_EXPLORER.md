@@ -22,29 +22,32 @@ must still be treated according to the confidentiality of the source data.
 
 ## Views
 
-The dashboard has four views and a run-details page. The original panels are
-unchanged and now sit inside them.
+The dashboard has five analytical views and a run-details page.
 
-- **Overview** opens on the *Landing page*, with record shares by review
+- **Overview** is a single view, with record shares by review
   priority, regional and monthly flag rates, and
   explanations of the QC process and priority levels. The national chart uses
   the Moderate observation scenario and compares reported aggregates, aggregates
-  with targeted counts left missing, and **QC baseline replacement**. The latter
+  with targeted counts left missing, and **Imputed (QC baseline replacement)**. The latter
   uses the saved GAM probability and rolling tested median without fitting new
   models. Switch between positivity, tested, attendance and testing coverage.
+  Click a map region to filter both trend charts; dismiss its pill to restore the
+  whole run. Missing region labels do not enter a named region's series, and
+  selecting an area without observations shows a message instead of a zero trend.
   The page shows filled/targeted counts and unresolved reasons, including a tested
   median below retained observed positives. Missing support stays missing.
   These replacements may inherit suspect observations' influence and smooth the
   series; no uncertainty intervals are shown. Use *Filter impact* to compare
   other scenarios or explicitly fit imputation models with uncertainty intervals.
-- **Data usability** (under *Overview*): how much of
-  the run can be assessed, and where review effort concentrates. Each check
+- **QC details:** flag frequencies, flag-to-priority flow, monthly and geographic
+  patterns, facility concentration and ranked areas. Filters combine flag type,
+  flag priority and record priority. Selecting a ranked area opens it in
+  *Explore data*. The expandable assessment chart reports how much of the run
+  each check can assess. Each check
   reports records assessed and not flagged, assessed and flagged, and not
   assessed (missing or unusable inputs, insufficient history, prediction
   unavailable). A record a check could not assess is never shown as passing, and
-  there is no composite quality score. Expected facility-months are inferred
-  from each facility's first to last report unless a schedule is supplied; the
-  page says so.
+  there is no composite quality score.
 - **Explore data** (*Explorer*, then *Review queue*, *Diagnostics*, *District
   grid*): cascading National, Region, Council or District, Facility navigation
   with a breadcrumb and reset. Four measures (positivity, tested, attendance,
@@ -63,22 +66,42 @@ unchanged and now sit inside them.
   actually used by the selected run (runs saved without some settings show the
   current defaults and say so), the context modifiers, and the flag, priority and
   action distinction.
-- **Run details:** configuration, provenance and the *Attendance* panel.
+- **Run details:** configuration, provenance, the *Attendance* panel, run metadata
+  and artifact inventory.
+
+## Geographic boundaries
+
+Maps never fabricate geography. Without a supplied layer they display
+**Boundary data not supplied**. Pass a named list of local `sf` polygon layers:
+
+```r
+boundaries <- list(
+  region = sf::st_read('boundaries/regions.gpkg', quiet = TRUE),
+  district = sf::st_read('boundaries/districts.gpkg', quiet = TRUE)
+)
+launch_qc_app('qc-runs', boundaries = boundaries)
+```
+
+Supported layer names are `region`, `district` and `council`. Each layer must
+have a column of that name containing unique, non-missing names matching the
+run after whitespace trimming. A council layer is not silently treated as a
+district layer. Where names are ambiguous, the caller must supply an explicit
+crosswalk to the run's identifiers. Matching is exact, never fuzzy.
+
+Layers must contain valid non-empty polygons and a defined CRS; they are
+transformed to WGS84 once at launch. Prepare or repair boundaries upstream.
+Both maps use the same 0-100% sequential scale. Areas with observations and no
+selected flags show zero; areas without observations are grey. Data units with
+no matching boundary are listed on the map rather than silently discarded.
+
+SharePoint discovery, authentication/sync and country-specific name mappings
+belong to the calling data pipeline, not this package. The caller should load
+locally synced boundary files once and pass the layers into the launcher. No
+QC rerun or model fitting is required, and no boundary files are copied into
+the run or written back to their source.
 
 The earlier panels are described below.
 
-- **Action summary:** a compact run summary, a QC-action donut across all rows, and a
-  separate bar chart counting each individual QC reason among affected rows.
-  Rows with multiple reasons contribute to each applicable reason bar; the
-  reason chart therefore describes evidence frequency rather than a mutually
-  exclusive partition. Facility burden groups facilities by affected-row
-  count. District
-  burden ranks districts by the number or proportion of facilities exceeding
-  an adjustable affected-row threshold. Both burden views can switch among
-  review-or-exclusion, review only, and authorized exclusion only. An always-visible
-  flow diagram explains the tested/positive validity, attendance, coverage,
-  prevalence, temporal, and tested-volume evidence used by action policy
-  version 3, including the configurable per-flag priority.
 - **Reporting consistency:** facility-level reporting behavior measured from the
   flagged data, covering months without testing, their absent, zero, and missing
   components, the longest gap without testing, and coverage of both the facility
@@ -122,10 +145,8 @@ The earlier panels are described below.
 Filtering never modifies the stored run or authorizes a new action. Invalid or
 tampered RDS/manifest pairs cannot be opened silently.
 
-“Affected” in the facility and district burden views means either
-`flag_review_recommended` or `flag_exclude_authorized`. The controls expose
-each component separately. Review recommendations remain distinct from
-authorized exclusions throughout the application.
+Review recommendations remain distinct from authorized exclusions throughout
+the application. The QC guide includes the policy flow diagram.
 
 ## Deliberately deferred
 

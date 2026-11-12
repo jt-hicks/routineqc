@@ -107,7 +107,7 @@ testthat::test_that('all landing indicators plot actual QC baseline values with 
   }
 })
 
-testthat::test_that('landing page never calls imputation', {
+testthat::test_that('landing Imputed trace plots saved baselines and explains unresolved counts without fitting', {
   data <- baseline_replacement_fixture()
   calls <- 0L
   testthat::local_mocked_bindings(
@@ -120,11 +120,52 @@ testthat::test_that('landing page never calls imputation', {
                     shiny::reactiveVal(NULL))
   }
   shiny::testServer(server, {
-    testthat::expect_match(output$landing_series, 'Filtered')
-    for (metric in c('tested', 'attendance', 'coverage')) {
+    scn <- apply_qc_scenario(data, qc_scenario_presets()$moderate)
+    expected <- qc_aggregate_metrics(.qc_baseline_replacement(scn)$frame, 'national', monthly = TRUE)
+    for (metric in names(.explore_metrics)) {
       session$setInputs(landing_metric = metric)
-      testthat::expect_match(output$landing_series, 'Imputed')
+      traces <- jsonlite::fromJSON(output$landing_series, simplifyVector = FALSE)$x$data
+      testthat::expect_setequal(vapply(traces, `[[`, character(1), 'name'),
+                                c('Reported', 'Filtered', 'Imputed'))
+      line <- Filter(function(x) identical(x$name, 'Imputed'), traces)[[1]]
+      actual <- as.numeric(unlist(line$y))
+      y <- expected[[.explore_metrics[[metric]]$column]]
+      if (metric == 'tested') y[expected$tested_rows == 0L] <- NA_real_
+      if (metric == 'attendance') y[expected$attendance_rows == 0L] <- NA_real_
+      testthat::expect_equal(actual[is.finite(actual)], y[is.finite(y)], info = metric)
     }
+    testthat::expect_match(output$landing_replacement_note$html, '4 of 8')
+    testthat::expect_match(output$landing_replacement_note$html, 'QC baseline replacement')
+    testthat::expect_match(output$landing_replacement_unresolved, 'Reason')
     testthat::expect_equal(calls, 0L)
+  })
+})
+
+testthat::test_that('region filtering excludes missing labels and handles empty and cleared selections in both charts', {
+  fx <- dashboard_fixture()
+  data <- fx$data
+  region <- as.character(data$region[[1]])
+  data$region[1:2] <- c(NA, '')
+  data$region[3] <- paste0(' ', region, ' ')
+  selected <- .landing_region_data(data, region)
+  testthat::expect_false(anyNA(selected$facility_id))
+  testthat::expect_true(all(trimws(selected$region) == region))
+  testthat::expect_identical(.landing_region_data(data, NULL), data)
+  testthat::expect_equal(nrow(.landing_region_data(data, 'No observations')), 0L)
+
+  server <- function(input, output, session) {
+    run <- shiny::reactive(list(data_flagged = data, config = fx$qc$config, manifest = list()))
+    .dashboard_server(input, output, session, run)
+  }
+  shiny::testServer(server, {
+    session$setInputs(landing_region_map_shape_click = list(id = region))
+    testthat::expect_true(length(output$ov_trend_plot) > 0L)
+    testthat::expect_match(output$landing_series, 'Imputed')
+    session$setInputs(landing_region_map_shape_click = list(id = 'No observations'))
+    testthat::expect_error(output$ov_trend_plot, 'No observations in the selected region')
+    testthat::expect_error(output$landing_series, 'No observations in the selected region')
+    session$setInputs(landing_clear_region = 1)
+    testthat::expect_true(length(output$ov_trend_plot) > 0L)
+    testthat::expect_match(output$landing_series, 'Imputed')
   })
 })

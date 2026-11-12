@@ -35,9 +35,10 @@ not a population prevalence.
 
 ## Landing page: QC baseline replacement
 
-The national Moderate comparison has a third line, **QC baseline replacement**,
-computed from expectations already saved in the run. No model is fitted when the
-landing page loads:
+The Overview Moderate comparison has a third line, **Imputed**, meaning **QC
+baseline replacement**, computed from expectations already saved in the run.
+It follows the selected map region (or the whole run when cleared). No model
+is fitted when the landing page loads:
 
 | Targeted counts in a facility-month | Replacement |
 |---|---|

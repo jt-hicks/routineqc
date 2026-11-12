@@ -4,7 +4,12 @@
 \alias{launch_qc_app}
 \title{Launch the Local QC Run Explorer}
 \usage{
-launch_qc_app(run_dir, port = NULL, launch_browser = interactive())
+launch_qc_app(
+  run_dir,
+  port = NULL,
+  launch_browser = interactive(),
+  boundaries = NULL
+)
 }
 \arguments{
 \item{run_dir}{Directory containing paired QC run RDS/JSON artifacts.}
@@ -12,6 +17,13 @@ launch_qc_app(run_dir, port = NULL, launch_browser = interactive())
 \item{port}{Optional local port passed to \code{\link[shiny:runApp]{shiny::runApp()}}.}
 
 \item{launch_browser}{Whether to open a browser. Defaults to interactive use.}
+
+\item{boundaries}{Optional named list of \code{sf} polygon layers, named \code{region},
+\code{district} and/or \code{council}. Each layer must have a column of the same name
+containing unique, non-missing unit names matching the run (after trimming
+whitespace), valid non-empty polygons and a defined CRS. Layers are
+transformed to WGS84 once at launch. Missing layers and unmatched units
+are reported on the maps; areas without observations are grey.}
 }
 \value{
 The result of \code{\link[shiny:runApp]{shiny::runApp()}}. Called for its side effect.

@@ -520,7 +520,7 @@ filter_qc_review <- function(data,
     )
 }
 
-.qc_app_server <- function(input, output, session, run_dir) {
+.qc_app_server <- function(input, output, session, run_dir, boundaries = NULL) {
   run_index <- list_qc_runs(run_dir)
   available <- run_index[run_index$selectable, , drop = FALSE]
   labels <- if (nrow(available) > 0L) {
@@ -879,17 +879,18 @@ filter_qc_review <- function(data,
   output$configuration <- shiny::renderPrint({ selected_run()$config })
   output$provenance <- shiny::renderPrint({ selected_run()$manifest$provenance })
 
-  .dashboard_server(input, output, session, selected_run)
+  .dashboard_server(input, output, session, selected_run, boundaries)
 
   invisible(list(selected_run = selected_run, review_data = review_data))
 }
 
-.qc_run_explorer <- function(run_dir) {
+.qc_run_explorer <- function(run_dir, boundaries = NULL) {
   force(run_dir)
+  boundaries <- .validate_qc_boundaries(boundaries)
   shiny::shinyApp(
     ui = .qc_app_ui(),
     server = function(input, output, session) {
-      .qc_app_server(input, output, session, run_dir = run_dir)
+      .qc_app_server(input, output, session, run_dir = run_dir, boundaries = boundaries)
     }
   )
 }
@@ -902,10 +903,16 @@ filter_qc_review <- function(data,
 #' @param run_dir Directory containing paired QC run RDS/JSON artifacts.
 #' @param port Optional local port passed to [shiny::runApp()].
 #' @param launch_browser Whether to open a browser. Defaults to interactive use.
+#' @param boundaries Optional named list of `sf` polygon layers, named `region`,
+#'   `district` and/or `council`. Each layer must have a column of the same name
+#'   containing unique, non-missing unit names matching the run (after trimming
+#'   whitespace), valid non-empty polygons and a defined CRS. Layers are
+#'   transformed to WGS84 once at launch. Missing layers and unmatched units
+#'   are reported on the maps; areas without observations are grey.
 #'
 #' @return The result of [shiny::runApp()]. Called for its side effect.
 #' @export
-launch_qc_app <- function(run_dir, port = NULL, launch_browser = interactive()) {
+launch_qc_app <- function(run_dir, port = NULL, launch_browser = interactive(), boundaries = NULL) {
   list_qc_runs(run_dir)
   if (!is.null(port) && (!is.numeric(port) || length(port) != 1L ||
                         is.na(port) || port < 1 || port > 65535 ||
@@ -916,7 +923,7 @@ launch_qc_app <- function(run_dir, port = NULL, launch_browser = interactive()) 
     rlang::abort('`launch_browser` must be TRUE or FALSE.')
   }
   shiny::runApp(
-    .qc_run_explorer(run_dir), host = '127.0.0.1', port = port,
+    .qc_run_explorer(run_dir, boundaries), host = '127.0.0.1', port = port,
     launch.browser = launch_browser
   )
 }

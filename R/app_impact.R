@@ -163,7 +163,8 @@
 .impact_version_labels <- c(reported = 'Reported', filtered_missing = 'Filtered, excluded left missing',
                             filtered_imputed = 'Filtered, imputed', qc_baseline = 'QC baseline replacement')
 
-.plot_impact_series <- function(results, scenario, metric = 'positivity') {
+.plot_impact_series <- function(results, scenario, metric = 'positivity',
+                                version_labels = .impact_version_labels) {
   d <- results[results$scenario %in% c('reported', scenario), ]
   spec <- .explore_metrics[[metric]]
   plot <- plotly::plot_ly()
@@ -177,10 +178,10 @@
     if (metric == 'attendance') y <- ifelse(x$attendance_rows > 0L, y, NA_real_)
     plot <- plotly::add_trace(
       plot, x = x$month_date, y = y, type = 'scatter', mode = 'lines+markers', connectgaps = FALSE,
-      name = .impact_version_labels[[v]],
+      name = version_labels[[v]],
       line = list(color = .impact_palette[[v]], width = 2, dash = line_types[[v]]),
       marker = list(color = .impact_palette[[v]], size = 4),
-      text = paste0(format(x$month_date, '%b %Y'), '<br>', .impact_version_labels[[v]], ': ',
+      text = paste0(format(x$month_date, '%b %Y'), '<br>', version_labels[[v]], ': ',
                     .format_metric(y, metric)), hoverinfo = 'text'
     )
     if (v == 'filtered_imputed' && metric == 'positivity' && 'ci_low' %in% names(x) && any(!is.na(x$ci_low))) {

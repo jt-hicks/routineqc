@@ -2,7 +2,7 @@
 
 ## Dashboard redesign
 
-- The explorer is reorganised into Overview, Explore data, Filter impact, QC
+- The explorer is reorganised into Overview, QC details, Explore data, Filter impact, QC
   guide and Run details. Existing panels and their behaviour are kept inside
   these views. See `docs/RUN_EXPLORER.md`.
 - Explore data adds cascading National to Facility navigation, four measures
@@ -19,11 +19,17 @@
   without altering any stored data, with optional, clearly labelled imputation.
   Presets omit affected counts in flagged facility-months; they no longer
   exclude facilities based on reporting completeness.
-- The landing page's Moderate comparison now shows **QC baseline replacement**:
+- The landing page's Moderate comparison shows **Imputed (QC baseline replacement)**:
   saved rolling tested medians and GAM probabilities replace targeted counts,
   without fitting new models. Filled counts and unresolved reasons are shown.
   This sensitivity comparison has no uncertainty interval; raw data and
   pre-existing missing counts are unchanged.
+- Region filtering excludes missing labels without creating invalid rows. Regions
+  without observations show an explicit message, and clearing restores the full run.
+- Maps accept optional `region`, `district` and `council` polygon layers via
+  `launch_qc_app(boundaries = ...)`, with geometry/CRS and unique-name validation.
+  Artificial placeholder geography is removed: missing layers and unmatched names
+  are reported, and areas without observations are grey rather than zero.
 - Imputed summaries retain the tested and attendance fields required to plot
   those indicators, including months with no usable counts.
 - New exported functions: `qc_scenario()`, `qc_scenario_presets()`,
