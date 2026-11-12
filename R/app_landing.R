@@ -192,7 +192,7 @@
     # Add Imputed placeholder trace (empty — data not yet computed).
     p <- plotly::add_trace(
       p, x = numeric(0), y = numeric(0), type = 'scatter', mode = 'lines',
-      name = 'Imputed', line = list(color = '#e66101', dash = 'dot'),
+      name = 'Imputed', line = list(color = .impact_palette[['filtered_imputed']], dash = 'dot'),
       hoverinfo = 'skip'
     )
     p

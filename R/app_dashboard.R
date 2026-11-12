@@ -5,43 +5,29 @@
   nested <- function(id, ...) shiny::tabsetPanel(id = id, ...)
   shiny::tabsetPanel(
     id = 'main_view',
-    shiny::tabPanel(
-      'Overview',
-      nested(
-        'overview_tabs',
-        shiny::tabPanel('Landing page', .landing_ui()),
-        shiny::tabPanel(
-          'Data usability',
-          shiny::p(
-            'How much of the run can be assessed, and where review effort is concentrated. A record that ',
-            'a check could not assess is shown as such: it is not a record that passed. There is no ',
-            'single quality score.'
-          ),
-          shiny::uiOutput('ov_completeness'),
-          plotly::plotlyOutput('ov_assessment_plot', height = '360px'),
-          shiny::h4('Where issues concentrate'),
-          shiny::helpText('Share of assessed records flagged, by issue family. Hover for the number assessed.'),
-          plotly::plotlyOutput('ov_heatmap', height = '420px'),
-          shiny::h4('Units ranked by review burden'),
-          DT::DTOutput('ov_ranked')
-        ),
-        legacy[[1]]
-      )
-    ),
+    shiny::tabPanel('Overview', .landing_ui()),
+    shiny::tabPanel('QC details', .details_ui()),
     shiny::tabPanel(
       'Explore data',
       nested(
         'explore_tabs',
         shiny::tabPanel('Explorer', .explorer_ui()),
-        legacy[[4]], legacy[[5]], legacy[[6]]
+        legacy$review_queue, legacy$diagnostics, legacy$district_grid
       )
     ),
     shiny::tabPanel(
       'Filter impact',
-      nested('impact_tabs', shiny::tabPanel('Scenarios', .impact_ui()), legacy[[2]])
+      nested('impact_tabs', shiny::tabPanel('Scenarios', .impact_ui()), legacy$consistency)
     ),
     shiny::tabPanel('QC guide', .guide_ui()),
-    shiny::tabPanel('Run details', nested('details_tabs', legacy[[7]], legacy[[3]]))
+    shiny::tabPanel('Run details', nested(
+      'details_tabs', legacy$configuration, legacy$attendance,
+      shiny::tabPanel(
+        'Run and artifacts',
+        shiny::verbatimTextOutput('run_details'),
+        shiny::h4('Artifact inventory'), shiny::tableOutput('artifact_inventory')
+      )
+    ))
   )
 }
 
@@ -323,16 +309,6 @@
   })
 
   # Overview
-  output$ov_completeness <- shiny::renderUI({
-    comp <- .reporting_completeness(data_r())
-    shiny::tags$div(
-      class = 'alert alert-info',
-      sprintf('%s of %s expected facility-months have a usable tested count (%.1f%%). The expected months are %s.',
-              format(comp$reporting, big.mark = ','), format(comp$expected, big.mark = ','),
-              100 * comp$share, comp$basis)
-    )
-  })
-  output$ov_assessment_plot <- plotly::renderPlotly(.plot_assessment(.assessment_summary(data_r())))
   selected_landing_region <- shiny::reactiveVal(NULL)
   output$ov_trend_plot <- plotly::renderPlotly({
     data <- data_r()
@@ -343,12 +319,19 @@
     .plot_overview_trend(.overview_trend(data))
   })
   .landing_server(input, output, selected_run, data_r, catalog_r, selected_landing_region)
-  output$ov_heatmap <- plotly::renderPlotly(.plot_unit_family_heatmap(.unit_family_matrix(data_r())))
-  output$ov_ranked <- DT::renderDT({
-    r <- .ranked_units(data_r())
-    DT::datatable(r, rownames = FALSE, options = list(pageLength = 10)) %>%
-      DT::formatPercentage(c('share_flagged', 'share_not_assessed_for_positivity'), 1)
-  })
+
+  # QC details. A row in its ranked table opens that unit in Explore data.
+  open_unit <- function(field, unit) {
+    level <- if (identical(field, 'region')) 'region' else 'mid'
+    data <- data_r()
+    updated <- .nav_set(data, .nav_empty(), level, unit)
+    selection(updated)
+    record(NULL)
+    sync_inputs(data, updated)
+    shiny::updateTabsetPanel(session, 'explore_tabs', selected = 'Explorer')
+    shiny::updateTabsetPanel(session, 'main_view', selected = 'Explore data')
+  }
+  .details_server(input, output, session, selected_run, data_r, catalog_r, open_unit)
 
   # Filter impact
   geography_r <- shiny::reactive(.impact_geography(selection(), data_r()))

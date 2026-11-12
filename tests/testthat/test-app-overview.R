@@ -13,17 +13,10 @@ test_that("assessment states partition records and unassessed rows never pass", 
   expect_equal(sum(summ$n[summ$check == 'Count consistency']), nrow(data))
 })
 
-test_that("unit-family matrix and ranked units are consistent", {
+test_that("overview plots build from the fixture", {
   data <- dashboard_fixture()$data
-  m <- .unit_family_matrix(data)
-  expect_true(all(m$flagged <= m$assessed))
-  r <- .ranked_units(data)
-  expect_equal(sum(r$records), sum(!is.na(data[[.unit_field(data)]])))
-  expect_s3_class(.plot_unit_family_heatmap(m), 'plotly')
   expect_s3_class(.plot_assessment(.assessment_summary(data)), 'plotly')
   expect_s3_class(.plot_overview_trend(.overview_trend(data)), 'plotly')
-  comp <- .reporting_completeness(data)
-  expect_lte(comp$reporting, comp$expected)
 })
 
 test_that("flag catalog follows the run configuration and old configs fall back", {
@@ -34,6 +27,11 @@ test_that("flag catalog follows the run configuration and old configs fall back"
   cfg$attendance$coverage_very_low <- 0.123
   expect_true(any(grepl('0.123', .qc_flag_catalog(cfg)$definition, fixed = TRUE)) ||
                 !identical(.qc_flag_catalog(cfg)$definition, cat1$definition))
+  partial <- cfg
+  partial$priority <- list(resid_extreme = 'low')
+  cat2 <- .qc_flag_catalog(partial)
+  expect_equal(unname(cat2$priority[cat2$key == 'resid_extreme']), 'low')
+  expect_equal(unname(cat2$priority[cat2$key == 'tested_large_jump']), .default_qc_priority()$tested_large_jump)
   old <- list()
   expect_s3_class(.qc_flag_catalog(old), 'data.frame')
   expect_true(length(attr(.guide_config(old), 'defaulted_sections')) > 0L)

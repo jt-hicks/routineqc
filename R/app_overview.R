@@ -75,99 +75,9 @@
   out
 }
 
-# Completeness within each facility's active window. Without a supplied
-# schedule the window is first to last report, which cannot see a facility that
-# stopped reporting or started late; the result says so.
-.reporting_completeness <- function(data, schedule = NULL) {
-  windows <- .facility_windows(data, schedule)
-  months <- .explore_months(data)
-  expected <- sum(vapply(seq_len(nrow(windows)), function(i) {
-    sum(months >= windows$first[i] & months <= windows$last[i])
-  }, integer(1)))
-  usable <- .usable_counts(data)$tested
-  in_window <- {
-    w <- windows[match(as.character(data$facility_id), windows$facility_id), ]
-    data$month_date >= w$first & data$month_date <= w$last
-  }
-  reporting <- sum(!is.na(usable) & in_window)
-  list(
-    expected = expected, reporting = reporting, share = .safe_divide(reporting, expected),
-    rows_without_usable_tested = sum(is.na(usable)),
-    absent = max(0L, expected - sum(in_window)),
-    basis = if (is.null(schedule)) 'inferred from first to last report (no schedule supplied)'
-            else 'supplied facility schedule'
-  )
-}
-
 .unit_field <- function(data) {
   field <- .nav_mid_field(data)
   if (is.null(field)) 'region' else field
-}
-
-.family_flags <- function(data) {
-  list(
-    `Count consistency` = .lg(data, 'flag_core_invalid') | .lg(data, 'flag_count_invalid_value'),
-    Prevalence = .lg(data, 'flag_resid_extreme') | .lg(data, 'flag_all_negative_large_n') |
-      .lg(data, 'flag_all_positive_large_n') | .lg(data, 'flag_large_monthly_prevalence_change'),
-    `Tested volume` = .lg(data, 'flag_tested_volume_extreme'),
-    Attendance = .lg(data, 'flag_tested_gt_attending') | .lg(data, 'flag_attending_negative'),
-    `Testing coverage` = .lg(data, 'flag_coverage_low') | .lg(data, 'flag_coverage_very_low')
-  )
-}
-
-.family_assessed <- function(data) {
-  states <- .row_assessment(data)
-  ok <- function(x) x %in% c('assessed, not flagged', 'assessed, flagged')
-  list(
-    `Count consistency` = ok(states$count_consistency), Prevalence = ok(states$prevalence),
-    `Tested volume` = ok(states$tested_volume), Attendance = ok(states$attendance),
-    `Testing coverage` = ok(states$attendance)
-  )
-}
-
-# Council (or region) by issue family: the share of ASSESSED records flagged,
-# with the number assessed beside it so small denominators are visible.
-.unit_family_matrix <- function(data) {
-  field <- .unit_field(data)
-  unit <- as.character(data[[field]])
-  flags <- .family_flags(data)
-  assessed <- .family_assessed(data)
-  rows <- lapply(names(flags), function(f) {
-    keep <- !is.na(unit) & trimws(unit) != ''
-    tot <- tapply(assessed[[f]][keep], unit[keep], sum)
-    hit <- tapply((flags[[f]] & assessed[[f]])[keep], unit[keep], sum)
-    dplyr::tibble(unit = names(tot), family = f, assessed = as.integer(tot), flagged = as.integer(hit),
-                  rate = .safe_divide(as.integer(hit), as.integer(tot)))
-  })
-  out <- dplyr::bind_rows(rows)
-  attr(out, 'unit_field') <- field
-  out
-}
-
-.ranked_units <- function(data) {
-  field <- .unit_field(data)
-  unit <- as.character(data[[field]])
-  keep <- !is.na(unit) & trimws(unit) != ''
-  d <- data[keep, , drop = FALSE]
-  unit <- unit[keep]
-  flagged <- .is_flagged_row(d)
-  high <- flagged & as.character(d$review_priority) %in% c('critical', 'high')
-  states <- .row_assessment(d)
-  unassessed <- states$prevalence %in% c('missing or unusable inputs', 'insufficient history',
-                                         'prediction unavailable')
-  out <- dplyr::tibble(
-    unit = sort(unique(unit))
-  )
-  by <- function(x) as.numeric(tapply(x, factor(unit, levels = out$unit), sum))
-  out$facilities <- as.integer(tapply(as.character(d$facility_id), factor(unit, levels = out$unit),
-                                      function(x) length(unique(x))))
-  out$records <- as.integer(tapply(rep(1L, length(unit)), factor(unit, levels = out$unit), sum))
-  out$review_rows <- as.integer(by(flagged))
-  out$high_priority_rows <- as.integer(by(high))
-  out$share_flagged <- .safe_divide(out$review_rows, out$records)
-  out$share_not_assessed_for_positivity <- .safe_divide(as.integer(by(unassessed)), out$records)
-  attr(out, 'unit_field') <- field
-  out[order(-out$high_priority_rows, -out$share_flagged, out$unit), ]
 }
 
 .overview_trend <- function(data) {
@@ -202,27 +112,8 @@
   plotly::layout(plot, barmode = 'stack', xaxis = list(title = 'Share of records', tickformat = '.0%',
                                                         range = c(0, 1)),
                  yaxis = list(title = '', autorange = 'reversed'),
-                 legend = list(orientation = 'h', y = -0.25), margin = list(l = 170)) %>%
+                 legend = list(orientation = 'h', y = -0.35), margin = list(l = 170)) %>%
     plotly::style(textposition = 'none')
-}
-
-.plot_unit_family_heatmap <- function(matrix, max_units = 40L) {
-  field <- attr(matrix, 'unit_field')
-  ranked <- unique(matrix$unit[order(-matrix$flagged, matrix$unit)])
-  by_unit <- tapply(matrix$flagged, matrix$unit, sum)
-  units <- names(sort(by_unit, decreasing = TRUE))
-  units <- utils::head(units, max_units)
-  m <- matrix[matrix$unit %in% units, ]
-  m$unit <- factor(m$unit, levels = rev(units))
-  m$text <- paste0(m$unit, '<br>', m$family, '<br>',
-                   ifelse(m$assessed == 0L, 'No records assessed',
-                          paste0(m$flagged, ' of ', m$assessed, ' assessed records flagged (',
-                                 sprintf('%.1f%%', 100 * m$rate), ')')))
-  plotly::plot_ly(m, x = ~family, y = ~unit, z = ~rate, type = 'heatmap', text = ~text, hoverinfo = 'text',
-                  colorscale = list(c(0, '#f7fbff'), c(1, '#b2182b')), zmin = 0,
-                  colorbar = list(title = 'Flagged', tickformat = '.0%')) %>%
-    plotly::layout(xaxis = list(title = '', side = 'top'),
-                   yaxis = list(title = .if_null(.nav_mid_label(field), 'Region')))
 }
 
 .plot_overview_trend <- function(trend) {

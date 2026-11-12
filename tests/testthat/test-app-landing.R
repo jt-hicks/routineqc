@@ -107,7 +107,7 @@ testthat::test_that('all landing indicators plot actual QC baseline values with 
   }
 })
 
-testthat::test_that('landing page never calls imputation and explains unresolved baseline replacements', {
+testthat::test_that('landing page never calls imputation', {
   data <- baseline_replacement_fixture()
   calls <- 0L
   testthat::local_mocked_bindings(
@@ -116,15 +116,14 @@ testthat::test_that('landing page never calls imputation and explains unresolved
   )
   server <- function(input, output, session) {
     run <- shiny::reactive(list(data_flagged = data, config = qc_config()))
-    .landing_server(input, output, run, shiny::reactive(data), shiny::reactive(.qc_flag_catalog(qc_config())))
+    .landing_server(input, output, run, shiny::reactive(data), shiny::reactive(.qc_flag_catalog(qc_config())),
+                    shiny::reactiveVal(NULL))
   }
   shiny::testServer(server, {
-    testthat::expect_match(output$landing_series, 'QC baseline replacement')
-    testthat::expect_match(output$landing_replacement_note$html, '4 of 8')
-    testthat::expect_match(output$landing_replacement_unresolved, 'Reason')
+    testthat::expect_match(output$landing_series, 'Filtered')
     for (metric in c('tested', 'attendance', 'coverage')) {
       session$setInputs(landing_metric = metric)
-      testthat::expect_match(output$landing_series, 'QC baseline replacement')
+      testthat::expect_match(output$landing_series, 'Imputed')
     }
     testthat::expect_equal(calls, 0L)
   })

@@ -140,75 +140,11 @@ testthat::test_that('run explorer builds for empty and populated directories', {
         run_path = path, flagged_only = TRUE, column_set = 'review',
         use_date_filter = FALSE
       ))
-      testthat::expect_true(length(output$overview) > 0L)
       testthat::expect_true(length(output$review_table) > 0L)
-      testthat::expect_match(output$overview, 'app-synthetic')
+      testthat::expect_match(output$dt_run_strip$html, 'app-synthetic')
       testthat::expect_match(output$review_table, 'Reported number tested')
       testthat::expect_match(output$review_count, '1 rows displayed')
-      testthat::expect_true(length(output$action_plot) > 0L)
-      testthat::expect_true(length(output$reason_plot) > 0L)
-      testthat::expect_true(length(output$facility_burden_plot) > 0L)
-      testthat::expect_true(length(output$district_burden_plot) > 0L)
     }
-  )
-})
-
-testthat::test_that('overview separates row actions from individual QC reasons', {
-  dat <- tibble::tibble(
-    qc_action = c('retain', 'review_prevalence', 'review_prevalence', 'exclude_core_invalid'),
-    qc_reason = c(
-      'No QC issue detected',
-      'prevalence residual extreme',
-      'prevalence residual extreme; tested-volume anomaly',
-      'impossible or missing core tested/positive counts'
-    )
-  )
-  actions <- routineqc:::.qc_action_summary(dat)
-  reasons <- routineqc:::.qc_reason_summary(dat)
-  testthat::expect_equal(sum(actions$n), nrow(dat))
-  testthat::expect_equal(
-    reasons$n[reasons$qc_reason == 'prevalence residual extreme'], 2
-  )
-  testthat::expect_equal(
-    reasons$n[reasons$qc_reason == 'tested-volume anomaly'], 1
-  )
-  testthat::expect_false('No QC issue detected' %in% reasons$qc_reason)
-  testthat::expect_s3_class(routineqc:::.plot_qc_actions(dat), 'plotly')
-  testthat::expect_s3_class(routineqc:::.plot_qc_reasons(dat), 'plotly')
-})
-
-testthat::test_that('facility and district burden modes remain explicit', {
-  dat <- tibble::tibble(
-    facility_id = rep(c('F1', 'F2', 'F3'), each = 4),
-    district = rep(c('D1', 'D1', 'D2'), each = 4),
-    flag_review_recommended = c(
-      TRUE, TRUE, FALSE, FALSE,
-      FALSE, FALSE, FALSE, FALSE,
-      TRUE, TRUE, TRUE, TRUE
-    ),
-    flag_exclude_authorized = c(
-      FALSE, FALSE, FALSE, FALSE,
-      TRUE, FALSE, FALSE, FALSE,
-      FALSE, FALSE, FALSE, FALSE
-    )
-  )
-  all_burden <- routineqc:::.facility_burden_data(dat, 'flagged')
-  review_burden <- routineqc:::.facility_burden_data(dat, 'review')
-  exclude_burden <- routineqc:::.facility_burden_data(dat, 'exclude')
-  testthat::expect_equal(sum(all_burden$facilities), 3)
-  testthat::expect_equal(
-    exclude_burden$facilities[as.character(exclude_burden$burden) == '1'], 1
-  )
-  testthat::expect_equal(
-    review_burden$facilities[as.character(review_burden$burden) == '0'], 1
-  )
-  district <- routineqc:::.district_burden_data(dat, 'flagged', threshold = 1)
-  d1 <- district[district$district == 'D1', ]
-  testthat::expect_equal(d1$facilities, 2)
-  testthat::expect_equal(d1$facilities_over_threshold, 1)
-  testthat::expect_error(
-    routineqc:::.district_burden_data(dat, threshold = 1.5),
-    'non-negative whole number'
   )
 })
 

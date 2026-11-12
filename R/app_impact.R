@@ -157,7 +157,8 @@
   )
 }
 
-.impact_palette <- c(reported = '#7f7f7f', filtered_missing = '#4c78a8', filtered_imputed = '#e66101',
+# Imputed has its own hue: orange is the high-priority colour.
+.impact_palette <- c(reported = '#7f7f7f', filtered_missing = '#4c78a8', filtered_imputed = '#7b5ea7',
                       qc_baseline = '#238b45')
 .impact_version_labels <- c(reported = 'Reported', filtered_missing = 'Filtered, excluded left missing',
                             filtered_imputed = 'Filtered, imputed', qc_baseline = 'QC baseline replacement')
@@ -185,7 +186,7 @@
     if (v == 'filtered_imputed' && metric == 'positivity' && 'ci_low' %in% names(x) && any(!is.na(x$ci_low))) {
       plot <- plotly::add_ribbons(plot, x = x$month_date, ymin = x$ci_low, ymax = x$ci_high,
                                   name = 'Imputation uncertainty (95%)', showlegend = TRUE,
-                                  fillcolor = 'rgba(230,97,1,0.15)', line = list(width = 0),
+                                  fillcolor = 'rgba(123,94,167,0.15)', line = list(width = 0),
                                   hoverinfo = 'skip')
     }
   }
@@ -214,7 +215,8 @@
       name = 'Filtered, imputed', line = list(color = .impact_palette[['filtered_imputed']]),
       error_y = list(type = 'data', symmetric = FALSE,
                      array = summary$ci_high - summary$positivity_imputed,
-                     arrayminus = summary$positivity_imputed - summary$ci_low, color = '#e66101'),
+                     arrayminus = summary$positivity_imputed - summary$ci_low,
+                     color = .impact_palette[['filtered_imputed']]),
       text = paste0(order, ': ', .format_metric(summary$positivity_imputed, 'positivity')), hoverinfo = 'text'
     )
   }

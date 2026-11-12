@@ -20,7 +20,7 @@ testthat::test_that('facility selector updates synchronously without a server-si
 
 testthat::test_that('dashboard views render and navigation cascades', {
   testthat::expect_match(as.character(routineqc:::.qc_app_ui()),
-                         'class="tab-pane active" data-value="Landing page"', fixed = TRUE)
+                         'class="tab-pane active" data-value="Overview"', fixed = TRUE)
   directory <- tempfile('routineqc-dash-')
   dir.create(directory)
   on.exit(unlink(directory, recursive = TRUE), add = TRUE)
@@ -40,13 +40,17 @@ testthat::test_that('dashboard views render and navigation cascades', {
     testthat::expect_true(length(output$ex_strip) > 0L)
     testthat::expect_match(output$ex_breadcrumb, 'National')
     testthat::expect_match(output$landing_priorities, 'Critical / high')
-    testthat::expect_true(length(output$landing_regions) > 0L)
     testthat::expect_match(output$landing_priority_definitions$html, 'High \\(severe\\)')
-    testthat::expect_match(output$landing_series, 'QC baseline replacement')
-    testthat::expect_match(output$landing_replacement_note$html, 'saved GAM probability and rolling tested median')
+    testthat::expect_match(output$landing_series, 'Filtered')
+    testthat::expect_match(output$landing_series, 'Imputed')
     session$setInputs(landing_metric = 'tested')
     testthat::expect_match(output$landing_series, 'Tested')
-    testthat::expect_true(length(output$ov_assessment_plot) > 0L)
+    testthat::expect_match(output$dt_run_strip$html, 'Reporting period')
+    for (id in c('dt_reasons', 'dt_when', 'dt_flow', 'dt_map', 'dt_unit_month', 'dt_concentration', 'dt_ranked',
+                 'dt_assessment')) {
+      testthat::expect_true(length(output[[id]]) > 0L, info = id)
+    }
+    testthat::expect_match(output$dt_ranked_title, 'Councils ranked')
     testthat::expect_true(length(output$fi_series) > 0L)
     testthat::expect_true(length(output$fi_strictness) > 0L)
     testthat::expect_true(length(output$fi_table) > 0L)
@@ -61,6 +65,13 @@ testthat::test_that('dashboard views render and navigation cascades', {
     testthat::expect_match(output$ex_breadcrumb, fac, fixed = TRUE)
     suppressWarnings(session$setInputs(ex_reset = 1))
     testthat::expect_identical(output$ex_breadcrumb, 'National')
+
+    prepared <- routineqc:::.explore_prepare(fx$data)
+    ranked <- routineqc:::.details_ranked_units(
+      prepared, routineqc:::.details_flag_long(prepared, routineqc:::.qc_flag_catalog(fx$qc$config)))
+    suppressWarnings(session$setInputs(dt_ranked_rows_selected = 1))
+    testthat::expect_match(output$ex_breadcrumb, ranked$unit[[1]], fixed = TRUE)
+    suppressWarnings(session$setInputs(ex_reset = 2))
 
     suppressWarnings(session$setInputs(
       fi_method = 'expected', fi_mode = 'retrospective', fi_n = 4, fi_seed = 3, fi_run_imputation = 1

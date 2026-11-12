@@ -333,59 +333,11 @@ filter_qc_review <- function(data,
   )
 }
 
-# The original panels, kept with their input and output ids and regrouped
-# under the four views and Run details by `.dashboard_ui()`.
+# The original panels still in use, kept with their input and output ids and
+# placed under the dashboard views by name in `.dashboard_ui()`.
 .qc_legacy_tabs <- function() {
     list(
-      shiny::tabPanel(
-        'Action summary',
-        shiny::tableOutput('overview'),
-        shiny::fluidRow(
-          shiny::column(6, plotly::plotlyOutput('action_plot', height = '430px')),
-          shiny::column(6, plotly::plotlyOutput('reason_plot', height = '430px'))
-        ),
-        shiny::fluidRow(
-          shiny::column(
-            3,
-            shiny::selectInput(
-              'burden_mode', 'Burden measure',
-              choices = c(
-                'Review or authorized exclusion' = 'flagged',
-                'Review only' = 'review',
-                'Authorized exclusion only' = 'exclude'
-              ),
-              selected = 'flagged'
-            )
-          ),
-          shiny::column(9, plotly::plotlyOutput('facility_burden_plot', height = '350px'))
-        ),
-        shiny::fluidRow(
-          shiny::column(
-            3,
-            shiny::numericInput(
-              'district_threshold', 'District threshold: affected rows per facility',
-              value = 3, min = 0, step = 1
-            ),
-            shiny::radioButtons(
-              'district_metric', 'District display',
-              choices = c('Proportion of facilities' = 'proportion', 'Number of facilities' = 'count'),
-              selected = 'proportion'
-            )
-          ),
-          shiny::column(
-            9,
-            shiny::uiOutput('overview_district_state'),
-            plotly::plotlyOutput('district_burden_plot', height = '450px')
-          )
-        ),
-        .qc_flow_diagram_ui(),
-        shiny::tags$details(
-          shiny::tags$summary(shiny::tags$strong('Run and artifact details')),
-          shiny::verbatimTextOutput('run_details'),
-          shiny::h4('Artifact inventory'), shiny::tableOutput('artifact_inventory')
-        )
-      ),
-      shiny::tabPanel(
+      consistency = shiny::tabPanel(
         'Reporting consistency',
         shiny::p(
           'How consistently each facility reports testing activity. A month has ',
@@ -450,7 +402,7 @@ filter_qc_review <- function(data,
         shiny::helpText('Hover over a column heading for its definition.'),
         DT::DTOutput('consistency_table')
       ),
-      shiny::tabPanel(
+      attendance = shiny::tabPanel(
         'Attendance',
         shiny::p(
           'Rows where the number tested exceeds the attendance denominator. Only ',
@@ -473,7 +425,7 @@ filter_qc_review <- function(data,
         ),
         DT::DTOutput('attendance_table')
       ),
-      shiny::tabPanel(
+      review_queue = shiny::tabPanel(
         'Review queue',
         shiny::fluidRow(
           shiny::column(3, shiny::checkboxInput('flagged_only', 'Flagged/review rows only', TRUE)),
@@ -518,7 +470,7 @@ filter_qc_review <- function(data,
         shiny::uiOutput('review_state'),
         DT::DTOutput('review_table')
       ),
-      shiny::tabPanel(
+      diagnostics = shiny::tabPanel(
         'Diagnostics',
         shiny::selectInput('plot_facility', 'Facility time series', choices = NULL),
         shiny::fluidRow(
@@ -533,7 +485,7 @@ filter_qc_review <- function(data,
           shiny::column(6, plotly::plotlyOutput('before_after_plot', height = '340px'))
         )
       ),
-      shiny::tabPanel(
+      district_grid = shiny::tabPanel(
         'District grid',
         shiny::uiOutput('district_state'),
         shiny::fluidRow(
@@ -560,7 +512,7 @@ filter_qc_review <- function(data,
         shiny::uiOutput('district_flag_key'),
         shiny::uiOutput('district_plot_ui')
       ),
-      shiny::tabPanel(
+      configuration = shiny::tabPanel(
         'Configuration and provenance',
         shiny::h4('Configuration'), shiny::verbatimTextOutput('configuration'),
         shiny::h4('Safe provenance'), shiny::verbatimTextOutput('provenance')
@@ -805,32 +757,6 @@ filter_qc_review <- function(data,
     }
   })
 
-  output$overview <- shiny::renderTable({
-    run <- selected_run()
-    overall <- summarise_before_after_qc(run$data_flagged, by = 'overall')
-    data <- run$data_flagged
-    district_n <- if ('district' %in% names(data)) {
-      dplyr::n_distinct(data$district[!is.na(data$district) & trimws(as.character(data$district)) != ''])
-    } else {
-      0L
-    }
-    dplyr::tibble(
-      metric = c(
-        'Dataset', 'Reporting period', 'Rows', 'Facilities', 'Districts',
-        'Review recommended', 'Authorized exclusions', 'Model prediction coverage',
-        'Configuration profile', 'Action policy'
-      ),
-      value = c(
-        .manifest_value(run$manifest$provenance, 'dataset_id'),
-        paste(format(min(data$month_date), '%Y-%m'), 'to', format(max(data$month_date), '%Y-%m')),
-        run$manifest$input_rows, run$manifest$input_facilities, district_n,
-        overall$review_recommended_rows, overall$authorized_exclusion_rows,
-        ifelse(is.na(run$manifest$model_prediction_coverage), 'NA',
-               sprintf('%.1f%%', 100 * run$manifest$model_prediction_coverage)),
-        run$manifest$config_profile, run$manifest$action_policy
-      )
-    )
-  }, striped = TRUE)
   output$run_details <- shiny::renderPrint({
     run <- selected_run()
     list(
@@ -838,43 +764,6 @@ filter_qc_review <- function(data,
       execution_id = run$manifest$execution_id,
       created_at_utc = run$manifest$created_at_utc,
       provenance = run$manifest$provenance
-    )
-  })
-  output$action_plot <- plotly::renderPlotly({
-    .plot_qc_actions(selected_run()$data_flagged)
-  })
-  output$reason_plot <- plotly::renderPlotly({
-    data <- selected_run()$data_flagged
-    summary <- .qc_reason_summary(data)
-    shiny::validate(shiny::need(
-      nrow(summary) > 0L, 'No QC reasons were recorded in this run.'
-    ))
-    .plot_qc_reasons(data)
-  })
-  output$facility_burden_plot <- plotly::renderPlotly({
-    .plot_facility_burden(
-      selected_run()$data_flagged, .value_or(input$burden_mode, 'flagged')
-    )
-  })
-  output$overview_district_state <- shiny::renderUI({
-    data <- selected_run()$data_flagged
-    if (!'district' %in% names(data) ||
-        all(is.na(data$district) | trimws(as.character(data$district)) == '')) {
-      shiny::div(class = 'alert alert-info', 'This QC run does not contain district information.')
-    }
-  })
-  output$district_burden_plot <- plotly::renderPlotly({
-    data <- selected_run()$data_flagged
-    shiny::req('district' %in% names(data))
-    summary <- .district_burden_data(
-      data, .value_or(input$burden_mode, 'flagged'),
-      .value_or(input$district_threshold, 3L)
-    )
-    shiny::validate(shiny::need(nrow(summary) > 0L, 'No district information is available.'))
-    .plot_district_burden(
-      data, .value_or(input$burden_mode, 'flagged'),
-      .value_or(input$district_threshold, 3L),
-      .value_or(input$district_metric, 'proportion')
     )
   })
   output$review_table <- DT::renderDT({

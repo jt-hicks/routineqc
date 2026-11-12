@@ -29,7 +29,9 @@
   p <- cfg$prevalence
   v <- cfg$tested_volume
   a <- cfg$attendance
-  pr <- cfg$priority
+  # Same merge as assign_qc_action(), so a partial priority setting falls back
+  # to the default for each flag it leaves out.
+  pr <- utils::modifyList(.default_qc_priority(), .if_null(cfg$priority, list()))
   resid_rule <- if (!is.null(p$resid_threshold)) {
     paste0('|Pearson residual| above ', .g(p$resid_threshold))
   } else {

@@ -56,5 +56,7 @@ utils::globalVariables(c(
   'covered', 'definition', 'domain', 'error', 'facility_months', 'field', 'high_priority_rows',
   'matched_tested_from_imputation', 'needs', 'pair_rows', 'positive_matched', 'positive_status',
   'positivity', 'positivity_se', 'priority', 'prop_tested_from_imputation', 'review_rows', 'scenario',
-  'share_flagged', 'status', 'tested_matched', 'tested_status', 'tested_total', 'unit'
+  'share_flagged', 'status', 'tested_matched', 'tested_status', 'tested_total', 'unit',
+  '.source', 'key', 'flag_priority', 'record_priority', 'records', 'flagged_months', 'flagged_records',
+  'critical_high_records', 'persistent_facilities'
 ))
