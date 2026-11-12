@@ -333,8 +333,16 @@
     )
   })
   output$ov_assessment_plot <- plotly::renderPlotly(.plot_assessment(.assessment_summary(data_r())))
-  output$ov_trend_plot <- plotly::renderPlotly(.plot_overview_trend(.overview_trend(data_r())))
-  .landing_server(input, output, selected_run, data_r, catalog_r)
+  selected_landing_region <- shiny::reactiveVal(NULL)
+  output$ov_trend_plot <- plotly::renderPlotly({
+    data <- data_r()
+    region <- selected_landing_region()
+    if (!is.null(region)) {
+      data <- data[trimws(as.character(data$region)) == region, , drop = FALSE]
+    }
+    .plot_overview_trend(.overview_trend(data))
+  })
+  .landing_server(input, output, selected_run, data_r, catalog_r, selected_landing_region)
   output$ov_heatmap <- plotly::renderPlotly(.plot_unit_family_heatmap(.unit_family_matrix(data_r())))
   output$ov_ranked <- DT::renderDT({
     r <- .ranked_units(data_r())

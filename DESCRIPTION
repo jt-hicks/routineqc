@@ -23,12 +23,13 @@ Suggests:
     tibble
 Config/testthat/edition: 3
 VignetteBuilder: knitr
-Imports: 
+Imports:
     digest,
     dplyr,
     DT,
     ggplot2,
     jsonlite,
+    leaflet,
     lubridate,
     magrittr,
     mgcv,
@@ -36,5 +37,6 @@ Imports:
     plotly,
     rlang,
     scales,
+    sf,
     shiny,
     tidyr
