@@ -27,7 +27,11 @@
         ), selected = 'positivity', inline = TRUE),
         plotly::plotlyOutput('landing_series', height = '285px'),
         shiny::helpText('Moderate omits counts targeted by critical or high priority rules and authorized exclusions.'),
-        shiny::uiOutput('landing_imputation_note')
+        shiny::uiOutput('landing_replacement_note'),
+        shiny::tags$details(
+          shiny::tags$summary('Unresolved QC baseline replacements'),
+          DT::DTOutput('landing_replacement_unresolved')
+        )
       ))
     ),
     shiny::fluidRow(
@@ -139,44 +143,45 @@
                   .if_null(run$config$priority, .default_qc_priority()))
   })
   observed <- shiny::reactive(.impact_compute(applied(), national))
-  # Cache the small national aggregate for the selected run. Switching metric
-  # reuses the same fitted estimates and the same Moderate omission rules.
-  imputed <- shiny::reactive({
-    run <- selected_run()
-    tryCatch(
-      shiny::withProgress(message = 'Estimating Moderate replacements', value = 0.5, {
-        fit <- qc_impute_scenario(run$data_flagged, moderate, method = 'expected',
-                                  mode = 'retrospective',
-                                  priority = .if_null(run$config$priority, .default_qc_priority()))
-        targets <- c(fit$targets$tested_status, fit$targets$positive_status)
-        targets <- targets[!is.na(targets)]
-        series <- summarise_qc_imputation(fit, 'national', monthly = TRUE)
-        series$scenario <- 'moderate'
-        series$version <- 'filtered_imputed'
-        list(series = series, filled = sum(targets == 'imputed'), total = length(targets))
-      }),
-      error = function(e) list(error = conditionMessage(e))
-    )
+  replacement <- shiny::reactive({
+    result <- .qc_baseline_replacement(applied()[['moderate']])
+    series <- qc_aggregate_metrics(result$frame, 'national', monthly = TRUE)
+    series$scenario <- 'moderate'
+    series$version <- 'qc_baseline'
+    list(series = series, targets = result$targets)
   })
   output$landing_series <- plotly::renderPlotly({
-    baseline <- observed()
     metric <- .value_or(input$landing_metric, 'positivity')
-    estimate <- imputed()
-    series <- if (isTRUE(estimate$filled > 0L)) dplyr::bind_rows(baseline, estimate$series) else baseline
+    series <- dplyr::bind_rows(observed(), replacement()$series)
     .plot_impact_series(series, 'moderate', metric)
   })
-  output$landing_imputation_note <- shiny::renderUI({
-    estimate <- imputed()
-    if (!is.null(estimate$error)) {
-      return(shiny::helpText('Imputation unavailable for this run.', estimate$error))
-    }
-    if (estimate$total == 0L) return(shiny::helpText('No counts were eligible for Moderate imputation.'))
-    if (estimate$filled == 0L) return(shiny::helpText('The models could not fill any of the targeted counts.'))
-    metric <- .value_or(input$landing_metric, 'positivity')
+  output$landing_replacement_note <- shiny::renderUI({
+    targets <- replacement()$targets
+    filled <- sum(targets$status == 'replaced')
     shiny::helpText(sprintf(
-      'Retrospective model estimates without uncertainty intervals. %s of %s targeted tested or positive counts filled.',
-      format(estimate$filled, big.mark = ','), format(estimate$total, big.mark = ',')
-    ), if (metric == 'attendance') 'Attendance counts are unchanged by imputation.')
+      'QC baseline replacement: %s of %s targeted tested or positive counts filled; %s unresolved.',
+      format(filled, big.mark = ','), format(nrow(targets), big.mark = ','),
+      format(nrow(targets) - filled, big.mark = ',')
+    ),
+    'Uses the saved GAM probability and rolling tested median without fitting new models or uncertainty intervals. ',
+    'Missing values remain missing; attendance is not replaced. The saved expectations may be influenced by ',
+    'suspect observations, and replacements tend to smooth the series.')
+  })
+  output$landing_replacement_unresolved <- DT::renderDT({
+    targets <- replacement()$targets
+    unresolved <- targets[targets$status != 'replaced', , drop = FALSE]
+    reasons <- c(
+      baseline_unavailable = 'No usable rolling median (missing, invalid or insufficient history)',
+      baseline_below_observed_positive = 'Rolling median is below observed positives; tested left missing',
+      tested_unavailable = 'No usable tested count for the positivity calculation',
+      prediction_unavailable = 'No usable saved GAM probability'
+    )
+    unresolved$status <- unname(reasons[unresolved$status])
+    display <- unresolved[c('facility_id', 'month_date', 'field', 'status', 'tested_baseline',
+                            'observed_positive', 'predicted_probability')]
+    names(display) <- c('Facility', 'Month', 'Targeted count', 'Reason', 'Rolling median tested',
+                        'Observed positives', 'GAM probability')
+    DT::datatable(display, rownames = FALSE, options = list(pageLength = 5, scrollX = TRUE))
   })
   output$landing_priorities <- plotly::renderPlotly(.plot_landing_priorities(.landing_priority_summary(data_r())))
   regions <- shiny::reactive(.landing_priority_summary(data_r(), TRUE))

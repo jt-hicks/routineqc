@@ -291,6 +291,62 @@ apply_qc_scenario <- function(data, scenario, priority = .default_qc_priority())
   frame
 }
 
+# Reuse the saved QC expectations, not a new fit. Replacement values are
+# expectations (potentially fractional), rather than newly observed counts.
+.qc_baseline_replacement <- function(scn) {
+  frame <- .scenario_frame(scn, 'filtered')
+  column <- function(name) {
+    if (name %in% names(scn)) scn[[name]] else rep(NA_real_, nrow(scn))
+  }
+  targeted <- function(field) {
+    raw <- column(field)
+    invalid <- .count_value_invalid(raw, scn[[paste0(field, '_parse_status')]])
+    scn$scn_facility_eligible & scn[[paste0('scn_', field, '_state')]] %in% c('qc_omitted', 'invalid') &
+      (!is.na(raw) | invalid)
+  }
+  need_t <- targeted('tested')
+  need_p <- targeted('positive')
+  median <- column('tested_roll_median')
+  probability <- column('p_hat')
+  baseline_ok <- is.finite(median) & median >= 0
+  if ('tested_baseline_ready' %in% names(scn)) {
+    baseline_ok <- baseline_ok & dplyr::coalesce(scn$tested_baseline_ready, FALSE)
+  }
+  prediction_ok <- is.finite(probability) & probability >= 0 & probability <= 1
+  if ('prediction_status' %in% names(scn)) {
+    prediction_ok <- prediction_ok & scn$prediction_status %in% 'assessed'
+  }
+
+  tested_status <- rep('not_targeted', nrow(scn))
+  tested_status[need_t] <- 'baseline_unavailable'
+  conflict <- need_t & !need_p & !is.na(frame$positive) & median < frame$positive
+  conflict[is.na(conflict)] <- FALSE
+  tested_status[need_t & baseline_ok & conflict] <- 'baseline_below_observed_positive'
+  put_t <- need_t & baseline_ok & !conflict
+  frame$tested[put_t] <- median[put_t]
+  tested_status[put_t] <- 'replaced'
+
+  positive_status <- rep('not_targeted', nrow(scn))
+  positive_status[need_p] <- 'tested_unavailable'
+  has_tested <- is.finite(frame$tested) & frame$tested >= 0
+  positive_status[need_p & has_tested] <- 'prediction_unavailable'
+  put_p <- need_p & has_tested & prediction_ok
+  frame$positive[put_p] <- frame$tested[put_p] * probability[put_p]
+  positive_status[put_p] <- 'replaced'
+
+  targets <- dplyr::bind_rows(lapply(c('tested', 'positive'), function(count_field) {
+    need <- if (count_field == 'tested') need_t else need_p
+    status <- if (count_field == 'tested') tested_status else positive_status
+    dplyr::tibble(
+      facility_id = as.character(scn$facility_id[need]), month_date = scn$month_date[need],
+      field = count_field, status = status[need], replacement = frame[[count_field]][need],
+      tested_baseline = median[need], predicted_probability = probability[need],
+      observed_positive = column('positive')[need]
+    )
+  }))
+  list(frame = frame, targets = targets)
+}
+
 # --- aggregation -------------------------------------------------------------
 
 .aggregate_group_vars <- function(level) {

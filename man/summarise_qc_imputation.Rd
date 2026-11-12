@@ -12,7 +12,8 @@ summarise_qc_imputation(object, level = "national", monthly = TRUE)
 \item{level, monthly}{As for \code{\link[=qc_aggregate_metrics]{qc_aggregate_metrics()}}.}
 }
 \value{
-A tibble with positivity (and interval), coverage, counts retained,
+A tibble with positivity (and interval), coverage, tested and attendance
+totals and usable-row counts, counts retained,
 counts from imputation, the share of tested from imputation, and the
 number of contributions left missing.
 }

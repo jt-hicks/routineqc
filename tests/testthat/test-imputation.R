@@ -59,6 +59,15 @@ testthat::test_that('expected-value mode is deterministic and carries no interva
   testthat::expect_identical(out$uncertainty, 'exploratory_expected_value')
 })
 
+testthat::test_that('imputed aggregates retain tested and attendance fields required by charts', {
+  imp <- routineqc::qc_impute_scenario(imputation_fixture(), imp_scenario(), method = 'expected')
+  out <- routineqc::summarise_qc_imputation(imp)
+  expected <- routineqc::qc_aggregate_metrics(routineqc:::.imputed_frame(imp), 'national', monthly = TRUE)
+  for (field in c('tested_total', 'tested_rows', 'attendance_total', 'attendance_rows')) {
+    testthat::expect_equal(out[[field]], expected[[field]], info = field)
+  }
+})
+
 testthat::test_that('sparse history leaves targets missing with a reason', {
   d <- imputation_fixture()
   d <- d[d$facility_id %in% unique(d$facility_id)[1:2], ]

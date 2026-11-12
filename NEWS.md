@@ -19,6 +19,13 @@
   without altering any stored data, with optional, clearly labelled imputation.
   Presets omit affected counts in flagged facility-months; they no longer
   exclude facilities based on reporting completeness.
+- The landing page's Moderate comparison now shows **QC baseline replacement**:
+  saved rolling tested medians and GAM probabilities replace targeted counts,
+  without fitting new models. Filled counts and unresolved reasons are shown.
+  This sensitivity comparison has no uncertainty interval; raw data and
+  pre-existing missing counts are unchanged.
+- Imputed summaries retain the tested and attendance fields required to plot
+  those indicators, including months with no usable counts.
 - New exported functions: `qc_scenario()`, `qc_scenario_presets()`,
   `describe_qc_scenarios()`, `apply_qc_scenario()`, `qc_aggregate_metrics()`,
   `compare_qc_scenario()`, `qc_impute_scenario()`, `summarise_qc_imputation()`,

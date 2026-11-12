@@ -157,21 +157,23 @@
   )
 }
 
-.impact_palette <- c(reported = '#7f7f7f', filtered_missing = '#4c78a8', filtered_imputed = '#e66101')
+.impact_palette <- c(reported = '#7f7f7f', filtered_missing = '#4c78a8', filtered_imputed = '#e66101',
+                      qc_baseline = '#238b45')
 .impact_version_labels <- c(reported = 'Reported', filtered_missing = 'Filtered, excluded left missing',
-                            filtered_imputed = 'Filtered, imputed')
+                            filtered_imputed = 'Filtered, imputed', qc_baseline = 'QC baseline replacement')
 
 .plot_impact_series <- function(results, scenario, metric = 'positivity') {
   d <- results[results$scenario %in% c('reported', scenario), ]
   spec <- .explore_metrics[[metric]]
   plot <- plotly::plot_ly()
-  line_types <- c(reported = 'solid', filtered_missing = 'dash', filtered_imputed = 'dot')
-  for (v in c('reported', 'filtered_missing', 'filtered_imputed')) {
+  line_types <- c(reported = 'solid', filtered_missing = 'dash', filtered_imputed = 'dot', qc_baseline = 'dot')
+  for (v in c('reported', 'filtered_missing', 'filtered_imputed', 'qc_baseline')) {
     x <- d[d$version == v, ]
     if (nrow(x) == 0L) next
     x <- x[order(x$month_date), ]
     y <- x[[spec$column]]
     if (metric == 'tested') y <- ifelse(x$tested_rows > 0L, y, NA_real_)
+    if (metric == 'attendance') y <- ifelse(x$attendance_rows > 0L, y, NA_real_)
     plot <- plotly::add_trace(
       plot, x = x$month_date, y = y, type = 'scatter', mode = 'lines+markers', connectgaps = FALSE,
       name = .impact_version_labels[[v]],

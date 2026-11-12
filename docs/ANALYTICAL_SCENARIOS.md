@@ -33,7 +33,41 @@ kept distinct. `compare_qc_scenario()` returns the reported and filtered series.
 "Positivity" is the term used throughout: the data are facility tested counts,
 not a population prevalence.
 
-## Imputation (exploratory)
+## Landing page: QC baseline replacement
+
+The national Moderate comparison has a third line, **QC baseline replacement**,
+computed from expectations already saved in the run. No model is fitted when the
+landing page loads:
+
+| Targeted counts in a facility-month | Replacement |
+|---|---|
+| Positive only | Saved GAM probability (`p_hat`) times observed tested |
+| Tested and positive | Saved rolling tested median, then `p_hat` times that replacement |
+| Tested only | Rolling tested median, keeping observed positives |
+
+If the tested-only median is below observed positives, tested remains missing and
+the pair is unresolved; observed positives are not changed. The saved rolling
+median must be finite, non-negative and, when recorded, have
+`tested_baseline_ready = TRUE`. GAM probabilities must be finite, in `[0, 1]`
+and, when recorded, have `prediction_status = "assessed"`. Missing columns in
+older runs leave targets unsupported rather than triggering a new fit.
+
+Pre-existing missing counts and absent reports are not filled. Untargeted usable
+counts, raw observations, flags and actions are unchanged. Replacements retain
+the exact median/probability products (possibly fractional expected counts);
+they are not rounded or treated as newly reported observations. Attendance is
+not replaced, and coverage-specific omissions still apply. National positivity
+and coverage continue to use matched pairs.
+
+The page displays how many targeted counts were filled and a table identifying
+unresolved counts and their reasons. An unresolved count cannot contribute to a
+matched pair, but does not suppress valid contributions from other facilities;
+months without usable contributions remain gaps. The original GAM and rolling
+baseline may have been influenced by suspect observations. Replacing anomalies
+with expected values also smooths the series. This is a sensitivity comparison,
+not new-model imputation or an uncertainty interval.
+
+## Imputation (exploratory, optional in Filter impact)
 
 By default excluded values are left missing. `qc_impute_scenario()` optionally
 replaces them, and `summarise_qc_imputation()` / `qc_scenario_results()` report
@@ -53,8 +87,9 @@ them as a third version beside *reported* and *filtered*.
 - Facility windows default to first to last report. A facility that stopped
   reporting or started late cannot be seen without a supplied `schedule`.
 
-In the dashboard imputation sits under *Advanced*, is opt-in and runs only for
-the selected scenario.
+In Filter impact, imputation sits under *Advanced*, is opt-in and runs only for
+the selected scenario. This is separate from the landing page's saved-baseline
+replacement.
 
 ## Reading the results
 

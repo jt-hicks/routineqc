@@ -454,7 +454,8 @@ summary.qc_imputation <- function(object, ...) {
 #' @param object A [qc_impute_scenario()] result.
 #' @param level,monthly As for [qc_aggregate_metrics()].
 #'
-#' @return A tibble with positivity (and interval), coverage, counts retained,
+#' @return A tibble with positivity (and interval), coverage, tested and attendance
+#'   totals and usable-row counts, counts retained,
 #'   counts from imputation, the share of tested from imputation, and the
 #'   number of contributions left missing.
 #' @export
@@ -478,6 +479,9 @@ summarise_qc_imputation <- function(object, level = 'national', monthly = TRUE) 
       pos = list(.rubin(positivity, positivity_se^2)),
       cov = list(.rubin(coverage, rep(NA_real_, dplyr::n()))),
       tested_total = mean(tested_total),
+      tested_rows = round(mean(.data$tested_rows)),
+      attendance_total = mean(.data$attendance_total),
+      attendance_rows = round(mean(.data$attendance_rows)),
       tested_total_between_sd = if (dplyr::n() > 1L) stats::sd(tested_total) else NA_real_,
       tested_matched = mean(tested_matched), positive_matched = mean(positive_matched),
       pair_rows = round(mean(pair_rows)),

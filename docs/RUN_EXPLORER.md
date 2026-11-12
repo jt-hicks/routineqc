@@ -29,11 +29,14 @@ unchanged and now sit inside them.
   priority, regional and monthly flag rates, and
   explanations of the QC process and priority levels. The national chart uses
   the Moderate observation scenario and compares reported aggregates, aggregates
-  with targeted counts left missing, and aggregates with those counts imputed.
-  Switch between positivity, tested, attendance and testing coverage. Imputation
-  fits retrospective expected values once per selected run and shows how many
-  targeted counts were filled. Use *Filter impact* to compare other scenarios
-  or run repeated predictive imputation with uncertainty intervals.
+  with targeted counts left missing, and **QC baseline replacement**. The latter
+  uses the saved GAM probability and rolling tested median without fitting new
+  models. Switch between positivity, tested, attendance and testing coverage.
+  The page shows filled/targeted counts and unresolved reasons, including a tested
+  median below retained observed positives. Missing support stays missing.
+  These replacements may inherit suspect observations' influence and smooth the
+  series; no uncertainty intervals are shown. Use *Filter impact* to compare
+  other scenarios or explicitly fit imputation models with uncertainty intervals.
 - **Data usability** (under *Overview*): how much of
   the run can be assessed, and where review effort concentrates. Each check
   reports records assessed and not flagged, assessed and flagged, and not
