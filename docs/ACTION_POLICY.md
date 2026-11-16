@@ -58,14 +58,17 @@ told apart by the `implementation_hash` in the manifest, which is part of
 `analysis_id`, not by the policy version. A later change that reinterprets an
 existing flag, priority or action must bump the policy version.
 
-### Age bands (configuration schema 7)
+### Age bands (configuration schemas 7 and 8)
 
-Age-disaggregated first-ANC data (see `docs/AGE_BANDS.md`) add six flags,
-configured in `config$priority` from configuration schema 7. None authorizes
-exclusion, and none reinterprets an existing flag, priority or action, so
-policy version 3 is unchanged; a row without the new inputs gets every new
-flag as `FALSE`. Stored schema 6 configurations stay valid without the new
-keys.
+Age-disaggregated first-ANC data (see `docs/AGE_BANDS.md`) add five flags with
+priorities in `config$priority`. None authorizes exclusion, and none
+reinterprets an existing flag, priority or action, so policy version 3 is
+unchanged; a row without the new inputs gets every new flag as `FALSE`.
+Schema 7 also gave `positive_assumed_zero` a priority; schema 8 removed it,
+because in a source that never stores zeros a zero-filled positive is an
+ordinary zero. `flag_positive_assumed_zero` is now context, like
+`flag_isolated_extreme`. Stored schema 6 and 7 configurations stay valid with
+their own keys.
 
 | Flag | Default priority | Counts put in doubt |
 |---|---|---|
@@ -74,10 +77,9 @@ keys.
 | `flag_band_metadata_inconsistent` | high | tested and positive |
 | `flag_attendance_sum_mismatch` | medium | attendance |
 | `flag_band_sum_partial_attending` | medium | attendance |
-| `flag_positive_assumed_zero` | low | positive |
 
 An attendance mismatch is an attendance issue and counts towards
-`review_multiple_signals`. The other five describe how a count was built
+`review_multiple_signals`. The other four describe how a count was built
 rather than evidence of an anomaly, so they are not an evidence domain: alone
 they give the action `review_count_completeness`.
 
@@ -109,7 +111,7 @@ underlying evidence.
 | `review_coverage` | medium | Low or very low testing coverage against attendance, without another active domain |
 | `review_prevalence` | medium | Prevalence/statistical issue without another active domain |
 | `review_tested_volume` | medium | Tested-volume issue without another active domain |
-| `review_count_completeness` | per flag | A count summed from incomplete age bands, contradicted by its band counts, or assumed zero, without another active domain |
+| `review_count_completeness` | per flag | A count summed from incomplete age bands, or contradicted by its band counts, without another active domain |
 | `review_temporal_context` | low | Legacy label shown by the app for stored runs; version 3 never assigns it (temporal context only qualifies `qc_reason`) |
 | `retain` | none | This policy recommends neither review nor exclusion |
 

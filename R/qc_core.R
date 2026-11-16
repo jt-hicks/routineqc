@@ -1091,8 +1091,7 @@ assign_qc_action <- function(data,
     'flag_tested_gt_attending_major', 'flag_attending_negative',
     'flag_coverage_low', 'flag_coverage_very_low', 'flag_attendance_sum_mismatch',
     'flag_band_sum_partial_tested', 'flag_band_sum_partial_positive',
-    'flag_band_sum_partial_attending', 'flag_band_metadata_inconsistent',
-    'flag_positive_assumed_zero'
+    'flag_band_sum_partial_attending', 'flag_band_metadata_inconsistent'
   )
   for (nm in flag_names) {
     if (!nm %in% names(out)) out[[nm]] <- FALSE
@@ -1107,11 +1106,11 @@ assign_qc_action <- function(data,
   coverage_issue <- on('flag_coverage_low') | on('flag_coverage_very_low')
   core_invalid <- on('flag_core_invalid')
   count_invalid <- on('flag_count_invalid_value') & !core_invalid
-  # A count that is incomplete or assumed rather than reported. Not an evidence
-  # domain: it says how a value was built, not that it is anomalous.
+  # A count summed from incomplete bands, or contradicted by its band counts.
+  # Not an evidence domain: it says how a value was built, not that it is
+  # anomalous. An assumed-zero positive is context only and is not here.
   completeness_issue <- on('flag_band_sum_partial_tested') | on('flag_band_sum_partial_positive') |
-    on('flag_band_sum_partial_attending') | on('flag_band_metadata_inconsistent') |
-    on('flag_positive_assumed_zero')
+    on('flag_band_sum_partial_attending') | on('flag_band_metadata_inconsistent')
   n_domains <- as.integer(prevalence_issue) + as.integer(tested_issue) +
     as.integer(attendance_issue) + as.integer(coverage_issue)
   multiple <- n_domains >= 2L
@@ -1191,7 +1190,6 @@ assign_qc_action <- function(data,
   add(on('flag_band_sum_partial_positive'), 'positives summed from incomplete age bands')
   add(on('flag_band_sum_partial_attending'), 'attendance summed from incomplete age bands')
   add(on('flag_band_metadata_inconsistent'), 'band counts contradict the reported values')
-  add(on('flag_positive_assumed_zero'), 'positive count assumed zero')
   out$qc_reason <- dplyr::if_else(qc_reason == '', 'No QC issue detected', qc_reason)
   out
 }

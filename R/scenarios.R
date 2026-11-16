@@ -37,8 +37,7 @@
   band_sum_partial_positive = 'positive',
   band_sum_partial_attending = 'attending',
   band_metadata_inconsistent = c('tested', 'positive'),
-  attendance_sum_mismatch = 'attending',
-  positive_assumed_zero = 'positive'
+  attendance_sum_mismatch = 'attending'
 )
 
 .qc_always_critical <- c(

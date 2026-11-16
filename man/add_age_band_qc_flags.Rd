@@ -24,16 +24,22 @@ function is safe on data without age bands.
 \code{anc_before_12wk + anc_after_12wk}.
 \item \code{flag_band_sum_partial_tested}, \code{flag_band_sum_partial_positive},
 \code{flag_band_sum_partial_attending}: the count was summed from finer source
-bands and only some of them were reported (\verb{0 < <count>_bands_reported < bands_expected}), so it is likely an undercount. Attendance is partial when
+bands and only some of them are known (\verb{0 < <count>_bands_reported < bands_expected}), so it is likely an undercount. Attendance is partial when
 either booking count is.
 \item \code{flag_band_metadata_inconsistent}: the band counts contradict the values,
-for example a value is present although no band was reported (and the
-value was not zero-filled), a value is missing although bands were
-reported, or more bands were reported than expected.
-\item \code{flag_positive_assumed_zero}: \code{positive_zero_filled} is \code{TRUE}; the zero is
-an assumption, not a report. Such rows are left out of the prevalence model
-fit.
+for example a value is present although no band is known (and the value
+was not zero-filled), a value is missing although bands are known, or more
+bands are known than exist.
+\item \code{flag_positive_assumed_zero}: \code{positive_zero_filled} is \code{TRUE}. This is
+context, not a finding: it has no priority and no action, and the row is
+used like any other, including in the prevalence model fit. A zero the
+model finds implausible is caught by \code{flag_all_negative_large_n}.
 }
+
+A band is \emph{known} when it was reported, or when the source's convention
+makes a blank a zero. For a source that never stores zeros, such as DHIS2
+aggregate data, count every band of a month with any data as known; a month
+with no data at all stays missing. See \code{docs/AGE_BANDS.md}.
 
 An attendance mismatch also sets \code{flag_attendance_issue}.
 }

@@ -94,11 +94,15 @@ testthat::test_that('the pipeline models age bands and recovers what was injecte
   testthat::expect_match(paste(deparse(stats::formula(fx$run$model)), collapse = ''), 'age_group_code')
   testthat::expect_setequal(fx$run$model$routineqc_model$age_levels, c('ge20', 'lt20'))
   testthat::expect_true(all(x$flag_band_sum_partial_tested[x$injected_partial]))
-  testthat::expect_true(all(x$flag_positive_assumed_zero[x$injected_zero_fill]))
+  zero <- x$tested > 0 & x$positive == 0 & !is.na(x$positive)
+  testthat::expect_identical(x$flag_positive_assumed_zero, zero)
   testthat::expect_true(all(x$qc_action[x$injected_partial & !x$injected_error] != 'retain'))
   testthat::expect_gt(mean(x$flag_any_qc_issue[x$injected_error]), 0.6)
-  clean <- !x$injected_error & !x$injected_partial & !x$injected_zero_fill
+  clean <- !x$injected_error & !x$injected_partial
   testthat::expect_lt(mean(x$flag_any_qc_issue[clean]), 0.05)
+  # An assumed zero is context: on its own it leaves a row retained.
+  testthat::expect_false(any(grepl('assumed zero', x$qc_reason)))
+  testthat::expect_true(any(zero & x$qc_action == 'retain'))
 })
 
 testthat::test_that('untrusted band rows are not used to fit the model', {
@@ -106,8 +110,12 @@ testthat::test_that('untrusted band rows are not used to fit the model', {
   x <- fx$run$data_flagged
   untrusted <- routineqc:::.age_band_untrusted(x)
   testthat::expect_true(any(untrusted))
+  testthat::expect_false(any(untrusted & !x$flag_band_sum_partial_tested & !x$flag_band_sum_partial_positive &
+                               !x$flag_band_metadata_inconsistent))
   eligible <- !x$flag_core_invalid & !routineqc:::.row_count_invalid(x) & !is.na(x$positive) & x$tested > 0
   testthat::expect_equal(nrow(fx$run$model$model), sum(eligible & !untrusted))
+  # Zero-filled positives are the zeros: they stay in the fit.
+  testthat::expect_gt(sum(eligible & !untrusted & x$flag_positive_assumed_zero), 0)
 })
 
 testthat::test_that('tested-volume baselines restart when the band construction changes', {
@@ -127,10 +135,9 @@ testthat::test_that('scenarios omit band flags at their priority', {
   moderate <- routineqc::apply_qc_scenario(x, routineqc::qc_scenario_presets()$moderate, priority)
   very <- routineqc::apply_qc_scenario(x, routineqc::qc_scenario_presets()$very_strict, priority)
   testthat::expect_true(all(moderate$scn_omit_tested[x$flag_band_sum_partial_tested]))
-  zero_only <- x$flag_positive_assumed_zero & x$review_priority == 'low'
+  zero_only <- x$flag_positive_assumed_zero & x$qc_action == 'retain'
   testthat::expect_true(any(zero_only))
-  testthat::expect_false(any(moderate$scn_omit_positive[zero_only]))
-  testthat::expect_true(all(very$scn_omit_positive[zero_only]))
+  testthat::expect_false(any(very$scn_omit_positive[zero_only]))
 })
 
 testthat::test_that('imputation works per facility band and keeps the facility', {
@@ -180,17 +187,26 @@ testthat::test_that('the first-ANC profile and stored schema 6 configurations va
   anc <- routineqc::qc_config('anc_first_visit')
   testthat::expect_equal(anc$attendance$coverage_low, 0.85)
   testthat::expect_equal(anc$attendance$coverage_min_attending, 20)
-  testthat::expect_identical(anc$priority$positive_assumed_zero, 'low')
+  testthat::expect_null(anc$priority$positive_assumed_zero)
   old <- routineqc::qc_config()
   old$schema_version <- 6L
   old$priority[routineqc:::.age_band_priority_keys] <- NULL
   testthat::expect_invisible(routineqc:::.validate_qc_config(old, stored = TRUE))
+  # A schema 7 configuration still carries the removed priority.
+  seven <- routineqc::qc_config()
+  seven$schema_version <- 7L
+  testthat::expect_error(routineqc:::.validate_qc_config(seven, stored = TRUE), 'missing or unknown')
+  seven$priority$positive_assumed_zero <- 'low'
+  testthat::expect_invisible(routineqc:::.validate_qc_config(seven, stored = TRUE))
+  testthat::expect_error(routineqc::validate_qc_config(seven), 'schema version')
 })
 
 testthat::test_that('the QC guide lists the band flags', {
   catalog <- routineqc:::.qc_flag_catalog(routineqc::qc_config('anc_first_visit'))
   keys <- c('attendance_sum_mismatch', 'band_sum_partial_tested', 'band_sum_partial_positive',
-            'band_sum_partial_attending', 'band_metadata_inconsistent', 'positive_assumed_zero')
+            'band_sum_partial_attending', 'band_metadata_inconsistent')
   testthat::expect_true(all(keys %in% catalog$key))
   testthat::expect_false(any(catalog$authorizes_exclusion[catalog$key %in% keys]))
+  testthat::expect_false('positive_assumed_zero' %in% catalog$key)
+  testthat::expect_true('flag_positive_assumed_zero' %in% routineqc:::.qc_modifier_notes()$flag)
 })

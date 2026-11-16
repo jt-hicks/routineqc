@@ -122,10 +122,7 @@
     row('band_metadata_inconsistent', 'Count consistency', 'Band counts contradict values',
         paste('The number of age bands reported does not fit the value: a count is present although no',
               'band was reported, missing although bands were, or more bands were reported than exist.'),
-        'Band counts from the preparation step'),
-    row('positive_assumed_zero', 'Count consistency', 'Positive count assumed zero',
-        paste('A blank positive count was set to zero during preparation. The zero is an assumption,',
-              'not a report, and is left out of the prevalence model fit.'), 'Zero-fill marker')
+        'Band counts from the preparation step')
   )
   catalog$priority <- vapply(catalog$key, function(k) {
     if (k %in% .qc_always_critical || k == 'count_invalid_value') 'critical'
@@ -145,11 +142,13 @@
 
 .qc_modifier_notes <- function() {
   dplyr::tibble(
-    flag = c('flag_isolated_extreme', 'flag_temporal_context_insufficient'),
-    label = c('Isolated extreme', 'Not enough temporal context'),
+    flag = c('flag_isolated_extreme', 'flag_temporal_context_insufficient', 'flag_positive_assumed_zero'),
+    label = c('Isolated extreme', 'Not enough temporal context', 'Positive count assumed zero'),
     definition = c(
       'An extreme residual whose neighbouring months are both present, consecutive and not extreme.',
-      'An extreme residual that lacks consecutive months on one side, so it cannot be called isolated.'
+      'An extreme residual that lacks consecutive months on one side, so it cannot be called isolated.',
+      paste('A blank positive count was read as zero, as for sources that do not store zeros.',
+            'The zero is used like a reported one; an implausible zero is caught by the all-negative rule.')
     ),
     effect = 'Context for reviewers. It does not change priority or the action.'
   )

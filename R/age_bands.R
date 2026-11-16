@@ -7,10 +7,13 @@
 # The row-level checks here use optional canonical columns that an upstream
 # preparation step supplies:
 #   anc_before_12wk, anc_after_12wk   first-ANC bookings by gestation at booking
-#   positive_zero_filled              a blank positive count was set to zero
+#   positive_zero_filled              a blank positive count was read as zero
 #   bands_expected                    finer source bands making up this band
-#   <count>_bands_reported            how many of them had a non-blank value
-# A zero-filled blank is not a reported band.
+#   <count>_bands_reported            how many of them are known
+# A band is known when it was reported, or when the source's convention makes a
+# blank a zero. For a source that never stores zeros (such as DHIS2 aggregate
+# data), every band of a month with any data is known: blanks there are zeros.
+# A blank band in a source that does store zeros is not known.
 
 .age_band_count_fields <- c('anc_before_12wk', 'anc_after_12wk')
 
@@ -119,16 +122,22 @@
 #'   `anc_before_12wk + anc_after_12wk`.
 #' * `flag_band_sum_partial_tested`, `flag_band_sum_partial_positive`,
 #'   `flag_band_sum_partial_attending`: the count was summed from finer source
-#'   bands and only some of them were reported (`0 < <count>_bands_reported <
+#'   bands and only some of them are known (`0 < <count>_bands_reported <
 #'   bands_expected`), so it is likely an undercount. Attendance is partial when
 #'   either booking count is.
 #' * `flag_band_metadata_inconsistent`: the band counts contradict the values,
-#'   for example a value is present although no band was reported (and the
-#'   value was not zero-filled), a value is missing although bands were
-#'   reported, or more bands were reported than expected.
-#' * `flag_positive_assumed_zero`: `positive_zero_filled` is `TRUE`; the zero is
-#'   an assumption, not a report. Such rows are left out of the prevalence model
-#'   fit.
+#'   for example a value is present although no band is known (and the value
+#'   was not zero-filled), a value is missing although bands are known, or more
+#'   bands are known than exist.
+#' * `flag_positive_assumed_zero`: `positive_zero_filled` is `TRUE`. This is
+#'   context, not a finding: it has no priority and no action, and the row is
+#'   used like any other, including in the prevalence model fit. A zero the
+#'   model finds implausible is caught by `flag_all_negative_large_n`.
+#'
+#' A band is *known* when it was reported, or when the source's convention
+#' makes a blank a zero. For a source that never stores zeros, such as DHIS2
+#' aggregate data, count every band of a month with any data as known; a month
+#' with no data at all stays missing. See `docs/AGE_BANDS.md`.
 #'
 #' An attendance mismatch also sets `flag_attendance_issue`.
 #'
@@ -185,18 +194,15 @@ add_age_band_qc_flags <- function(data) {
   out
 }
 
-# Rows the prevalence model must not learn from: assumed zeros, partial sums
-# of tested or positive, and contradictory band counts.
+# Rows the prevalence model must not learn from: partial sums of tested or
+# positive, and contradictory band counts. Zero-filled positives are kept: in a
+# source that does not store zeros they are the zeros, and leaving them out
+# would bias expected positivity upwards.
 .age_band_untrusted <- function(data) {
   flag <- function(col) {
     if (col %in% names(data)) dplyr::coalesce(as.logical(data[[col]]), FALSE) else rep(FALSE, nrow(data))
   }
-  zero_filled <- if ('positive_zero_filled' %in% names(data)) {
-    dplyr::coalesce(.as_flag(data$positive_zero_filled), FALSE)
-  } else {
-    rep(FALSE, nrow(data))
-  }
-  zero_filled | flag('flag_band_sum_partial_tested') | flag('flag_band_sum_partial_positive') |
+  flag('flag_band_sum_partial_tested') | flag('flag_band_sum_partial_positive') |
     flag('flag_band_metadata_inconsistent')
 }
 
@@ -207,24 +213,24 @@ add_age_band_qc_flags <- function(data) {
 #' `<20` and `>=20` (written with the single-character "greater than or equal"
 #' sign). Before `break_month` each band is supplied directly
 #' (`bands_expected = 1`); from it on, `<20` is summed from two finer bands and
-#' `>=20` from four. Some rows have partial sums, zero-filled positives and
-#' injected errors in one band only; truth columns record which.
+#' `>=20` from four. As in a source that never stores zeros, every zero
+#' positive is a blank read as zero (`positive_zero_filled = TRUE`). Some rows
+#' have partial sums and injected errors in one band only; truth columns
+#' record which.
 #'
 #' @param n_regions,councils_per_region,facilities_per_council Hierarchy size.
 #' @param n_months Number of months.
 #' @param start_month First month, as `"YYYY-MM-DD"`.
 #' @param break_month First month in which bands are summed from finer bands.
-#' @param partial_fraction,zero_fill_fraction,error_fraction Approximate
-#'   proportions of rows given a partial sum, a zero-filled positive, and an
-#'   injected count error.
+#' @param partial_fraction,error_fraction Approximate proportions of rows given
+#'   a partial sum and an injected count error.
 #' @param seed Random seed.
 #'
 #' @return A tibble, one row per facility, month and age band.
 #' @export
 simulate_qc_age_data <- function(n_regions = 2, councils_per_region = 2, facilities_per_council = 4,
                                  n_months = 36, start_month = '2019-07-01', break_month = '2021-01-01',
-                                 partial_fraction = 0.03, zero_fill_fraction = 0.03,
-                                 error_fraction = 0.02, seed = 1) {
+                                 partial_fraction = 0.03, error_fraction = 0.02, seed = 1) {
   set.seed(seed)
   months <- seq.Date(as.Date(start_month), by = 'month', length.out = n_months)
   facilities <- dplyr::bind_rows(lapply(seq_len(n_regions), function(r) {
@@ -268,7 +274,7 @@ simulate_qc_age_data <- function(n_regions = 2, councils_per_region = 2, facilit
     tested_bands_reported = expected, positive_bands_reported = expected,
     anc_before_12wk_bands_reported = expected, anc_after_12wk_bands_reported = expected,
     source_id = ifelse(summed, 'synthetic-5yr-bands', 'synthetic-2-bands'),
-    injected_error = FALSE, injected_partial = FALSE, injected_zero_fill = FALSE
+    injected_error = FALSE, injected_partial = FALSE
   )
 
   pick <- function(pool, fraction) {
@@ -283,18 +289,14 @@ simulate_qc_age_data <- function(n_regions = 2, councils_per_region = 2, facilit
   out$tested_bands_reported[part] <- out$bands_expected[part] - 1
   out$positive_bands_reported[part] <- out$bands_expected[part] - 1
   out$injected_partial[part] <- TRUE
-  # Zero-filled positives: every positive band blank.
-  zero <- pick(setdiff(seq_len(n), part), zero_fill_fraction)
-  out$positive[zero] <- 0
-  out$positive_zero_filled[zero] <- TRUE
-  out$positive_bands_reported[zero] <- 0
-  out$injected_zero_fill[zero] <- TRUE
   # Count errors in one band only: positives entered as the tested count, or a
   # tested count inflated tenfold.
-  err <- pick(setdiff(seq_len(n), c(part, zero)), error_fraction)
+  err <- pick(setdiff(seq_len(n), part), error_fraction)
   half <- seq_along(err) %% 2L == 0L
   out$positive[err[half]] <- out$tested[err[half]]
   out$tested[err[!half]] <- out$tested[err[!half]] * 10
   out$injected_error[err] <- TRUE
+  # The source stores no zeros: a zero positive was a blank, read as zero.
+  out$positive_zero_filled <- out$tested > 0 & out$positive == 0
   out
 }

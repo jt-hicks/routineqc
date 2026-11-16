@@ -41,10 +41,30 @@ These are recognised by name when present (and can be mapped in the adapter).
 | Column | Meaning |
 |---|---|
 | `anc_before_12wk`, `anc_after_12wk` | First-ANC bookings before 12 weeks of gestation, and at 12 weeks or later |
-| `positive_zero_filled` | `TRUE` when a blank positive count (or any blank finer band) was set to zero |
+| `positive_zero_filled` | `TRUE` when the positive count was read as zero because every positive band was blank |
 | `bands_expected` | Finer source bands making up this row's band: 1 when the source supplies the band directly |
-| `tested_bands_reported`, `positive_bands_reported`, `anc_before_12wk_bands_reported`, `anc_after_12wk_bands_reported` | How many of those bands had a non-blank value. A zero-filled blank does not count as reported |
+| `tested_bands_reported`, `positive_bands_reported`, `anc_before_12wk_bands_reported`, `anc_after_12wk_bands_reported` | How many of those bands are known: reported, or zero by the source's convention (see below) |
 | `source_id`, `facility_name` | Carried through |
+
+## Sources that do not store zeros
+
+DHIS2 aggregate data normally store no zeros: a zero is saved as a blank, so a
+single blank cell cannot say whether the value was zero or not reported. For
+such a source, decide at the level of the month, not the cell:
+
+- A facility-month is **reported** when any ANC value is non-blank in any band.
+  In a reported month every blank is a zero: a band whose cells are all blank
+  is 0, not missing, and every finer band counts as known
+  (`<count>_bands_reported = bands_expected`).
+- A facility-month with no ANC value at all stays **missing**.
+- `positive_zero_filled` is `TRUE` only when the band's positive count came
+  entirely from blanks, never because one of several finer bands was blank.
+
+With this convention the partial-sum and band-count flags do not fire on such
+a source; they remain for sources where a blank does mean not reported. A form
+submitted with a section left blank is caught by the ordinary rules instead:
+zero tested at a busy facility, very low testing coverage, a large drop in
+tested, or no positives where the model expects some.
 
 ## Change of source
 
@@ -62,16 +82,19 @@ baseline is ready again.
 - `flag_attendance_sum_mismatch`: `attending` is not
   `anc_before_12wk + anc_after_12wk`.
 - `flag_band_sum_partial_tested`, `flag_band_sum_partial_positive`,
-  `flag_band_sum_partial_attending`: only some of the finer bands were
-  reported, so the sum is probably an undercount.
+  `flag_band_sum_partial_attending`: only some of the finer bands are known,
+  so the sum is probably an undercount.
 - `flag_band_metadata_inconsistent`: the band counts contradict the value (a
-  value with no band reported and no zero-fill, a missing value although bands
-  were reported, or more bands reported than exist).
-- `flag_positive_assumed_zero`: the positive count was zero-filled.
+  value with no band known and no zero-fill, a missing value although bands
+  are known, or more bands known than exist).
+- `flag_positive_assumed_zero`: the positive count was read as zero. This is
+  context only: no priority, no action, and the row is used like any other.
 
-Rows with an assumed zero, a partial tested or positive sum, or contradictory
-band counts are left out of the prevalence model fit. They are still assessed
-against it. Priorities and actions are in `docs/ACTION_POLICY.md`.
+Rows with a partial tested or positive sum, or contradictory band counts, are
+left out of the prevalence model fit; they are still assessed against it.
+Zero-filled positives are kept in the fit: in a source without stored zeros
+they are the zeros, and leaving them out would push expected positivity up.
+Priorities and actions are in `docs/ACTION_POLICY.md`.
 
 ## First-ANC profile
 

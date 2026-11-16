@@ -42,14 +42,13 @@
     band_sum_partial_positive = 'high',
     band_metadata_inconsistent = 'high',
     attendance_sum_mismatch = 'medium',
-    band_sum_partial_attending = 'medium',
-    positive_assumed_zero = 'low'
+    band_sum_partial_attending = 'medium'
   )
 }
 
 .age_band_priority_keys <- c('band_sum_partial_tested', 'band_sum_partial_positive',
                              'band_metadata_inconsistent', 'attendance_sum_mismatch',
-                             'band_sum_partial_attending', 'positive_assumed_zero')
+                             'band_sum_partial_attending')
 
 .qc_profiles <- c('recommended', 'operational', 'retrospective', 'permissive_sensitivity', 'anc_first_visit')
 
@@ -198,12 +197,15 @@ qc_config <- function(profile = c('recommended', 'operational', 'retrospective',
 }
 
 # Schema 5 added prevalence$all_negative_max_probability; schema 6 added the
-# attendance and priority sections; schema 7 added the age-band priorities. A
-# stored configuration from an earlier schema is valid without what was added
-# after it.
-.qc_config_schema_version <- 7L
-.qc_config_keys_added <- list(`5` = list(prevalence = 'all_negative_max_probability'),
-                              `7` = list(priority = .age_band_priority_keys))
+# attendance and priority sections; schema 7 added the age-band priorities;
+# schema 8 removed `positive_assumed_zero`, which became context without a
+# priority. A stored configuration is valid with the keys of its own schema.
+.qc_config_schema_version <- 8L
+.qc_config_keys_added <- list(
+  `5` = list(prevalence = 'all_negative_max_probability'),
+  `7` = list(priority = c(.age_band_priority_keys, 'positive_assumed_zero'))
+)
+.qc_config_keys_removed <- list(`8` = list(priority = 'positive_assumed_zero'))
 .qc_config_sections_added <- list(`6` = c('attendance', 'priority'))
 
 .validate_attendance_config <- function(attendance) {
@@ -250,7 +252,7 @@ validate_qc_config <- function(config) {
   if (!is.list(config) || !all(required %in% names(config))) {
     rlang::abort('QC configuration is missing required sections.')
   }
-  supported <- if (stored) c(4L, 5L, 6L, .qc_config_schema_version) else .qc_config_schema_version
+  supported <- if (stored) c(4L, 5L, 6L, 7L, .qc_config_schema_version) else .qc_config_schema_version
   if (!is.integer(config$schema_version) || length(config$schema_version) != 1L ||
       !config$schema_version %in% supported) {
     rlang::abort('Unsupported QC configuration schema version.')
@@ -262,6 +264,17 @@ validate_qc_config <- function(config) {
 
   defaults <- .qc_profile_defaults(config$profile)
   if (config$schema_version < .qc_config_schema_version) {
+    # Keys removed after the stored schema were part of it: put them back
+    # first, then take away anything added after it.
+    for (version in names(.qc_config_keys_removed)) {
+      if (config$schema_version >= as.integer(version)) next
+      for (section in names(.qc_config_keys_removed[[version]])) {
+        removed <- .qc_config_keys_removed[[version]][[section]]
+        if (!is.null(defaults[[section]])) {
+          defaults[[section]][removed] <- as.list(rep('low', length(removed)))
+        }
+      }
+    }
     for (version in names(.qc_config_keys_added)) {
       if (config$schema_version >= as.integer(version)) next
       for (section in names(.qc_config_keys_added[[version]])) {

@@ -12,7 +12,6 @@ simulate_qc_age_data(
   start_month = "2019-07-01",
   break_month = "2021-01-01",
   partial_fraction = 0.03,
-  zero_fill_fraction = 0.03,
   error_fraction = 0.02,
   seed = 1
 )
@@ -26,9 +25,8 @@ simulate_qc_age_data(
 
 \item{break_month}{First month in which bands are summed from finer bands.}
 
-\item{partial_fraction, zero_fill_fraction, error_fraction}{Approximate
-proportions of rows given a partial sum, a zero-filled positive, and an
-injected count error.}
+\item{partial_fraction, error_fraction}{Approximate proportions of rows given
+a partial sum and an injected count error.}
 
 \item{seed}{Random seed.}
 }
@@ -41,6 +39,8 @@ an age-disaggregated preparation step, for tests and examples. Bands are
 \verb{<20} and \verb{>=20} (written with the single-character "greater than or equal"
 sign). Before \code{break_month} each band is supplied directly
 (\code{bands_expected = 1}); from it on, \verb{<20} is summed from two finer bands and
-\verb{>=20} from four. Some rows have partial sums, zero-filled positives and
-injected errors in one band only; truth columns record which.
+\verb{>=20} from four. As in a source that never stores zeros, every zero
+positive is a blank read as zero (\code{positive_zero_filled = TRUE}). Some rows
+have partial sums and injected errors in one band only; truth columns
+record which.
 }

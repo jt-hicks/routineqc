@@ -8,13 +8,18 @@
   restarting where the band's construction changes, and the prevalence model
   gains an age-band term. See `docs/AGE_BANDS.md`.
 - New `add_age_band_qc_flags()`: attendance that differs from bookings before
-  and after 12 weeks, counts summed from incomplete finer bands, band counts
-  that contradict the values, and zero-filled positives. The new action
-  `review_count_completeness` covers the last three when nothing else applies.
+  and after 12 weeks, counts summed from incomplete finer bands, and band
+  counts that contradict the values. The new action `review_count_completeness`
+  covers the last two when nothing else applies. Zero-filled positives are
+  marked (`flag_positive_assumed_zero`) as context only and are used in the
+  model fit like any other zero.
+- `docs/AGE_BANDS.md` describes how to prepare sources that do not store
+  zeros: in a month with any data, blanks are zeros.
 - New `qc_config('anc_first_visit')` profile with coverage cutoffs for first
-  ANC attendance. Configuration schema 7 adds the six new priorities; stored
-  schema 6 configurations remain valid. Policy version 3 is unchanged.
-- New `simulate_qc_age_data()` for synthetic age-band data.
+  ANC attendance. Configuration schema 8 holds the five new priorities; stored
+  schema 6 and 7 configurations remain valid. Policy version 3 is unchanged.
+- New `simulate_qc_age_data()` for synthetic age-band data, without stored
+  zeros.
 
 ## Dashboard redesign
 
