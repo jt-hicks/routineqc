@@ -106,7 +106,26 @@
         'Tested count and attendance'),
     row('coverage_very_low', 'Testing coverage', 'Very low testing coverage',
         paste0('Tested is below ', .g(100 * a$coverage_very_low), '% of attendance, where attendance is at least ',
-               .g(a$coverage_min_attending), '.'), 'Tested count and attendance')
+               .g(a$coverage_min_attending), '.'), 'Tested count and attendance'),
+    row('attendance_sum_mismatch', 'Attendance', 'Attendance differs from bookings',
+        'Attendance is not the sum of first bookings before and after 12 weeks of gestation.',
+        'Attendance and both booking counts'),
+    row('band_sum_partial_tested', 'Count consistency', 'Tested from incomplete age bands',
+        paste('Tested was summed from finer age bands and only some were reported, so it is probably',
+              'an undercount.'), 'Band counts from the preparation step'),
+    row('band_sum_partial_positive', 'Count consistency', 'Positives from incomplete age bands',
+        paste('Positives were summed from finer age bands and only some were reported, so they are',
+              'probably an undercount.'), 'Band counts from the preparation step'),
+    row('band_sum_partial_attending', 'Attendance', 'Attendance from incomplete age bands',
+        'A booking count behind attendance was summed from finer age bands and only some were reported.',
+        'Band counts from the preparation step'),
+    row('band_metadata_inconsistent', 'Count consistency', 'Band counts contradict values',
+        paste('The number of age bands reported does not fit the value: a count is present although no',
+              'band was reported, missing although bands were, or more bands were reported than exist.'),
+        'Band counts from the preparation step'),
+    row('positive_assumed_zero', 'Count consistency', 'Positive count assumed zero',
+        paste('A blank positive count was set to zero during preparation. The zero is an assumption,',
+              'not a report, and is left out of the prevalence model fit.'), 'Zero-fill marker')
   )
   catalog$priority <- vapply(catalog$key, function(k) {
     if (k %in% .qc_always_critical || k == 'count_invalid_value') 'critical'

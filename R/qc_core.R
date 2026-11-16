@@ -161,9 +161,16 @@
 #'   `attending_var`.
 #' @param council_var Optional council column.
 #' @param district_var Optional district column.
+#' @param age_group_var Optional age-band column, for data supplied one row per
+#'   facility, month and age band. The label is kept in `age_group` and an
+#'   ASCII key is added in `age_group_code` (`<20` becomes `lt20`, `>=20`
+#'   becomes `ge20`). Every time-series rule then runs within each facility's
+#'   band. The optional first-ANC and band-construction columns described in
+#'   [add_age_band_qc_flags()] are recognised by their canonical names.
 #'
 #' @return A tibble with standardised QC fields appended, including the
-#'   `*_source` and `*_parse_status` columns for tested and positive.
+#'   `*_source` and `*_parse_status` columns for tested and positive, and
+#'   `qc_series`, the series each row belongs to for time-series rules.
 #' @export
 prepare_qc_data <- function(data,
                             facility_var,
@@ -174,7 +181,8 @@ prepare_qc_data <- function(data,
                             attending_var = NULL,
                             attendance_definition = NULL,
                             council_var = NULL,
-                            district_var = NULL) {
+                            district_var = NULL,
+                            age_group_var = NULL) {
   facility_var <- .resolve_col(facility_var)
   region_var <- .resolve_col(region_var)
   month_var <- .resolve_col(month_var)
@@ -183,8 +191,9 @@ prepare_qc_data <- function(data,
   attending_var <- .resolve_col(attending_var)
   council_var <- .resolve_col(council_var)
   district_var <- .resolve_col(district_var)
+  age_group_var <- .resolve_col(age_group_var)
 
-  required <- c(facility_var, region_var, month_var, tested_var, positive_var, attending_var)
+  required <- c(facility_var, region_var, month_var, tested_var, positive_var, attending_var, age_group_var)
   .validate_required_columns(data, required)
 
   if (!is.null(attending_var) &&
@@ -235,6 +244,8 @@ prepare_qc_data <- function(data,
     out$attending <- attending_parsed$value
     out$attendance_definition <- attendance_definition
   }
+
+  out <- .prepare_age_columns(out, data, age_group_var)
 
   unique_months <- sort(unique(out$month_date))
   usable <- .usable_counts(dplyr::mutate(out, flag_count_invalid_value = NULL))
@@ -450,15 +461,25 @@ fit_prevalence_gam <- function(data, nthreads = 1) {
     train <- flag_logical_errors(train)
   }
 
+  # Assumed zeros, partial band sums and contradictory band counts are not
+  # reports the model should learn from.
   train <- train %>%
     dplyr::filter(
-      !flag_core_invalid, !.row_count_invalid(train), !is.na(positive), tested > 0,
-      !is.na(month_num), !is.na(time_index)
+      !flag_core_invalid, !.row_count_invalid(train), !.age_band_untrusted(train),
+      !is.na(positive), tested > 0, !is.na(month_num), !is.na(time_index)
     ) %>%
     dplyr::mutate(
       facility_id = as.factor(facility_id),
       region = as.factor(region)
     )
+  # Each age band has its own level of positivity; the facility effect, season
+  # and trend are shared across bands.
+  age_term <- .qc_is_age_disaggregated(train) &&
+    dplyr::n_distinct(stats::na.omit(train$age_group_code)) > 1L
+  if (age_term) {
+    train <- train[!is.na(train$age_group_code), , drop = FALSE]
+    train$age_group_code <- as.factor(train$age_group_code)
+  }
 
   if (nrow(train) < 50 || dplyr::n_distinct(train$facility_id) < 2) {
     warning("Insufficient valid rows to fit prevalence model; returning NULL.", call. = FALSE)
@@ -477,6 +498,7 @@ fit_prevalence_gam <- function(data, nthreads = 1) {
   # Single-region data carry no region effect, which has no contrasts to fit.
   fit_once <- function(k_month, k_time) {
     terms <- c(
+      if (age_term) "age_group_code",
       if (multi_region) "region",
       if (!is.null(k_month) && multi_region) {
         sprintf('s(month_num, by = region, bs = "cc", k = %d)', as.integer(k_month))
@@ -498,6 +520,7 @@ fit_prevalence_gam <- function(data, nthreads = 1) {
     fit$routineqc_model <- list(
       region_levels = levels(droplevels(train$region)),
       facility_levels = levels(droplevels(train$facility_id)),
+      age_levels = if (age_term) levels(droplevels(train$age_group_code)) else NULL,
       seasonal_k = k_month,
       trend_k = k_time
     )
@@ -630,16 +653,24 @@ add_prevalence_predictions <- function(data, model, min_prediction_coverage = 0.
     facility_levels <- if (!is.null(stored$facility_levels)) stored$facility_levels else model_levels$facility_id
     if (is.null(region_levels)) region_levels <- levels(model$model$region)
     if (is.null(facility_levels)) facility_levels <- levels(model$model$facility_id)
+    age_levels <- stored$age_levels
     unseen_region <- eligible & !as.character(out$region) %in% region_levels
     unseen_facility <- eligible & !as.character(out$facility_id) %in% facility_levels
+    unseen_age <- if (!is.null(age_levels)) {
+      eligible & !as.character(out$age_group_code) %in% age_levels
+    } else {
+      rep(FALSE, nrow(out))
+    }
     status[unseen_region] <- 'unseen_region'
     status[!unseen_region & unseen_facility] <- 'unseen_facility'
-    valid_idx <- which(eligible & !unseen_region & !unseen_facility)
+    status[!unseen_region & !unseen_facility & unseen_age] <- 'unseen_age_group'
+    valid_idx <- which(eligible & !unseen_region & !unseen_facility & !unseen_age)
 
     if (length(valid_idx) > 0L) {
       newdata <- out[valid_idx, , drop = FALSE]
       newdata$facility_id <- factor(newdata$facility_id, levels = facility_levels)
       newdata$region <- factor(newdata$region, levels = region_levels)
+      if (!is.null(age_levels)) newdata$age_group_code <- factor(newdata$age_group_code, levels = age_levels)
       pred_result <- tryCatch(
         suppressWarnings(stats::predict(model, newdata = newdata, type = 'response')),
         error = identity
@@ -769,8 +800,9 @@ add_prevalence_qc_flags <- function(data,
     TRUE
   }
 
+  out$.series <- .qc_group_key(out)
   out <- out %>%
-    dplyr::group_by(facility_id) %>%
+    dplyr::group_by(.series) %>%
     dplyr::arrange(month_date, .by_group = TRUE) %>%
     dplyr::mutate(
       prev_lag = dplyr::lag(prevalence),
@@ -807,7 +839,7 @@ add_prevalence_qc_flags <- function(data,
     dplyr::ungroup() %>%
     dplyr::select(-prev_lag, -tested_lag, -month_lag, -previous_month_is_adjacent,
                   -residual_cutoff, -monthly_prev_change, -.rule_resid, -.zero_implausible,
-                  -.count_ok)
+                  -.count_ok, -.series)
 
   out
 }
@@ -910,16 +942,19 @@ add_tested_volume_qc <- function(data,
   # `tested` itself is restored unchanged afterwards.
   prior$.tested_original <- prior$tested
   prior$tested <- .usable_counts(prior)$tested
+  # Baselines are per series: a facility's age band, restarted where the band's
+  # construction changes. Without age bands a series is a facility.
+  prior$.series <- .qc_group_key(prior)
 
   out <- prior %>%
-    dplyr::group_by(facility_id) %>%
+    dplyr::group_by(.series) %>%
     dplyr::arrange(month_date, .by_group = TRUE) %>%
     dplyr::group_modify(~ dplyr::bind_cols(
       .x,
       .calculate_tested_baseline(.x$tested, .x$month_date, baseline_mode, baseline_window_months)
     )) %>%
     dplyr::ungroup() %>%
-    dplyr::group_by(facility_id) %>%
+    dplyr::group_by(.series) %>%
     dplyr::arrange(month_date, .by_group = TRUE) %>%
     dplyr::mutate(tested_prev = dplyr::lag(tested)) %>%
     dplyr::ungroup() %>%
@@ -963,6 +998,7 @@ add_tested_volume_qc <- function(data,
 
   out$tested <- out$.tested_original
   out$.tested_original <- NULL
+  out$.series <- NULL
   out
 }
 
@@ -979,8 +1015,10 @@ add_tested_volume_qc <- function(data,
 add_temporal_qc_flags <- function(data, require_adjacent_months = TRUE) {
   .validate_required_columns(data, c('facility_id', 'month_date', 'flag_resid_extreme'))
 
-  dplyr::as_tibble(data) %>%
-    dplyr::group_by(facility_id) %>%
+  out <- dplyr::as_tibble(data)
+  out$.series <- .qc_group_key(out)
+  out %>%
+    dplyr::group_by(.series) %>%
     dplyr::arrange(month_date, .by_group = TRUE) %>%
     dplyr::mutate(
       prev_extreme = dplyr::lag(flag_resid_extreme, default = FALSE),
@@ -1000,7 +1038,7 @@ add_temporal_qc_flags <- function(data, require_adjacent_months = TRUE) {
     ) %>%
     dplyr::ungroup() %>%
     dplyr::select(-prev_extreme, -next_extreme, -prev_month_date, -next_month_date,
-                  -prev_month_is_adjacent, -next_month_is_adjacent)
+                  -prev_month_is_adjacent, -next_month_is_adjacent, -.series)
 }
 
 .append_qc_reason <- function(reason, flag, label) {
@@ -1051,7 +1089,10 @@ assign_qc_action <- function(data,
     'flag_tested_extreme_high', 'flag_tested_extreme_low', 'flag_tested_zero_unusual',
     'flag_tested_large_jump', 'flag_tested_large_drop', 'flag_tested_gt_attending',
     'flag_tested_gt_attending_major', 'flag_attending_negative',
-    'flag_coverage_low', 'flag_coverage_very_low'
+    'flag_coverage_low', 'flag_coverage_very_low', 'flag_attendance_sum_mismatch',
+    'flag_band_sum_partial_tested', 'flag_band_sum_partial_positive',
+    'flag_band_sum_partial_attending', 'flag_band_metadata_inconsistent',
+    'flag_positive_assumed_zero'
   )
   for (nm in flag_names) {
     if (!nm %in% names(out)) out[[nm]] <- FALSE
@@ -1062,10 +1103,15 @@ assign_qc_action <- function(data,
     on('flag_all_positive_large_n') | on('flag_large_monthly_prevalence_change') |
     on('flag_prevalence_extreme')
   tested_issue <- on('flag_tested_volume_extreme')
-  attendance_issue <- on('flag_attendance_issue')
+  attendance_issue <- on('flag_attendance_issue') | on('flag_attendance_sum_mismatch')
   coverage_issue <- on('flag_coverage_low') | on('flag_coverage_very_low')
   core_invalid <- on('flag_core_invalid')
   count_invalid <- on('flag_count_invalid_value') & !core_invalid
+  # A count that is incomplete or assumed rather than reported. Not an evidence
+  # domain: it says how a value was built, not that it is anomalous.
+  completeness_issue <- on('flag_band_sum_partial_tested') | on('flag_band_sum_partial_positive') |
+    on('flag_band_sum_partial_attending') | on('flag_band_metadata_inconsistent') |
+    on('flag_positive_assumed_zero')
   n_domains <- as.integer(prevalence_issue) + as.integer(tested_issue) +
     as.integer(attendance_issue) + as.integer(coverage_issue)
   multiple <- n_domains >= 2L
@@ -1094,6 +1140,7 @@ assign_qc_action <- function(data,
     tested_issue ~ 'review_tested_volume',
     attendance_issue ~ 'review_attendance',
     coverage_issue ~ 'review_coverage',
+    completeness_issue ~ 'review_count_completeness',
     TRUE ~ 'retain'
   )
 
@@ -1139,6 +1186,12 @@ assign_qc_action <- function(data,
   add(on('flag_attending_negative'), 'negative attendance')
   add(on('flag_coverage_very_low'), 'very low testing coverage')
   add(on('flag_coverage_low') & !on('flag_coverage_very_low'), 'low testing coverage')
+  add(on('flag_attendance_sum_mismatch'), 'attendance differs from bookings before and after 12 weeks')
+  add(on('flag_band_sum_partial_tested'), 'tested summed from incomplete age bands')
+  add(on('flag_band_sum_partial_positive'), 'positives summed from incomplete age bands')
+  add(on('flag_band_sum_partial_attending'), 'attendance summed from incomplete age bands')
+  add(on('flag_band_metadata_inconsistent'), 'band counts contradict the reported values')
+  add(on('flag_positive_assumed_zero'), 'positive count assumed zero')
   out$qc_reason <- dplyr::if_else(qc_reason == '', 'No QC issue detected', qc_reason)
   out
 }
@@ -1716,6 +1769,7 @@ plot_qc_summary_by_region <- function(summary_data) {
 #'   `attending_var`.
 #' @param council_var Optional council column.
 #' @param district_var Optional district column.
+#' @param age_group_var Optional age-band column; see [prepare_qc_data()].
 #' @param config A validated configuration created by [qc_config()].
 #' @param provenance A flat named list of safe upstream identifiers. Credentials,
 #'   secrets, tokens, keys, local paths, and raw records must not be supplied.
@@ -1735,6 +1789,7 @@ run_routine_qc <- function(raw_data,
                            attendance_definition = NULL,
                            council_var = NULL,
                            district_var = NULL,
+                           age_group_var = NULL,
                            config = qc_config(),
                            provenance = list(),
                            nthreads = 1,
@@ -1751,13 +1806,15 @@ run_routine_qc <- function(raw_data,
     attending_var = attending_var,
     attendance_definition = attendance_definition,
     council_var = council_var,
-    district_var = district_var
+    district_var = district_var,
+    age_group_var = age_group_var
   )
 
   validate_qc_input(prepared)
 
   dat <- prepared %>%
-    flag_logical_errors()
+    flag_logical_errors() %>%
+    add_age_band_qc_flags()
   dat <- do.call(add_attendance_qc_flags, c(list(data = dat), config$attendance))
 
   model <- fit_prevalence_gam(dat, nthreads = nthreads)

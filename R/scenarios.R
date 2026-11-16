@@ -32,7 +32,13 @@
   tested_gt_attending = 'coverage',
   tested_gt_attending_major = 'coverage',
   coverage_low = 'coverage',
-  coverage_very_low = 'coverage'
+  coverage_very_low = 'coverage',
+  band_sum_partial_tested = 'tested',
+  band_sum_partial_positive = 'positive',
+  band_sum_partial_attending = 'attending',
+  band_metadata_inconsistent = c('tested', 'positive'),
+  attendance_sum_mismatch = 'attending',
+  positive_assumed_zero = 'positive'
 )
 
 .qc_always_critical <- c(

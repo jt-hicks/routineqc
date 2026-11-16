@@ -6,7 +6,7 @@
   required_fields <- c('facility_id', 'month_date', 'region', 'tested', 'positive')
   optional_fields <- c(
     'district', 'council', 'facility_name', 'attending',
-    'attendance_definition', 'source_record_id'
+    'attendance_definition', 'source_record_id', .age_band_optional_fields
   )
   supplied_optional <- optional_fields[
     optional_fields %in% names(data) &
@@ -34,7 +34,7 @@
       out[[nm]] <- as.character(out[[nm]])
     }
   }
-  order_fields <- intersect(c('facility_id', 'month_date', 'source_record_id'), names(out))
+  order_fields <- intersect(c('facility_id', 'month_date', 'age_group', 'source_record_id'), names(out))
   if (length(order_fields) > 0L) {
     ordering <- do.call(order, c(out[order_fields], list(na.last = TRUE, method = 'radix')))
     out <- out[ordering, , drop = FALSE]

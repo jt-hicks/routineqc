@@ -15,6 +15,7 @@ run_routine_qc(
   attendance_definition = NULL,
   council_var = NULL,
   district_var = NULL,
+  age_group_var = NULL,
   config = qc_config(),
   provenance = list(),
   nthreads = 1,
@@ -42,6 +43,8 @@ run_routine_qc(
 \item{council_var}{Optional council column.}
 
 \item{district_var}{Optional district column.}
+
+\item{age_group_var}{Optional age-band column; see \code{\link[=prepare_qc_data]{prepare_qc_data()}}.}
 
 \item{config}{A validated configuration created by \code{\link[=qc_config]{qc_config()}}.}
 

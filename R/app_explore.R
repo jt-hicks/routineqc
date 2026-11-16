@@ -61,17 +61,24 @@
 }
 
 # Per-month state of one facility, separating the ways a value can be absent.
+# With age bands a month has several rows: it is invalid if any band is, and
+# missing only if no band has a usable tested count.
 .explore_facility_states <- function(data, facility) {
   months <- .explore_months(data)
   sub <- data[data$facility_id == facility, , drop = FALSE]
-  invalid <- if (nrow(sub) > 0L) .row_count_invalid(sub) else logical()
-  usable <- if (nrow(sub) > 0L) .usable_counts(sub)$tested else numeric()
   state <- rep('absent', length(months))
-  idx <- match(months, sub$month_date)
-  has <- !is.na(idx)
-  state[has] <- ifelse(invalid[idx[has]], 'invalid count',
-                       ifelse(is.na(usable[idx[has]]), 'missing count',
-                              ifelse(usable[idx[has]] == 0, 'zero tested', 'reported')))
+  if (nrow(sub) > 0L) {
+    invalid <- .row_count_invalid(sub)
+    usable <- .usable_counts(sub)$tested
+    m <- match(sub$month_date, months)
+    for (i in unique(m[!is.na(m)])) {
+      rows <- which(m == i)
+      state[i] <- if (any(invalid[rows])) 'invalid count'
+        else if (all(is.na(usable[rows]))) 'missing count'
+        else if (sum(usable[rows], na.rm = TRUE) == 0) 'zero tested'
+        else 'reported'
+    }
+  }
   dplyr::tibble(month_date = months, state = state)
 }
 

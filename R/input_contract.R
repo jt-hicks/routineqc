@@ -6,7 +6,8 @@
 #'
 #' @param data A data frame using the canonical QC column names.
 #' @param duplicate_action Either `error` (default) or `allow` for duplicate
-#'   facility-month keys. Upstream adapters should normally resolve duplicates.
+#'   facility-month keys (facility-month-age-band keys for data with
+#'   `age_group_code`). Upstream adapters should normally resolve duplicates.
 #' @param require_region Whether `region` must be present and non-missing.
 #'
 #' @return `data`, invisibly, after successful validation.
@@ -41,12 +42,22 @@ validate_qc_input <- function(data,
     rlang::abort('`region` contains missing or blank values.')
   }
 
-  duplicate_key <- duplicated(data[c('facility_id', 'month_date')]) |
-    duplicated(data[c('facility_id', 'month_date')], fromLast = TRUE)
+  age <- 'age_group_code' %in% names(data)
+  if (age && any(is.na(data[['age_group_code']]))) {
+    rlang::abort('`age_group` contains missing or blank values.')
+  }
+  key <- c('facility_id', 'month_date', if (age) 'age_group_code')
+  duplicate_key <- duplicated(data[key]) | duplicated(data[key], fromLast = TRUE)
   if (duplicate_action == 'error' && any(duplicate_key)) {
     rlang::abort(paste0(
-      'QC input contains ', sum(duplicate_key),
-      ' rows belonging to duplicate facility-month keys. Resolve them in the upstream adapter.'
+      'QC input contains ', sum(duplicate_key), ' rows belonging to duplicate ',
+      if (age) 'facility-month-age-band' else 'facility-month', ' keys. ',
+      if (!age && 'age_group' %in% names(data)) {
+        'The data have an `age_group` column: pass `age_group_var` to treat each band as its own row. '
+      } else {
+        ''
+      },
+      'Otherwise resolve them in the upstream adapter.'
     ))
   }
 

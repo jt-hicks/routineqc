@@ -5,7 +5,8 @@
 \title{Create a QC Configuration}
 \usage{
 qc_config(
-  profile = c("recommended", "operational", "retrospective", "permissive_sensitivity"),
+  profile = c("recommended", "operational", "retrospective", "permissive_sensitivity",
+    "anc_first_visit"),
   model = list(),
   prevalence = list(),
   temporal = list(),
@@ -16,8 +17,8 @@ qc_config(
 )
 }
 \arguments{
-\item{profile}{One of \code{recommended}, \code{operational}, \code{retrospective}, or
-\code{permissive_sensitivity}.}
+\item{profile}{One of \code{recommended}, \code{operational}, \code{retrospective},
+\code{permissive_sensitivity}, or \code{anc_first_visit}.}
 
 \item{model}{Named list of prevalence-model overrides.}
 
@@ -48,4 +49,8 @@ by \code{\link[=run_routine_qc]{run_routine_qc()}}. The \code{recommended} profi
 defaults and is an alias for \code{operational}. \code{operational} uses only earlier
 months; \code{retrospective} uses earlier and later months. \code{permissive_sensitivity}
 intentionally broadens several rules and is not recommended policy.
+\code{anc_first_visit} is \code{recommended} with testing-coverage cutoffs suited to
+first antenatal-care attendance, where testing is meant to be near universal:
+low below 85\%, very low below 70\%, judged only where at least 20 attended,
+because age bands make denominators small.
 }

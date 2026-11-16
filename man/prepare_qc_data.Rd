@@ -14,7 +14,8 @@ prepare_qc_data(
   attending_var = NULL,
   attendance_definition = NULL,
   council_var = NULL,
-  district_var = NULL
+  district_var = NULL,
+  age_group_var = NULL
 )
 }
 \arguments{
@@ -39,10 +40,18 @@ prepare_qc_data(
 \item{council_var}{Optional council column.}
 
 \item{district_var}{Optional district column.}
+
+\item{age_group_var}{Optional age-band column, for data supplied one row per
+facility, month and age band. The label is kept in \code{age_group} and an
+ASCII key is added in \code{age_group_code} (\verb{<20} becomes \code{lt20}, \verb{>=20}
+becomes \code{ge20}). Every time-series rule then runs within each facility's
+band. The optional first-ANC and band-construction columns described in
+\code{\link[=add_age_band_qc_flags]{add_age_band_qc_flags()}} are recognised by their canonical names.}
 }
 \value{
 A tibble with standardised QC fields appended, including the
-\verb{*_source} and \verb{*_parse_status} columns for tested and positive.
+\verb{*_source} and \verb{*_parse_status} columns for tested and positive, and
+\code{qc_series}, the series each row belongs to for time-series rules.
 }
 \description{
 Standardises user-specified columns into a common schema used across QC

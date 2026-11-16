@@ -174,7 +174,7 @@
     .impact_compute(applied(), list(level = 'national', unit = NULL))
   )
 
-  # QC filter impact chart — rename filtered trace and add Imputed placeholder.
+  # QC filter impact chart \u2014 rename filtered trace and add Imputed placeholder.
   output$landing_series <- plotly::renderPlotly({
     metric <- .value_or(input$landing_metric, 'positivity')
     p <- .plot_impact_series(observed(), 'moderate', metric)
@@ -189,7 +189,7 @@
         )
       }
     }
-    # Add Imputed placeholder trace (empty — data not yet computed).
+    # Add Imputed placeholder trace (empty \u2014 data not yet computed).
     p <- plotly::add_trace(
       p, x = numeric(0), y = numeric(0), type = 'scatter', mode = 'lines',
       name = 'Imputed', line = list(color = .impact_palette[['filtered_imputed']], dash = 'dot'),
@@ -203,15 +203,15 @@
     .plot_landing_priorities(.landing_priority_summary(data_r()))
   )
 
-  # Priority definitions — rendered into the ? popover.
+  # Priority definitions \u2014 rendered into the ? popover.
   output$landing_priority_definitions <- shiny::renderUI({
     catalog <- catalog_r()
     meanings <- c(
       critical = paste0('Impossible counts: more positives than tests, negative counts, ',
                         'or counts flagged for authorized exclusion.'),
       high = 'Urgent review of strong or combined signals.',
-      medium = paste0('Statistical anomalies — unusual counts relative to modelled ',
-                      'expectation or the facility’s own history.'),
+      medium = paste0('Statistical anomalies \u2014 unusual counts relative to modelled ',
+                      'expectation or the facility\u2019s own history.'),
       low = 'Minor signals, review when capacity allows.'
     )
     shiny::tags$div(
@@ -304,7 +304,7 @@
       shiny::tags$button(
         class = 'qc-pill-dismiss',
         onclick = "Shiny.setInputValue('landing_clear_region', Math.random(), {priority: 'event'})",
-        '×'
+        '\u00d7'
       )
     )
   }

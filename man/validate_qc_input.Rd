@@ -14,7 +14,8 @@ validate_qc_input(
 \item{data}{A data frame using the canonical QC column names.}
 
 \item{duplicate_action}{Either \code{error} (default) or \code{allow} for duplicate
-facility-month keys. Upstream adapters should normally resolve duplicates.}
+facility-month keys (facility-month-age-band keys for data with
+\code{age_group_code}). Upstream adapters should normally resolve duplicates.}
 
 \item{require_region}{Whether \code{region} must be present and non-missing.}
 }

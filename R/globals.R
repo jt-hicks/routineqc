@@ -58,5 +58,5 @@ utils::globalVariables(c(
   'positivity', 'positivity_se', 'priority', 'prop_tested_from_imputation', 'review_rows', 'scenario',
   'share_flagged', 'status', 'tested_matched', 'tested_status', 'tested_total', 'unit',
   '.source', 'key', 'flag_priority', 'record_priority', 'records', 'flagged_months', 'flagged_records',
-  'critical_high_records', 'persistent_facilities'
+  'critical_high_records', 'persistent_facilities', '.series', 'flagged'
 ))

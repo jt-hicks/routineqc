@@ -1,5 +1,21 @@
 # routineqc (development version)
 
+## Age-disaggregated data
+
+- Data supplied one row per facility, month and age band are supported through
+  `age_group_var` in `prepare_qc_data()` and `run_routine_qc()`, or `age_group`
+  in `adapt_qc_data()`. Time-series rules run within each facility's band,
+  restarting where the band's construction changes, and the prevalence model
+  gains an age-band term. See `docs/AGE_BANDS.md`.
+- New `add_age_band_qc_flags()`: attendance that differs from bookings before
+  and after 12 weeks, counts summed from incomplete finer bands, band counts
+  that contradict the values, and zero-filled positives. The new action
+  `review_count_completeness` covers the last three when nothing else applies.
+- New `qc_config('anc_first_visit')` profile with coverage cutoffs for first
+  ANC attendance. Configuration schema 7 adds the six new priorities; stored
+  schema 6 configurations remain valid. Policy version 3 is unchanged.
+- New `simulate_qc_age_data()` for synthetic age-band data.
+
 ## Dashboard redesign
 
 - The explorer is reorganised into Overview, Explore data, Filter impact, QC

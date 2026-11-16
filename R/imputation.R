@@ -183,6 +183,15 @@ qc_impute_scenario <- function(data, scenario,
   if (!.is_scalar_number(n_imputations) || n_imputations < 2) {
     rlang::abort('`n_imputations` must be at least 2.')
   }
+  # Age-disaggregated data: each facility's band is modelled as its own unit,
+  # so a band's gaps are filled from that band's history. The facility is put
+  # back afterwards.
+  age <- .qc_is_age_disaggregated(data)
+  if (age) {
+    data <- dplyr::as_tibble(data)
+    data$.facility_original <- as.character(data$facility_id)
+    data$facility_id <- .qc_series_ids(data, segments = FALSE)
+  }
   scn <- apply_qc_scenario(data, scenario, priority)
   fill_pre <- isTRUE(scenario$handling$fill_preexisting)
   windows <- .facility_windows(scn, schedule)
@@ -354,6 +363,10 @@ qc_impute_scenario <- function(data, scenario,
     status_p[pos] <- st_p
   }
 
+  if (age) {
+    scn$facility_id <- scn$.facility_original
+    scn$.facility_original <- NULL
+  }
   targets <- dplyr::tibble(
     row = target_idx,
     facility_id = as.character(scn$facility_id[target_idx]),

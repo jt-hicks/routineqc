@@ -3,8 +3,12 @@
 .adapter_required_fields <- c(
   'facility_id', 'month_date', 'region', 'tested', 'positive'
 )
+# The age-band fields are documented in `R/age_bands.R`.
 .adapter_optional_fields <- c(
-  'district', 'council', 'facility_name', 'attending', 'source_record_id'
+  'district', 'council', 'facility_name', 'attending', 'source_record_id',
+  'age_group', 'anc_before_12wk', 'anc_after_12wk', 'positive_zero_filled', 'bands_expected',
+  'tested_bands_reported', 'positive_bands_reported', 'anc_before_12wk_bands_reported',
+  'anc_after_12wk_bands_reported', 'source_id'
 )
 
 .validate_adapter_mapping <- function(mapping, source_names = NULL) {
@@ -218,12 +222,19 @@ adapt_qc_data <- function(data,
     if (field == 'attending') {
       attending_parsed <- .parse_counts(data[[mapping[[field]]]])
       canonical[[field]] <- attending_parsed$value
+    } else if (field %in% c(.age_band_count_fields, 'bands_expected', .band_reported_fields)) {
+      canonical[[field]] <- .parse_counts(data[[mapping[[field]]]])$value
+    } else if (field == 'positive_zero_filled') {
+      canonical[[field]] <- .as_flag(data[[mapping[[field]]]])
     } else {
       canonical[[field]] <- as.character(data[[mapping[[field]]]])
     }
   }
   if ('attending' %in% names(mapping)) {
     canonical$attendance_definition <- attendance_definition
+  }
+  if ('age_group' %in% names(mapping)) {
+    canonical$age_group_code <- .age_group_code(canonical$age_group)
   }
 
   diagnostics <- list()
@@ -261,11 +272,17 @@ adapt_qc_data <- function(data,
     )
   }
 
+  key <- c('facility_id', 'month_date', if ('age_group' %in% names(mapping)) 'age_group')
+  if ('age_group' %in% names(mapping)) {
+    age_bad <- is.na(canonical$age_group) | trimws(canonical$age_group) == ''
+    add_diagnostic(which(age_bad), 'error', 'missing_age_group', 'age_group')
+  }
   duplicate <- !facility_bad & !month_bad & (
-    duplicated(canonical[c('facility_id', 'month_date')]) |
-      duplicated(canonical[c('facility_id', 'month_date')], fromLast = TRUE)
+    duplicated(canonical[key]) | duplicated(canonical[key], fromLast = TRUE)
   )
-  add_diagnostic(which(duplicate), 'error', 'duplicate_facility_month', 'facility_id,month_date')
+  add_diagnostic(which(duplicate), 'error',
+                 if (length(key) == 3L) 'duplicate_facility_month_age' else 'duplicate_facility_month',
+                 paste(key, collapse = ','))
   diagnostics <- dplyr::bind_rows(diagnostics)
   if (nrow(diagnostics) == 0L) {
     diagnostics <- dplyr::tibble(
@@ -306,6 +323,7 @@ run_qc_adapter <- function(adapter_result, config = qc_config(), nthreads = 1) {
   )
   if ('district' %in% names(data)) args$district_var <- 'district'
   if ('council' %in% names(data)) args$council_var <- 'council'
+  if ('age_group' %in% names(data)) args$age_group_var <- 'age_group'
   if ('attending' %in% names(data) && any(!is.na(data$attending))) {
     args$attending_var <- 'attending'
     args$attendance_definition <- unique(data$attendance_definition)[1]

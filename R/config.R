@@ -36,9 +36,22 @@
     coverage_very_low = 'medium',
     tested_zero_unusual = 'low',
     tested_gt_attending = 'low',
-    coverage_low = 'low'
+    coverage_low = 'low',
+    # Age-band and first-ANC checks (schema 7).
+    band_sum_partial_tested = 'high',
+    band_sum_partial_positive = 'high',
+    band_metadata_inconsistent = 'high',
+    attendance_sum_mismatch = 'medium',
+    band_sum_partial_attending = 'medium',
+    positive_assumed_zero = 'low'
   )
 }
+
+.age_band_priority_keys <- c('band_sum_partial_tested', 'band_sum_partial_positive',
+                             'band_metadata_inconsistent', 'attendance_sum_mismatch',
+                             'band_sum_partial_attending', 'positive_assumed_zero')
+
+.qc_profiles <- c('recommended', 'operational', 'retrospective', 'permissive_sensitivity', 'anc_first_visit')
 
 .qc_profile_defaults <- function(profile) {
   recommended <- list(
@@ -96,6 +109,18 @@
 
   if (profile %in% c('recommended', 'operational')) return(recommended)
 
+  # Testing at first ANC is meant to be near universal, so coverage well below
+  # that is a finding sooner than for general attendance. Age bands make the
+  # denominators small, so coverage is judged only from 20 attenders: with
+  # 95% true coverage, fewer than 2% of such rows fall below 85% by chance.
+  if (profile == 'anc_first_visit') {
+    anc <- recommended
+    anc$attendance$coverage_low <- 0.85
+    anc$attendance$coverage_very_low <- 0.7
+    anc$attendance$coverage_min_attending <- 20
+    return(anc)
+  }
+
   if (profile == 'retrospective') {
     retrospective <- recommended
     retrospective$tested_volume$baseline_mode <- 'centered'
@@ -122,9 +147,13 @@
 #' defaults and is an alias for `operational`. `operational` uses only earlier
 #' months; `retrospective` uses earlier and later months. `permissive_sensitivity`
 #' intentionally broadens several rules and is not recommended policy.
+#' `anc_first_visit` is `recommended` with testing-coverage cutoffs suited to
+#' first antenatal-care attendance, where testing is meant to be near universal:
+#' low below 85%, very low below 70%, judged only where at least 20 attended,
+#' because age bands make denominators small.
 #'
-#' @param profile One of `recommended`, `operational`, `retrospective`, or
-#'   `permissive_sensitivity`.
+#' @param profile One of `recommended`, `operational`, `retrospective`,
+#'   `permissive_sensitivity`, or `anc_first_visit`.
 #' @param prevalence Named list of prevalence-rule overrides.
 #' @param model Named list of prevalence-model overrides.
 #' @param temporal Named list of temporal-rule overrides.
@@ -141,7 +170,8 @@
 #'
 #' @return An object of class `routineqc_config`.
 #' @export
-qc_config <- function(profile = c('recommended', 'operational', 'retrospective', 'permissive_sensitivity'),
+qc_config <- function(profile = c('recommended', 'operational', 'retrospective', 'permissive_sensitivity',
+                                  'anc_first_visit'),
                       model = list(),
                       prevalence = list(),
                       temporal = list(),
@@ -168,10 +198,12 @@ qc_config <- function(profile = c('recommended', 'operational', 'retrospective',
 }
 
 # Schema 5 added prevalence$all_negative_max_probability; schema 6 added the
-# attendance and priority sections. A stored configuration from an earlier
-# schema is valid without what was added after it.
-.qc_config_schema_version <- 6L
-.qc_config_keys_added <- list(`5` = list(prevalence = 'all_negative_max_probability'))
+# attendance and priority sections; schema 7 added the age-band priorities. A
+# stored configuration from an earlier schema is valid without what was added
+# after it.
+.qc_config_schema_version <- 7L
+.qc_config_keys_added <- list(`5` = list(prevalence = 'all_negative_max_probability'),
+                              `7` = list(priority = .age_band_priority_keys))
 .qc_config_sections_added <- list(`6` = c('attendance', 'priority'))
 
 .validate_attendance_config <- function(attendance) {
@@ -218,13 +250,13 @@ validate_qc_config <- function(config) {
   if (!is.list(config) || !all(required %in% names(config))) {
     rlang::abort('QC configuration is missing required sections.')
   }
-  supported <- if (stored) c(4L, 5L, .qc_config_schema_version) else .qc_config_schema_version
+  supported <- if (stored) c(4L, 5L, 6L, .qc_config_schema_version) else .qc_config_schema_version
   if (!is.integer(config$schema_version) || length(config$schema_version) != 1L ||
       !config$schema_version %in% supported) {
     rlang::abort('Unsupported QC configuration schema version.')
   }
   if (!is.character(config$profile) || length(config$profile) != 1L ||
-      !config$profile %in% c('recommended', 'operational', 'retrospective', 'permissive_sensitivity')) {
+      !config$profile %in% .qc_profiles) {
     rlang::abort('QC configuration has an unknown profile.')
   }
 
