@@ -67,7 +67,12 @@
                ' tests, when the model gives this a chance below ', .g(p$all_negative_max_probability),
                ' (a dispersion-adjusted heuristic pending calibration).'), 'Both counts and a fitted model'),
     row('all_positive_large_n', 'Prevalence', 'All positive, large sample',
-        paste0('Every test positive from at least ', .g(p$all_positive_min_tested), ' tests.'),
+        paste0('Every test positive from at least ', .g(p$all_positive_min_tested), ' tests',
+               if (!is.null(p$all_positive_max_probability)) {
+                 paste0(', when the model gives this a chance below ', .g(p$all_positive_max_probability))
+               } else {
+                 ''
+               }, '.'),
         'Both counts'),
     row('large_monthly_prevalence_change', 'Prevalence', 'Large month-to-month change',
         paste0('Positivity moved by more than ', .g(100 * p$large_change_threshold),
@@ -168,10 +173,10 @@
   dplyr::tibble(
     flag = c('flag_isolated_extreme', 'flag_temporal_context_insufficient', 'flag_positive_assumed_zero',
              'flag_booking_after_zero', 'flag_booking_columns_swapped', 'flag_resid_bands_agree',
-             'flag_resid_other_band_normal'),
+             'flag_resid_other_band_normal', 'flag_resid_other_band_inconclusive'),
     label = c('Isolated extreme', 'Not enough temporal context', 'Positive count assumed zero',
               'Bookings after 12 weeks reported as zero', 'Booking columns look swapped',
-              'Other age band moves the same way', 'Other age band as expected'),
+              'Other age band also off', 'Other age band as expected', 'Other age band too small to compare'),
     definition = c(
       'An extreme residual whose neighbouring months are both present, consecutive and not extreme.',
       'An extreme residual that lacks consecutive months on one side, so it cannot be called isolated.',
@@ -182,9 +187,12 @@
       paste('A booking-timing flag where the share would fit the facility\'s history if the before and',
             'after 12-week counts were exchanged.'),
       paste('A positivity outlier whose other age band, in the same facility and month, is off in the',
-            'same direction by at least 2 (scaled residual): more likely a real change than an entry error.'),
+            'same direction by at least 2 (scaled residual). Both bands are affected: this fits an error',
+            'repeated across the form as well as a change across the facility.'),
       paste('A positivity outlier whose other age band, in the same facility and month, is within 2 of',
-            'expectation: more likely an entry error in this band.')
+            'expectation although it was large enough to show the same move: only this band is affected.'),
+      paste('A positivity outlier whose other age band is within 2 of expectation but too small to tell:',
+            'even had it moved by the same factor, its residual would have stayed below 2.')
     ),
     effect = 'Context for reviewers. It does not change priority or the action.'
   )

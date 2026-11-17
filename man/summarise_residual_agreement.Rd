@@ -30,14 +30,15 @@ persistence, shared movement and direction), \code{by_year} (counts by year,
 band and class) and \code{other_band} (quantiles of the other band's residual).
 }
 \description{
-Aggregate evidence for judging whether an extreme positivity residual in one
-age band is an entry error or a real change, from an age-disaggregated run.
-Each extreme row is classed by the other band of the same facility-month:
-\code{both_agree} (same direction, |residual| at least 2), \code{other_normal}
-(|residual| below 2), \code{opposite} (other direction, at least 2) or
-\code{other_not_assessed}. For each class it reports how often the outlier
-persists into the previous or next month of the same band, and how often
-other facilities in the same area and month move the same way, since a real
-change in transmission tends to persist and to be shared, and an entry error
-tends to do neither. The result has no facility, area or month identifiers.
+Aggregate evidence on extreme positivity residuals in one age band, from an
+age-disaggregated run. Each extreme row is classed by the other band of the
+same facility-month, as in \code{\link[=add_age_structure_qc_flags]{add_age_structure_qc_flags()}}: \code{both_agree}
+(off in the same direction by at least 2), \code{other_normal} (within 2 although
+it could have shown the move), \code{other_inconclusive} (within 2 and too small
+to tell), \code{opposite} (other direction, at least 2) or \code{other_not_assessed}.
+For each class it reports how often the outlier persists into the previous
+or next month of the same band, and how often other facilities in the same
+area and month move the same way: a real change in transmission tends to
+persist and to be shared. The result has no facility, area or month
+identifiers.
 }

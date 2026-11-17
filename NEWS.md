@@ -26,12 +26,18 @@
   weeks was reported, or when the before and after counts look swapped. New
   action `review_age_structure`. Settings in the new
   `age_structure` configuration section (schema 9).
+- New `prevalence$all_positive_max_probability` (configuration schema 10):
+  when set, a month with every test positive is flagged only where the model
+  makes it less likely than this, as for all-negative months. The default
+  (`NULL`) keeps the count-only rule. The `anc_first_visit` profile sets it to
+  0.001 and judges such months from 5 tested instead of 30.
 - New `summarise_age_band_deviations()`: aggregate distributions of the
   age-structure measurements, for choosing thresholds.
 - A positivity outlier in one age band is labelled by the other band of the
-  same facility-month: `flag_resid_other_band_normal` (probable entry error)
-  or `flag_resid_bands_agree` (probable real change). Context only; priorities
-  are unchanged. `summarise_residual_agreement()` gives aggregate evidence on
+  same facility-month: `flag_resid_bands_agree` (other band also off in the
+  same direction), `flag_resid_other_band_normal` (other band as expected and
+  large enough to tell) or `flag_resid_other_band_inconclusive` (too small to
+  tell). Context only; priorities are unchanged. `summarise_residual_agreement()` gives aggregate evidence on
   how often each happens, with persistence and shared movement in the area.
 - New `simulate_qc_age_data()` for synthetic age-band data, without stored
   zeros and with some swapped bands.

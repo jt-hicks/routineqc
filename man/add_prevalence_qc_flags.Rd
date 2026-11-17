@@ -13,6 +13,7 @@ add_prevalence_qc_flags(
   all_negative_min_tested = 50,
   all_negative_max_probability = 0.001,
   all_positive_min_tested = 30,
+  all_positive_max_probability = NULL,
   large_change_threshold = 0.5,
   large_change_min_tested = 20,
   large_change_require_adjacent = TRUE,
@@ -45,6 +46,12 @@ the model did not assess is not evaluated. Data without \code{p_hat} fall back t
 the count-only rule.}
 
 \item{all_positive_min_tested}{Minimum tested count for an all-positive flag.}
+
+\item{all_positive_max_probability}{Optional. When set, an all-positive
+month is flagged only when the model makes it less likely than this:
+\code{p_hat^(tested / resid_dispersion)}, the mirror of the all-negative rule.
+A row the model did not assess is not evaluated. \code{NULL}, the default,
+keeps the count-only rule.}
 
 \item{large_change_threshold}{Absolute month-to-month prevalence change threshold.
 A month whose predecessor is itself an extreme prevalence month

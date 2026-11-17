@@ -749,6 +749,11 @@ add_prevalence_predictions <- function(data, model, min_prediction_coverage = 0.
 #'   the model did not assess is not evaluated. Data without `p_hat` fall back to
 #'   the count-only rule.
 #' @param all_positive_min_tested Minimum tested count for an all-positive flag.
+#' @param all_positive_max_probability Optional. When set, an all-positive
+#'   month is flagged only when the model makes it less likely than this:
+#'   `p_hat^(tested / resid_dispersion)`, the mirror of the all-negative rule.
+#'   A row the model did not assess is not evaluated. `NULL`, the default,
+#'   keeps the count-only rule.
 #' @param large_change_threshold Absolute month-to-month prevalence change threshold.
 #'   A month whose predecessor is itself an extreme prevalence month
 #'   (`flag_prevalence_extreme`) is not flagged for the change unless it is
@@ -771,6 +776,7 @@ add_prevalence_qc_flags <- function(data,
                                     all_negative_min_tested = 50,
                                     all_negative_max_probability = 0.001,
                                     all_positive_min_tested = 30,
+                                    all_positive_max_probability = NULL,
                                     large_change_threshold = 0.5,
                                     large_change_min_tested = 20,
                                     large_change_require_adjacent = TRUE,
@@ -799,6 +805,14 @@ add_prevalence_qc_flags <- function(data,
   } else {
     TRUE
   }
+  # The same for every test being positive, when a probability cutoff is set.
+  out$.all_positive_implausible <- if (!is.null(all_positive_max_probability) && 'p_hat' %in% names(out)) {
+    dispersion <- if ('resid_dispersion' %in% names(out)) out$resid_dispersion else 1
+    implausible <- out$p_hat^(out$tested / dispersion) < all_positive_max_probability
+    if (all(is.na(out$p_hat))) dplyr::coalesce(implausible, FALSE) else implausible
+  } else {
+    TRUE
+  }
 
   out$.series <- .qc_group_key(out)
   out <- out %>%
@@ -818,7 +832,8 @@ add_prevalence_qc_flags <- function(data,
       flag_resid_extreme = !is.na(.rule_resid) & abs(.rule_resid) > residual_cutoff,
       flag_all_negative_large_n = .count_ok & tested >= all_negative_min_tested & positive == 0 &
         .zero_implausible,
-      flag_all_positive_large_n = .count_ok & tested >= all_positive_min_tested & positive == tested,
+      flag_all_positive_large_n = .count_ok & tested >= all_positive_min_tested & positive == tested &
+        .all_positive_implausible,
       flag_large_monthly_prevalence_change = !is.na(monthly_prev_change) &
         (!large_change_require_adjacent | previous_month_is_adjacent) &
         tested >= large_change_min_tested &
@@ -839,7 +854,7 @@ add_prevalence_qc_flags <- function(data,
     dplyr::ungroup() %>%
     dplyr::select(-prev_lag, -tested_lag, -month_lag, -previous_month_is_adjacent,
                   -residual_cutoff, -monthly_prev_change, -.rule_resid, -.zero_implausible,
-                  -.count_ok, -.series)
+                  -.all_positive_implausible, -.count_ok, -.series)
 
   out
 }
@@ -1095,7 +1110,7 @@ assign_qc_action <- function(data,
     'flag_age_band_missing', 'flag_age_mix_shift', 'flag_age_bands_swapped',
     'flag_booking_timing_shift', 'flag_age_positivity_contrast',
     'flag_booking_after_zero', 'flag_booking_columns_swapped',
-    'flag_resid_bands_agree', 'flag_resid_other_band_normal'
+    'flag_resid_bands_agree', 'flag_resid_other_band_normal', 'flag_resid_other_band_inconclusive'
   )
   for (nm in flag_names) {
     if (!nm %in% names(out)) out[[nm]] <- FALSE
@@ -1183,8 +1198,9 @@ assign_qc_action <- function(data,
   add(on('flag_resid_extreme') & !on('flag_isolated_extreme') & !on('flag_temporal_context_insufficient'),
       'prevalence outlier, run of months')
   add(on('flag_temporal_context_insufficient'), 'prevalence outlier at the edge of the series or a gap')
-  add(on('flag_resid_extreme') & on('flag_resid_bands_agree'), 'other age band moves the same way')
+  add(on('flag_resid_extreme') & on('flag_resid_bands_agree'), 'other age band also off in the same direction')
   add(on('flag_resid_extreme') & on('flag_resid_other_band_normal'), 'other age band as expected')
+  add(on('flag_resid_extreme') & on('flag_resid_other_band_inconclusive'), 'other age band too small to compare')
   add(on('flag_large_monthly_prevalence_change'), 'prevalence jumps between months')
   add(on('flag_tested_extreme_high'), 'tested far above baseline')
   add(on('flag_tested_extreme_low'), 'tested far below baseline')

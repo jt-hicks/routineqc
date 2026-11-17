@@ -20,10 +20,14 @@
 
 # Context, with no priority or action of its own. For a booking-timing flag:
 # which kind of change it is. For an extreme positivity residual in one band:
-# whether the other band of the same facility-month moves the same way (a
-# probable real change) or sits close to expectation (a probable entry error).
+# whether the other band of the same facility-month is off in the same
+# direction, is close to expectation although it could have shown the same
+# move, or is too small to tell. Real data showed that both bands being off
+# usually marks an error repeated across the form, not a real change, so the
+# labels describe and do not interpret.
 .age_structure_context <- c('flag_booking_after_zero', 'flag_booking_columns_swapped',
-                            'flag_resid_bands_agree', 'flag_resid_other_band_normal')
+                            'flag_resid_bands_agree', 'flag_resid_other_band_normal',
+                            'flag_resid_other_band_inconclusive')
 
 # Absolute dispersion-scaled residual at which the other band counts as moving.
 .resid_agree_threshold <- 2
@@ -174,13 +178,17 @@
 #'   the older one (a log odds ratio) differs from the facility's usual
 #'   contrast. No direction is assumed.
 #'
-#' For a row with an extreme positivity residual (`flag_resid_extreme`), two
+#' For a row with an extreme positivity residual (`flag_resid_extreme`), three
 #' context flags compare the other band of the same facility-month, using its
 #' dispersion-scaled residual (kept in `resid_other_band`):
-#' `flag_resid_bands_agree` when it moves the same way by at least 2, a
-#' probable real change in positivity; `flag_resid_other_band_normal` when it is
-#' within 2 of expectation, a probable entry error in this band. They have no
-#' priority or action; [summarise_residual_agreement()] summarises them.
+#' `flag_resid_bands_agree` when it is off in the same direction by at least 2
+#' (both bands affected, as with an error repeated across the form or a
+#' facility-wide change); `flag_resid_other_band_normal` when it is within 2 of
+#' expectation although it could have shown the same move (only this band
+#' affected); and `flag_resid_other_band_inconclusive` when it is within 2 but
+#' too small to have shown the move: had its positivity risen by the same
+#' factor as this band's, its residual would still have been below 2. They have
+#' no priority or action; [summarise_residual_agreement()] summarises them.
 #'
 #' The baseline is the facility's pooled counts over the months in the window
 #' (earlier months only for a `trailing` baseline; earlier and later for
@@ -306,21 +314,42 @@ add_age_structure_qc_flags <- function(data,
 }
 
 # For a row whose band has an extreme positivity residual, compare the other
-# band of the same facility-month: same direction and at least the agreement
-# threshold means both bands moved; below it means only this band did. An
-# other band that was not assessed, or moved the opposite way, sets neither.
+# band of the same facility-month. Off in the same direction by at least the
+# threshold: both bands affected. Within it: only this band affected, but only
+# if the other band could have shown the move. That is judged by applying this
+# band's ratio of observed to expected positives to the other band and asking
+# whether its residual would then reach the threshold; if not, it is too small
+# to tell. An other band that was not assessed, or moved the opposite way,
+# sets none of the three.
 .add_residual_agreement <- function(out, young_band, old_band) {
   if (!all(c('pearson_resid', 'flag_resid_extreme') %in% names(out))) return(out)
   r <- if ('pearson_resid_scaled' %in% names(out)) out$pearson_resid_scaled else out$pearson_resid
   key <- paste(out$facility_id, out$month_date)
   code <- out$age_group_code
   other_code <- ifelse(code == young_band, old_band, ifelse(code == old_band, young_band, NA_character_))
-  other <- r[match(paste(key, other_code), paste(key, code))]
+  at <- match(paste(key, other_code), paste(key, code))
+  other <- r[at]
   extreme <- dplyr::coalesce(as.logical(out$flag_resid_extreme), FALSE) & !is.na(r)
   known <- extreme & !is.na(other)
+  within <- known & abs(other) < .resid_agree_threshold
+
+  detectable <- rep(TRUE, nrow(out))
+  if (all(c('p_hat', 'tested', 'positive') %in% names(out))) {
+    p <- out$p_hat
+    expected <- out$tested * p
+    ratio <- ifelse(!is.na(expected) & expected > 0, out$positive / expected, NA_real_)
+    n_o <- out$tested[at]
+    p_o <- p[at]
+    e_o <- n_o * p_o
+    moved <- pmin(n_o, e_o * ratio)
+    phi <- if ('resid_dispersion' %in% names(out)) dplyr::coalesce(out$resid_dispersion, 1) else 1
+    r_moved <- (moved - e_o) / sqrt(e_o * (1 - p_o) * phi)
+    detectable <- !is.na(r_moved) & abs(r_moved) >= .resid_agree_threshold
+  }
   out$resid_other_band <- other
   out$flag_resid_bands_agree <- known & sign(other) == sign(r) & abs(other) >= .resid_agree_threshold
-  out$flag_resid_other_band_normal <- known & abs(other) < .resid_agree_threshold
+  out$flag_resid_other_band_normal <- within & detectable
+  out$flag_resid_other_band_inconclusive <- within & !detectable
   out
 }
 
@@ -383,16 +412,17 @@ summarise_age_band_deviations <- function(data, min_bookings = 20, min_tested_ba
 
 #' Summarise Agreement of Positivity Outliers Across Age Bands
 #'
-#' Aggregate evidence for judging whether an extreme positivity residual in one
-#' age band is an entry error or a real change, from an age-disaggregated run.
-#' Each extreme row is classed by the other band of the same facility-month:
-#' `both_agree` (same direction, |residual| at least 2), `other_normal`
-#' (|residual| below 2), `opposite` (other direction, at least 2) or
-#' `other_not_assessed`. For each class it reports how often the outlier
-#' persists into the previous or next month of the same band, and how often
-#' other facilities in the same area and month move the same way, since a real
-#' change in transmission tends to persist and to be shared, and an entry error
-#' tends to do neither. The result has no facility, area or month identifiers.
+#' Aggregate evidence on extreme positivity residuals in one age band, from an
+#' age-disaggregated run. Each extreme row is classed by the other band of the
+#' same facility-month, as in [add_age_structure_qc_flags()]: `both_agree`
+#' (off in the same direction by at least 2), `other_normal` (within 2 although
+#' it could have shown the move), `other_inconclusive` (within 2 and too small
+#' to tell), `opposite` (other direction, at least 2) or `other_not_assessed`.
+#' For each class it reports how often the outlier persists into the previous
+#' or next month of the same band, and how often other facilities in the same
+#' area and month move the same way: a real change in transmission tends to
+#' persist and to be shared. The result has no facility, area or month
+#' identifiers.
 #'
 #' @param data Flagged data from an age-disaggregated run.
 #' @param area Area column for the shared-movement measure; by default the
@@ -416,10 +446,14 @@ summarise_residual_agreement <- function(data, area = NULL, shared_threshold = 1
   r <- if ('pearson_resid_scaled' %in% names(d)) d$pearson_resid_scaled else d$pearson_resid
   extreme <- dplyr::coalesce(as.logical(d$flag_resid_extreme), FALSE) & !is.na(r)
   other <- d$resid_other_band
+  flag <- function(col) {
+    if (col %in% names(d)) dplyr::coalesce(as.logical(d[[col]]), FALSE) else rep(FALSE, nrow(d))
+  }
   class <- dplyr::case_when(
     is.na(other) ~ 'other_not_assessed',
+    flag('flag_resid_bands_agree') ~ 'both_agree',
+    flag('flag_resid_other_band_inconclusive') ~ 'other_inconclusive',
     abs(other) < .resid_agree_threshold ~ 'other_normal',
-    sign(other) == sign(r) ~ 'both_agree',
     TRUE ~ 'opposite'
   )
   # Persistence: an extreme residual in the same series the month before or after.
@@ -442,9 +476,8 @@ summarise_residual_agreement <- function(data, area = NULL, shared_threshold = 1
                      shared = shared[extreme], up = r[extreme] > 0,
                      year = format(d$month_date[extreme], '%Y'), band = d$age_group_code[extreme],
                      other = other[extreme])
-  levels <- c('one_band_only' = 'other_normal', 'both_agree' = 'both_agree', 'opposite' = 'opposite',
-              'other_not_assessed' = 'other_not_assessed')
-  by_class <- dplyr::bind_rows(lapply(unname(levels), function(cl) {
+  levels <- c('other_normal', 'both_agree', 'other_inconclusive', 'opposite', 'other_not_assessed')
+  by_class <- dplyr::bind_rows(lapply(levels, function(cl) {
     x <- e[e$class == cl, , drop = FALSE]
     dplyr::tibble(
       class = cl, outlier_rows = nrow(x),

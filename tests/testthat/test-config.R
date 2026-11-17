@@ -2,7 +2,7 @@ testthat::test_that('recommended configuration records agreed defaults', {
   config <- routineqc::qc_config()
   testthat::expect_s3_class(config, 'routineqc_config')
   testthat::expect_identical(config$profile, 'recommended')
-  testthat::expect_identical(config$schema_version, 9L)
+  testthat::expect_identical(config$schema_version, 10L)
   testthat::expect_equal(config$prevalence$all_negative_max_probability, 0.001)
   testthat::expect_identical(config$model$min_prediction_coverage, 0.8)
   testthat::expect_equal(config$prevalence$resid_threshold_large, 4)
@@ -103,4 +103,26 @@ testthat::test_that('policy version 2 is refused for new runs but readable when 
   old$attendance <- NULL
   old$priority <- NULL
   testthat::expect_invisible(routineqc:::.validate_qc_config(old, stored = TRUE))
+})
+
+testthat::test_that('the first-ANC profile judges all-positive months against the model', {
+  config <- routineqc::qc_config('anc_first_visit')
+  testthat::expect_equal(config$prevalence$all_positive_min_tested, 5)
+  testthat::expect_equal(config$prevalence$all_positive_max_probability, 0.001)
+  testthat::expect_null(routineqc::qc_config()$prevalence$all_positive_max_probability)
+  testthat::expect_error(routineqc::qc_config(prevalence = list(all_positive_max_probability = 2)), 'NULL or one number')
+  old <- routineqc::qc_config()
+  old$schema_version <- 9L
+  old$prevalence$all_positive_max_probability <- NULL
+  testthat::expect_invisible(routineqc:::.validate_qc_config(old, stored = TRUE))
+  x <- tibble::tibble(
+    facility_id = 'F1', month_date = as.Date('2024-01-01') + 0:3 * 31, tested = c(5, 5, 3, 6),
+    positive = c(5, 5, 3, 6), prevalence = 1, p_hat = c(0.05, 0.6, 0.05, NA), resid_dispersion = 1,
+    pearson_resid = 0
+  )
+  flags <- routineqc::add_prevalence_qc_flags(x, all_positive_min_tested = 5, all_positive_max_probability = 0.001)
+  # 0.05^5 is far below 1 in 1,000; 0.6^5 is not; 3 tested is below the minimum; no model, not evaluated.
+  testthat::expect_identical(flags$flag_all_positive_large_n, c(TRUE, FALSE, FALSE, NA))
+  count_only <- routineqc::add_prevalence_qc_flags(x, all_positive_min_tested = 5)
+  testthat::expect_identical(count_only$flag_all_positive_large_n, c(TRUE, TRUE, FALSE, TRUE))
 })

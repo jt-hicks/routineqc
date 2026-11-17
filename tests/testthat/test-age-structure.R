@@ -155,24 +155,42 @@ testthat::test_that('positivity outliers are classed by the other age band', {
   ))
   x <- run$data_flagged
   e <- x$flag_resid_extreme
-  # Context only: set on outliers, never on their own, and never both.
-  testthat::expect_false(any((x$flag_resid_bands_agree | x$flag_resid_other_band_normal) & !e))
-  testthat::expect_false(any(x$flag_resid_bands_agree & x$flag_resid_other_band_normal))
+  # Context only: set on outliers, never on their own, and at most one.
+  agree <- x$flag_resid_bands_agree; normal <- x$flag_resid_other_band_normal
+  unclear <- x$flag_resid_other_band_inconclusive
+  testthat::expect_false(any((agree | normal | unclear) & !e))
+  testthat::expect_true(all(agree + normal + unclear <= 1))
   errors <- e & x$injected_error & !x$injected_outbreak
   outbreaks <- e & x$injected_outbreak & !x$injected_error
   testthat::expect_gt(sum(errors), 10)
-  testthat::expect_gt(mean(x$flag_resid_other_band_normal[errors]), 0.8)
+  # An error in one band leaves the other as expected, or too small to tell.
+  testthat::expect_gt(mean((normal | unclear)[errors]), 0.8)
+  testthat::expect_lt(mean(agree[errors]), 0.1)
   testthat::expect_gt(sum(outbreaks), 5)
   testthat::expect_gt(mean(x$flag_resid_bands_agree[outbreaks]), 0.5)
   # Labels do not change priority: an agreeing outlier keeps its residual priority.
   testthat::expect_true(all(x$review_priority[x$flag_resid_bands_agree] %in% c('critical', 'high')))
-  testthat::expect_true(any(grepl('other age band moves the same way', x$qc_reason)))
+  testthat::expect_true(any(grepl('other age band also off in the same direction', x$qc_reason)))
   s <- routineqc::summarise_residual_agreement(x)
-  testthat::expect_identical(s$by_class$class, c('other_normal', 'both_agree', 'opposite', 'other_not_assessed'))
+  testthat::expect_identical(s$by_class$class, c('other_normal', 'both_agree', 'other_inconclusive', 'opposite', 'other_not_assessed'))
   testthat::expect_equal(sum(s$by_class$outlier_rows), sum(e & !is.na(x$pearson_resid_scaled)))
   testthat::expect_equal(sum(s$by_year$outlier_rows), sum(s$by_class$outlier_rows))
   ids <- c('facility_id', 'month_date', 'region', 'district')
   testthat::expect_false(any(ids %in% unlist(lapply(s, names))))
   shared <- s$by_class$share_shared_in_area
   testthat::expect_gt(shared[2], shared[1])
+})
+
+testthat::test_that('a small other band is inconclusive, not as expected', {
+  x <- tibble::tibble(
+    facility_id = 'F1', month_date = as.Date('2024-01-01'), age_group_code = c('lt20', 'ge20'),
+    tested = c(40, 3), positive = c(8, 0), p_hat = 0.05, resid_dispersion = 1,
+    pearson_resid = c(4.4, -0.4), pearson_resid_scaled = c(4.4, -0.4), flag_resid_extreme = c(TRUE, FALSE)
+  )
+  out <- routineqc:::.add_residual_agreement(x, 'lt20', 'ge20')
+  testthat::expect_true(out$flag_resid_other_band_inconclusive[1])
+  testthat::expect_false(out$flag_resid_other_band_normal[1])
+  x$tested[2] <- 60
+  out <- routineqc:::.add_residual_agreement(x, 'lt20', 'ge20')
+  testthat::expect_true(out$flag_resid_other_band_normal[1])
 })

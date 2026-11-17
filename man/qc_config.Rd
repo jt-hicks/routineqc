@@ -57,5 +57,7 @@ intentionally broadens several rules and is not recommended policy.
 \code{anc_first_visit} is \code{recommended} with testing-coverage cutoffs suited to
 first antenatal-care attendance, where testing is meant to be near universal:
 low below 85\%, very low below 70\%, judged only where at least 20 attended,
-because age bands make denominators small.
+because age bands make denominators small. It also judges every test being
+positive from 5 tested, flagging it only where the model makes it less
+likely than 1 in 1,000.
 }

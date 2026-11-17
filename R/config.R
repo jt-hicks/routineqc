@@ -74,6 +74,7 @@
       all_negative_min_tested = 50,
       all_negative_max_probability = 0.001,
       all_positive_min_tested = 30,
+      all_positive_max_probability = NULL,
       large_change_threshold = 0.5,
       large_change_min_tested = 20,
       large_change_require_adjacent = TRUE,
@@ -127,6 +128,11 @@
     anc$attendance$coverage_low <- 0.85
     anc$attendance$coverage_very_low <- 0.7
     anc$attendance$coverage_min_attending <- 20
+    # Age bands make counts small and first-ANC positivity is low, so every
+    # test positive is judged from 5 tested, against the model: flagged only
+    # where the model makes it less likely than 1 in 1,000.
+    anc$prevalence$all_positive_min_tested <- 5
+    anc$prevalence$all_positive_max_probability <- 0.001
     return(anc)
   }
 
@@ -159,7 +165,9 @@
 #' `anc_first_visit` is `recommended` with testing-coverage cutoffs suited to
 #' first antenatal-care attendance, where testing is meant to be near universal:
 #' low below 85%, very low below 70%, judged only where at least 20 attended,
-#' because age bands make denominators small.
+#' because age bands make denominators small. It also judges every test being
+#' positive from 5 tested, flagging it only where the model makes it less
+#' likely than 1 in 1,000.
 #'
 #' @param profile One of `recommended`, `operational`, `retrospective`,
 #'   `permissive_sensitivity`, or `anc_first_visit`.
@@ -214,13 +222,15 @@ qc_config <- function(profile = c('recommended', 'operational', 'retrospective',
 # Schema 5 added prevalence$all_negative_max_probability; schema 6 added the
 # attendance and priority sections; schema 7 added the age-band priorities;
 # schema 8 removed `positive_assumed_zero`, which became context without a
-# priority; schema 9 added the age-structure section and priorities. A stored
-# configuration is valid with the keys of its own schema.
-.qc_config_schema_version <- 9L
+# priority; schema 9 added the age-structure section and priorities; schema 10
+# added prevalence$all_positive_max_probability. A stored configuration is
+# valid with the keys of its own schema.
+.qc_config_schema_version <- 10L
 .qc_config_keys_added <- list(
   `5` = list(prevalence = 'all_negative_max_probability'),
   `7` = list(priority = c(.age_band_priority_keys, 'positive_assumed_zero')),
-  `9` = list(priority = .age_structure_priority_keys)
+  `9` = list(priority = .age_structure_priority_keys),
+  `10` = list(prevalence = 'all_positive_max_probability')
 )
 .qc_config_keys_removed <- list(`8` = list(priority = 'positive_assumed_zero'))
 .qc_config_sections_added <- list(`6` = c('attendance', 'priority'), `9` = 'age_structure')
@@ -269,7 +279,7 @@ validate_qc_config <- function(config) {
   if (!is.list(config) || !all(required %in% names(config))) {
     rlang::abort('QC configuration is missing required sections.')
   }
-  supported <- if (stored) c(4L, 5L, 6L, 7L, 8L, .qc_config_schema_version) else .qc_config_schema_version
+  supported <- if (stored) c(4L, 5L, 6L, 7L, 8L, 9L, .qc_config_schema_version) else .qc_config_schema_version
   if (!is.integer(config$schema_version) || length(config$schema_version) != 1L ||
       !config$schema_version %in% supported) {
     rlang::abort('Unsupported QC configuration schema version.')
@@ -304,9 +314,15 @@ validate_qc_config <- function(config) {
       defaults[.qc_config_sections_added[[version]]] <- NULL
     }
   }
+  # A setting whose value is NULL is the same as an absent one: a setting whose
+  # default is NULL may be left out, and a stored configuration may carry an
+  # unset setting of a later schema.
+  set_names <- function(x) names(x)[!vapply(x, is.null, logical(1))]
   for (section in names(defaults)) {
     values <- config[[section]]
-    if (!is.list(values) || !setequal(names(values), names(defaults[[section]]))) {
+    if (!is.list(values) ||
+        !all(set_names(defaults[[section]]) %in% names(values)) ||
+        !all(set_names(values) %in% names(defaults[[section]]))) {
       rlang::abort(paste0('QC configuration section `', section, '` has missing or unknown settings.'))
     }
   }
@@ -344,6 +360,12 @@ validate_qc_config <- function(config) {
        config$prevalence$all_negative_max_probability <= 0 ||
        config$prevalence$all_negative_max_probability > 1)) {
     rlang::abort('`prevalence$all_negative_max_probability` must be one number in (0, 1].')
+  }
+  if (!is.null(config$prevalence$all_positive_max_probability) &&
+      (!.is_scalar_number(config$prevalence$all_positive_max_probability) ||
+       config$prevalence$all_positive_max_probability <= 0 ||
+       config$prevalence$all_positive_max_probability > 1)) {
+    rlang::abort('`prevalence$all_positive_max_probability` must be NULL or one number in (0, 1].')
   }
   prevalence_logical <- c('large_change_require_adjacent', 'use_prevalence_bounds')
   if (any(!vapply(config$prevalence[prevalence_logical], rlang::is_bool, logical(1)))) {

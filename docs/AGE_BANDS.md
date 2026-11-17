@@ -105,6 +105,14 @@ bands make denominators small: with 95% true coverage, fewer than 2% of such
 rows fall below 85% by chance. Coverage above 100% is the existing
 tested-above-attendance flag.
 
+The profile also judges every test being positive from 5 tested instead of 30,
+and only where the model makes it less likely than 1 in 1,000
+(`p_hat^(tested / dispersion)`), as the all-negative rule already does. On real
+first-ANC data, nearly every all-positive month from 20 tested was already a
+positivity outlier, while hundreds from 5 to 19 tested were not flagged at
+all; at expected positivity near 5%, five of five positive has a chance of
+about 1 in 3 million. Months with 1 to 4 tested are left to the residual rule.
+
 ## Checks across bands
 
 `add_age_structure_qc_flags()` compares the bands of one facility-month with
@@ -164,24 +172,32 @@ An extreme positivity residual in one band (`flag_resid_extreme`) is compared
 with the other band of the same facility-month, using its dispersion-scaled
 residual (kept in `resid_other_band`):
 
-- `flag_resid_other_band_normal`: the other band is within 2 of expectation.
-  Only this band moved, which points to an entry error in it.
-- `flag_resid_bands_agree`: the other band moves the same way by at least 2.
-  Both bands moved, which points to a real change in positivity.
+- `flag_resid_bands_agree`: the other band is off in the same direction by at
+  least 2. Both bands are affected.
+- `flag_resid_other_band_normal`: the other band is within 2 of expectation,
+  and it was large enough to show the same move: only this band is affected.
+- `flag_resid_other_band_inconclusive`: the other band is within 2 but too
+  small to tell. Had its positivity risen by the same factor as this band's,
+  its residual would still have been below 2.
 
-Both are context only for now: they add a reason for review but do not change
-the priority or what any scenario omits. `summarise_residual_agreement()`
-gives aggregate evidence for deciding whether agreeing outliers should get a
-lower priority: how outliers split between the classes, and, for each class,
-how often the outlier persists into the neighbouring month and how often
-other facilities in the same area move the same way that month. Real changes
-in transmission tend to persist and to be shared; entry errors tend to do
-neither.
+These are context only: they add a reason for review but do not change the
+priority or what any scenario omits. `summarise_residual_agreement()` gives
+aggregate evidence by class: how often the outlier persists into the
+neighbouring month, and how often other facilities in the same area move the
+same way that month.
+
+On a first full run of real first-ANC data, outliers were almost all upward,
+facility-specific, single-month spikes, with median observed positivity of
+45-100% against an expected 4-7%. Persistence and shared movement were the
+same whether or not both bands were affected, and testing volume and coverage
+were normal. Both bands being affected therefore most often marks an error
+repeated across the form (for example tested counts copied into positives, or
+positives from another indicator), not a real change, and agreeing outliers
+keep their priority.
 
 ## Not yet included
 
-A lower priority for outliers where both bands agree (pending the evidence
-above), age-specific
+Age-specific
 estimates (where the age-structure flags would omit counts), and age filters
 in the dashboard are later phases. In the dashboard, a flagged record is still
 one band's row.

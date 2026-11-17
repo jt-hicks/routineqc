@@ -78,13 +78,17 @@ the older one (a log odds ratio) differs from the facility's usual
 contrast. No direction is assumed.
 }
 
-For a row with an extreme positivity residual (\code{flag_resid_extreme}), two
+For a row with an extreme positivity residual (\code{flag_resid_extreme}), three
 context flags compare the other band of the same facility-month, using its
 dispersion-scaled residual (kept in \code{resid_other_band}):
-\code{flag_resid_bands_agree} when it moves the same way by at least 2, a
-probable real change in positivity; \code{flag_resid_other_band_normal} when it is
-within 2 of expectation, a probable entry error in this band. They have no
-priority or action; \code{\link[=summarise_residual_agreement]{summarise_residual_agreement()}} summarises them.
+\code{flag_resid_bands_agree} when it is off in the same direction by at least 2
+(both bands affected, as with an error repeated across the form or a
+facility-wide change); \code{flag_resid_other_band_normal} when it is within 2 of
+expectation although it could have shown the same move (only this band
+affected); and \code{flag_resid_other_band_inconclusive} when it is within 2 but
+too small to have shown the move: had its positivity risen by the same
+factor as this band's, its residual would still have been below 2. They have
+no priority or action; \code{\link[=summarise_residual_agreement]{summarise_residual_agreement()}} summarises them.
 
 The baseline is the facility's pooled counts over the months in the window
 (earlier months only for a \code{trailing} baseline; earlier and later for
