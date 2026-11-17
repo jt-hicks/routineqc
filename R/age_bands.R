@@ -226,6 +226,10 @@ add_age_band_qc_flags <- function(data) {
 #'   a partial sum and an injected count error.
 #' @param swap_fraction Approximate proportion of facility-months whose two
 #'   bands are entered in each other's columns.
+#' @param outbreak_fraction Approximate proportion of council-months with a
+#'   real rise in positivity in every facility and both bands, recorded in
+#'   `injected_outbreak`. Zero, the default, draws no random numbers.
+#' @param outbreak_log_odds Rise in the log odds of positivity in an outbreak.
 #' @param seed Random seed.
 #'
 #' @return A tibble, one row per facility, month and age band.
@@ -233,7 +237,7 @@ add_age_band_qc_flags <- function(data) {
 simulate_qc_age_data <- function(n_regions = 2, councils_per_region = 2, facilities_per_council = 4,
                                  n_months = 36, start_month = '2019-07-01', break_month = '2021-01-01',
                                  partial_fraction = 0.03, error_fraction = 0.02, swap_fraction = 0.01,
-                                 seed = 1) {
+                                 outbreak_fraction = 0, outbreak_log_odds = 1.2, seed = 1) {
   set.seed(seed)
   months <- seq.Date(as.Date(start_month), by = 'month', length.out = n_months)
   facilities <- dplyr::bind_rows(lapply(seq_len(n_regions), function(r) {
@@ -264,6 +268,14 @@ simulate_qc_age_data <- function(n_regions = 2, councils_per_region = 2, facilit
   after <- attending - before
   tested <- stats::rbinom(n, attending, 0.95)
   lp <- -1.6 + 0.5 * season + grid$effect + ifelse(grid$code == 'lt20', 0.4, 0)
+  outbreak <- rep(FALSE, n)
+  if (outbreak_fraction > 0) {
+    council_month <- paste(grid$district, grid$month_date)
+    cells <- unique(council_month)
+    hit <- cells[stats::runif(length(cells)) < outbreak_fraction]
+    outbreak <- council_month %in% hit
+    lp <- lp + ifelse(outbreak, outbreak_log_odds, 0)
+  }
   positive <- stats::rbinom(n, tested, stats::plogis(lp))
 
   summed <- grid$month_date >= as.Date(break_month)
@@ -277,7 +289,8 @@ simulate_qc_age_data <- function(n_regions = 2, councils_per_region = 2, facilit
     tested_bands_reported = expected, positive_bands_reported = expected,
     anc_before_12wk_bands_reported = expected, anc_after_12wk_bands_reported = expected,
     source_id = ifelse(summed, 'synthetic-5yr-bands', 'synthetic-2-bands'),
-    injected_error = FALSE, injected_partial = FALSE, injected_swap = FALSE
+    injected_error = FALSE, injected_partial = FALSE, injected_swap = FALSE,
+    injected_outbreak = outbreak
   )
 
   pick <- function(pool, fraction) {

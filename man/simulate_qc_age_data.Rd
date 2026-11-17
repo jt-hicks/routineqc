@@ -14,6 +14,8 @@ simulate_qc_age_data(
   partial_fraction = 0.03,
   error_fraction = 0.02,
   swap_fraction = 0.01,
+  outbreak_fraction = 0,
+  outbreak_log_odds = 1.2,
   seed = 1
 )
 }
@@ -31,6 +33,12 @@ a partial sum and an injected count error.}
 
 \item{swap_fraction}{Approximate proportion of facility-months whose two
 bands are entered in each other's columns.}
+
+\item{outbreak_fraction}{Approximate proportion of council-months with a
+real rise in positivity in every facility and both bands, recorded in
+\code{injected_outbreak}. Zero, the default, draws no random numbers.}
+
+\item{outbreak_log_odds}{Rise in the log odds of positivity in an outbreak.}
 
 \item{seed}{Random seed.}
 }

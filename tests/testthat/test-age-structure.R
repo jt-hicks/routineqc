@@ -114,3 +114,65 @@ testthat::test_that('age-structure settings are configured and validated', {
                               'age_positivity_contrast', 'age_band_missing') %in% catalog$key))
   testthat::expect_match(catalog$definition[catalog$key == 'age_mix_shift'], 'above 6')
 })
+
+testthat::test_that('booking-timing flags say whether after-12-week bookings are zero or swapped', {
+  d <- age_structure_fixture(24)
+  set_before <- function(d, i, young, old) {
+    d$anc_before_12wk[at_month(d, i, 'lt20')] <- young
+    d$anc_before_12wk[at_month(d, i, 'ge20')] <- old
+    d
+  }
+  d <- set_before(d, 13, 28, 112)   # 70% early against a usual 30%: the columns look swapped
+  d <- set_before(d, 16, 40, 160)   # every booking early: none after 12 weeks
+  d <- set_before(d, 19, 26, 104)   # 65% early: a shift that is neither
+  out <- routineqc::add_age_structure_qc_flags(d)
+  month <- function(i) out$month_date == sort(unique(out$month_date))[i]
+  testthat::expect_true(all(out$flag_booking_timing_shift[month(13) | month(16)]))
+  testthat::expect_true(all(out$flag_booking_columns_swapped[month(13)]))
+  testthat::expect_false(any(out$flag_booking_after_zero[month(13)]))
+  testthat::expect_true(all(out$flag_booking_after_zero[month(16)]))
+  testthat::expect_false(any(out$flag_booking_columns_swapped[month(16)]))
+  testthat::expect_false(any((out$flag_booking_after_zero | out$flag_booking_columns_swapped) &
+                               !out$flag_booking_timing_shift))
+  generic <- out$flag_booking_timing_shift & !out$flag_booking_after_zero & !out$flag_booking_columns_swapped
+  if (any(generic)) testthat::expect_true(all(month(19)[generic]))
+  acted <- routineqc::assign_qc_action(out)
+  testthat::expect_true(all(grepl('booking columns look swapped', acted$qc_reason[month(13)])))
+  testthat::expect_true(all(grepl('after 12 weeks reported as zero', acted$qc_reason[month(16)])))
+  testthat::expect_false(any(grepl('differs from the facility', acted$qc_reason[month(13) | month(16)])))
+  testthat::expect_true(all(acted$review_priority[month(13) | month(16)] == 'low'))
+})
+
+testthat::test_that('positivity outliers are classed by the other age band', {
+  data <- routineqc::simulate_qc_age_data(n_regions = 3, councils_per_region = 3, facilities_per_council = 6,
+                                          n_months = 48, outbreak_fraction = 0.03, outbreak_log_odds = 2.5,
+                                          seed = 7)
+  run <- suppressWarnings(routineqc::run_routine_qc(
+    data, facility_var = 'facility_id', region_var = 'region', month_var = 'month_date',
+    tested_var = 'tested', positive_var = 'positive', attending_var = 'attending',
+    attendance_definition = 'first ANC attendance', district_var = 'district',
+    age_group_var = 'age_group', config = routineqc::qc_config('anc_first_visit')
+  ))
+  x <- run$data_flagged
+  e <- x$flag_resid_extreme
+  # Context only: set on outliers, never on their own, and never both.
+  testthat::expect_false(any((x$flag_resid_bands_agree | x$flag_resid_other_band_normal) & !e))
+  testthat::expect_false(any(x$flag_resid_bands_agree & x$flag_resid_other_band_normal))
+  errors <- e & x$injected_error & !x$injected_outbreak
+  outbreaks <- e & x$injected_outbreak & !x$injected_error
+  testthat::expect_gt(sum(errors), 10)
+  testthat::expect_gt(mean(x$flag_resid_other_band_normal[errors]), 0.8)
+  testthat::expect_gt(sum(outbreaks), 5)
+  testthat::expect_gt(mean(x$flag_resid_bands_agree[outbreaks]), 0.5)
+  # Labels do not change priority: an agreeing outlier keeps its residual priority.
+  testthat::expect_true(all(x$review_priority[x$flag_resid_bands_agree] %in% c('critical', 'high')))
+  testthat::expect_true(any(grepl('other age band moves the same way', x$qc_reason)))
+  s <- routineqc::summarise_residual_agreement(x)
+  testthat::expect_identical(s$by_class$class, c('other_normal', 'both_agree', 'opposite', 'other_not_assessed'))
+  testthat::expect_equal(sum(s$by_class$outlier_rows), sum(e & !is.na(x$pearson_resid_scaled)))
+  testthat::expect_equal(sum(s$by_year$outlier_rows), sum(s$by_class$outlier_rows))
+  ids <- c('facility_id', 'month_date', 'region', 'district')
+  testthat::expect_false(any(ids %in% unlist(lapply(s, names))))
+  shared <- s$by_class$share_shared_in_area
+  testthat::expect_gt(shared[2], shared[1])
+})

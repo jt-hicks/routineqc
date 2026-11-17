@@ -22,10 +22,17 @@
   with each other and with the facility's history: a missing band, age mix,
   swapped bands, booking timing, and the positivity contrast between bands.
   Count-based z-scores with overdispersion and minimum shifts; review-only
-  (no count is omitted). New action `review_age_structure`. Settings in the new
+  (no count is omitted). Booking-timing flags say when no booking after 12
+  weeks was reported, or when the before and after counts look swapped. New
+  action `review_age_structure`. Settings in the new
   `age_structure` configuration section (schema 9).
 - New `summarise_age_band_deviations()`: aggregate distributions of the
   age-structure measurements, for choosing thresholds.
+- A positivity outlier in one age band is labelled by the other band of the
+  same facility-month: `flag_resid_other_band_normal` (probable entry error)
+  or `flag_resid_bands_agree` (probable real change). Context only; priorities
+  are unchanged. `summarise_residual_agreement()` gives aggregate evidence on
+  how often each happens, with persistence and shared movement in the area.
 - New `simulate_qc_age_data()` for synthetic age-band data, without stored
   zeros and with some swapped bands.
 

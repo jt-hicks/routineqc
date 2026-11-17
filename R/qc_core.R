@@ -1093,7 +1093,9 @@ assign_qc_action <- function(data,
     'flag_band_sum_partial_tested', 'flag_band_sum_partial_positive',
     'flag_band_sum_partial_attending', 'flag_band_metadata_inconsistent',
     'flag_age_band_missing', 'flag_age_mix_shift', 'flag_age_bands_swapped',
-    'flag_booking_timing_shift', 'flag_age_positivity_contrast'
+    'flag_booking_timing_shift', 'flag_age_positivity_contrast',
+    'flag_booking_after_zero', 'flag_booking_columns_swapped',
+    'flag_resid_bands_agree', 'flag_resid_other_band_normal'
   )
   for (nm in flag_names) {
     if (!nm %in% names(out)) out[[nm]] <- FALSE
@@ -1181,6 +1183,8 @@ assign_qc_action <- function(data,
   add(on('flag_resid_extreme') & !on('flag_isolated_extreme') & !on('flag_temporal_context_insufficient'),
       'prevalence outlier, run of months')
   add(on('flag_temporal_context_insufficient'), 'prevalence outlier at the edge of the series or a gap')
+  add(on('flag_resid_extreme') & on('flag_resid_bands_agree'), 'other age band moves the same way')
+  add(on('flag_resid_extreme') & on('flag_resid_other_band_normal'), 'other age band as expected')
   add(on('flag_large_monthly_prevalence_change'), 'prevalence jumps between months')
   add(on('flag_tested_extreme_high'), 'tested far above baseline')
   add(on('flag_tested_extreme_low'), 'tested far below baseline')
@@ -1200,7 +1204,10 @@ assign_qc_action <- function(data,
   add(on('flag_age_band_missing'), 'an age band is missing for this month')
   add(on('flag_age_bands_swapped'), 'age bands look swapped')
   add(on('flag_age_mix_shift') & !on('flag_age_bands_swapped'), 'age mix differs from the facility\'s usual')
-  add(on('flag_booking_timing_shift'), 'share booking before 12 weeks differs from the facility\'s usual')
+  add(on('flag_booking_timing_shift') & on('flag_booking_after_zero'), 'bookings after 12 weeks reported as zero')
+  add(on('flag_booking_timing_shift') & on('flag_booking_columns_swapped'), 'booking columns look swapped')
+  add(on('flag_booking_timing_shift') & !on('flag_booking_after_zero') & !on('flag_booking_columns_swapped'),
+      'share booking before 12 weeks differs from the facility\'s usual')
   add(on('flag_age_positivity_contrast'), 'positivity gap between age bands differs from the facility\'s usual')
   out$qc_reason <- dplyr::if_else(qc_reason == '', 'No QC issue detected', qc_reason)
   out

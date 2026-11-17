@@ -67,11 +67,24 @@ differs from the facility's baseline share.
 the two bands were exchanged, as when values are entered in the wrong
 columns.
 \item \code{flag_booking_timing_shift}: the share of bookings before 12 weeks differs
-from the facility's baseline.
+from the facility's baseline. Two context flags say what kind of change it
+is, without a priority or action of their own: \code{flag_booking_after_zero}
+when no booking after 12 weeks was reported (in a source without stored
+zeros, often a blank cell), and otherwise \code{flag_booking_columns_swapped}
+when the share would fit the baseline with the before and after counts
+exchanged (|z| at most \code{swap_z_max}).
 \item \code{flag_age_positivity_contrast}: positivity in the younger band relative to
 the older one (a log odds ratio) differs from the facility's usual
 contrast. No direction is assumed.
 }
+
+For a row with an extreme positivity residual (\code{flag_resid_extreme}), two
+context flags compare the other band of the same facility-month, using its
+dispersion-scaled residual (kept in \code{resid_other_band}):
+\code{flag_resid_bands_agree} when it moves the same way by at least 2, a
+probable real change in positivity; \code{flag_resid_other_band_normal} when it is
+within 2 of expectation, a probable entry error in this band. They have no
+priority or action; \code{\link[=summarise_residual_agreement]{summarise_residual_agreement()}} summarises them.
 
 The baseline is the facility's pooled counts over the months in the window
 (earlier months only for a \code{trailing} baseline; earlier and later for

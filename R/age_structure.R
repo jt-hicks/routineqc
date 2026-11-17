@@ -18,8 +18,18 @@
   'flag_booking_timing_shift', 'flag_age_positivity_contrast'
 )
 
+# Context, with no priority or action of its own. For a booking-timing flag:
+# which kind of change it is. For an extreme positivity residual in one band:
+# whether the other band of the same facility-month moves the same way (a
+# probable real change) or sits close to expectation (a probable entry error).
+.age_structure_context <- c('flag_booking_after_zero', 'flag_booking_columns_swapped',
+                            'flag_resid_bands_agree', 'flag_resid_other_band_normal')
+
+# Absolute dispersion-scaled residual at which the other band counts as moving.
+.resid_agree_threshold <- 2
+
 .age_structure_columns <- c(
-  'age_mix_bookings', 'age_mix_share', 'age_mix_baseline', 'age_mix_z',
+  'resid_other_band', 'age_mix_bookings', 'age_mix_share', 'age_mix_baseline', 'age_mix_z',
   'booking_early_share', 'booking_early_baseline', 'booking_early_z',
   'age_positivity_min_tested', 'age_positivity_log_or', 'age_positivity_log_or_baseline',
   'age_positivity_contrast_z'
@@ -154,10 +164,23 @@
 #'   the two bands were exchanged, as when values are entered in the wrong
 #'   columns.
 #' * `flag_booking_timing_shift`: the share of bookings before 12 weeks differs
-#'   from the facility's baseline.
+#'   from the facility's baseline. Two context flags say what kind of change it
+#'   is, without a priority or action of their own: `flag_booking_after_zero`
+#'   when no booking after 12 weeks was reported (in a source without stored
+#'   zeros, often a blank cell), and otherwise `flag_booking_columns_swapped`
+#'   when the share would fit the baseline with the before and after counts
+#'   exchanged (|z| at most `swap_z_max`).
 #' * `flag_age_positivity_contrast`: positivity in the younger band relative to
 #'   the older one (a log odds ratio) differs from the facility's usual
 #'   contrast. No direction is assumed.
+#'
+#' For a row with an extreme positivity residual (`flag_resid_extreme`), two
+#' context flags compare the other band of the same facility-month, using its
+#' dispersion-scaled residual (kept in `resid_other_band`):
+#' `flag_resid_bands_agree` when it moves the same way by at least 2, a
+#' probable real change in positivity; `flag_resid_other_band_normal` when it is
+#' within 2 of expectation, a probable entry error in this band. They have no
+#' priority or action; [summarise_residual_agreement()] summarises them.
 #'
 #' The baseline is the facility's pooled counts over the months in the window
 #' (earlier months only for a `trailing` baseline; earlier and later for
@@ -215,7 +238,7 @@ add_age_structure_qc_flags <- function(data,
   .validate_age_structure_config(settings)
   out <- dplyr::as_tibble(data)
   out <- out[setdiff(names(out), .age_structure_columns)]
-  for (f in .age_structure_flags) out[[f]] <- FALSE
+  for (f in c(.age_structure_flags, .age_structure_context)) out[[f]] <- FALSE
   if (!.qc_is_age_disaggregated(out)) return(out)
 
   codes <- unique(stats::na.omit(out$age_group_code))
@@ -225,6 +248,7 @@ add_age_structure_qc_flags <- function(data,
     out$flag_age_band_missing <- as.integer(present[key]) < length(codes)
   }
   if (!all(c(young_band, old_band) %in% codes)) return(out)
+  out <- .add_residual_agreement(out, young_band, old_band)
 
   fm <- .age_structure_frame(out, young_band, old_band)
   n <- fm$y_att + fm$o_att
@@ -233,6 +257,7 @@ add_age_structure_qc_flags <- function(data,
   fm$booking_early_share <- ifelse(!is.na(n) & n > 0 & !is.na(fm$before), fm$before / n, NA_real_)
   fm$age_positivity_min_tested <- pmin(fm$y_tested, fm$o_tested)
   for (col in c('age_mix_baseline', 'age_mix_z', '.mix_z_swap', 'booking_early_baseline', 'booking_early_z',
+                '.timing_z_swap',
                 'age_positivity_log_or', 'age_positivity_log_or_baseline', 'age_positivity_contrast_z')) {
     fm[[col]] <- NA_real_
   }
@@ -244,9 +269,11 @@ add_age_structure_qc_flags <- function(data,
     fm$age_mix_baseline[rows] <- mix$p0
     fm$age_mix_z[rows] <- mix$z
     fm$.mix_z_swap[rows] <- mix$z_swap
-    timing <- .binomial_shift(fm$before[rows], n[rows], mi, baseline_mode, window, min_baseline_months)
+    timing <- .binomial_shift(fm$before[rows], n[rows], mi, baseline_mode, window, min_baseline_months,
+                              swap = TRUE)
     fm$booking_early_baseline[rows] <- timing$p0
     fm$booking_early_z[rows] <- timing$z
+    fm$.timing_z_swap[rows] <- timing$z_swap
     contrast <- .contrast_shift(fm$y_pos[rows], fm$y_tested[rows], fm$o_pos[rows], fm$o_tested[rows],
                                 mi, baseline_mode, window, min_baseline_months)
     fm$age_positivity_log_or[rows] <- contrast$lor
@@ -260,17 +287,40 @@ add_age_structure_qc_flags <- function(data,
   swapped <- mix_flag & !is.na(fm$.mix_z_swap) & abs(fm$.mix_z_swap) <= swap_z_max
   timing_flag <- enough & !is.na(fm$booking_early_z) & abs(fm$booking_early_z) > timing_z_threshold &
     abs(fm$booking_early_share - fm$booking_early_baseline) >= timing_min_shift
+  after_zero <- timing_flag & fm$booking_early_share == 1
+  columns_swapped <- timing_flag & !after_zero & !is.na(fm$.timing_z_swap) & abs(fm$.timing_z_swap) <= swap_z_max
   contrast_flag <- !is.na(fm$age_positivity_min_tested) & fm$age_positivity_min_tested >= min_tested_band &
     !is.na(fm$age_positivity_contrast_z) & abs(fm$age_positivity_contrast_z) > contrast_z_threshold &
     abs(fm$age_positivity_log_or - fm$age_positivity_log_or_baseline) >= contrast_min_log_or_shift
 
   at <- match(key, fm$key)
-  for (col in .age_structure_columns) out[[col]] <- fm[[col]][at]
+  for (col in setdiff(.age_structure_columns, 'resid_other_band')) out[[col]] <- fm[[col]][at]
   pick <- function(x) dplyr::coalesce(x[at], FALSE)
   out$flag_age_mix_shift <- pick(mix_flag)
   out$flag_age_bands_swapped <- pick(swapped)
   out$flag_booking_timing_shift <- pick(timing_flag)
+  out$flag_booking_after_zero <- pick(after_zero)
+  out$flag_booking_columns_swapped <- pick(columns_swapped)
   out$flag_age_positivity_contrast <- pick(contrast_flag)
+  out
+}
+
+# For a row whose band has an extreme positivity residual, compare the other
+# band of the same facility-month: same direction and at least the agreement
+# threshold means both bands moved; below it means only this band did. An
+# other band that was not assessed, or moved the opposite way, sets neither.
+.add_residual_agreement <- function(out, young_band, old_band) {
+  if (!all(c('pearson_resid', 'flag_resid_extreme') %in% names(out))) return(out)
+  r <- if ('pearson_resid_scaled' %in% names(out)) out$pearson_resid_scaled else out$pearson_resid
+  key <- paste(out$facility_id, out$month_date)
+  code <- out$age_group_code
+  other_code <- ifelse(code == young_band, old_band, ifelse(code == old_band, young_band, NA_character_))
+  other <- r[match(paste(key, other_code), paste(key, code))]
+  extreme <- dplyr::coalesce(as.logical(out$flag_resid_extreme), FALSE) & !is.na(r)
+  known <- extreme & !is.na(other)
+  out$resid_other_band <- other
+  out$flag_resid_bands_agree <- known & sign(other) == sign(r) & abs(other) >= .resid_agree_threshold
+  out$flag_resid_other_band_normal <- known & abs(other) < .resid_agree_threshold
   out
 }
 
@@ -329,4 +379,88 @@ summarise_age_band_deviations <- function(data, min_bookings = 20, min_tested_ba
     exceedance[[nm]] <- dplyr::as_tibble(cbind(measure = nm, assessed = sum(ok), grid))
   }
   list(quantiles = dplyr::bind_rows(quantiles), exceedance = dplyr::bind_rows(exceedance))
+}
+
+#' Summarise Agreement of Positivity Outliers Across Age Bands
+#'
+#' Aggregate evidence for judging whether an extreme positivity residual in one
+#' age band is an entry error or a real change, from an age-disaggregated run.
+#' Each extreme row is classed by the other band of the same facility-month:
+#' `both_agree` (same direction, |residual| at least 2), `other_normal`
+#' (|residual| below 2), `opposite` (other direction, at least 2) or
+#' `other_not_assessed`. For each class it reports how often the outlier
+#' persists into the previous or next month of the same band, and how often
+#' other facilities in the same area and month move the same way, since a real
+#' change in transmission tends to persist and to be shared, and an entry error
+#' tends to do neither. The result has no facility, area or month identifiers.
+#'
+#' @param data Flagged data from an age-disaggregated run.
+#' @param area Area column for the shared-movement measure; by default the
+#'   council or district when present, otherwise the region.
+#' @param shared_threshold Mean dispersion-scaled residual of the other
+#'   facilities in the area, in the same band, month and direction, that counts
+#'   as shared movement.
+#' @param min_area_facilities Fewest other assessed facilities an area-month
+#'   needs for the shared-movement measure.
+#'
+#' @return A list of tibbles: `by_class` (counts and shares by class, with
+#'   persistence, shared movement and direction), `by_year` (counts by year,
+#'   band and class) and `other_band` (quantiles of the other band's residual).
+#' @export
+summarise_residual_agreement <- function(data, area = NULL, shared_threshold = 1, min_area_facilities = 3) {
+  .validate_required_columns(data, c('facility_id', 'month_date', 'age_group_code', 'flag_resid_extreme',
+                                     'resid_other_band'))
+  d <- dplyr::as_tibble(data)
+  area <- if (is.null(area)) .unit_field(d) else area
+  .validate_required_columns(d, area)
+  r <- if ('pearson_resid_scaled' %in% names(d)) d$pearson_resid_scaled else d$pearson_resid
+  extreme <- dplyr::coalesce(as.logical(d$flag_resid_extreme), FALSE) & !is.na(r)
+  other <- d$resid_other_band
+  class <- dplyr::case_when(
+    is.na(other) ~ 'other_not_assessed',
+    abs(other) < .resid_agree_threshold ~ 'other_normal',
+    sign(other) == sign(r) ~ 'both_agree',
+    TRUE ~ 'opposite'
+  )
+  # Persistence: an extreme residual in the same series the month before or after.
+  series <- .qc_group_key(d)
+  mi <- .qc_month_index(d$month_date)
+  ext_key <- paste(series[extreme], mi[extreme])
+  persists <- paste(series, mi - 1L) %in% ext_key | paste(series, mi + 1L) %in% ext_key
+  # Shared movement: other facilities in the same area, band and month.
+  unit <- as.character(d[[area]])
+  cell <- paste(unit, d$age_group_code, d$month_date)
+  ok <- !is.na(r) & !is.na(unit)
+  cell_sum <- tapply(r[ok], cell[ok], sum)
+  cell_n <- tapply(rep(1L, sum(ok)), cell[ok], sum)
+  others_n <- as.numeric(cell_n[cell]) - as.numeric(ok)
+  others_mean <- (as.numeric(cell_sum[cell]) - ifelse(ok, r, 0)) / others_n
+  shared_known <- !is.na(others_n) & others_n >= min_area_facilities
+  shared <- shared_known & sign(others_mean) == sign(r) & abs(others_mean) >= shared_threshold
+
+  e <- dplyr::tibble(class = class[extreme], persists = persists[extreme], shared_known = shared_known[extreme],
+                     shared = shared[extreme], up = r[extreme] > 0,
+                     year = format(d$month_date[extreme], '%Y'), band = d$age_group_code[extreme],
+                     other = other[extreme])
+  levels <- c('one_band_only' = 'other_normal', 'both_agree' = 'both_agree', 'opposite' = 'opposite',
+              'other_not_assessed' = 'other_not_assessed')
+  by_class <- dplyr::bind_rows(lapply(unname(levels), function(cl) {
+    x <- e[e$class == cl, , drop = FALSE]
+    dplyr::tibble(
+      class = cl, outlier_rows = nrow(x),
+      share_of_outliers = if (nrow(e) > 0) nrow(x) / nrow(e) else NA_real_,
+      share_up = if (nrow(x) > 0) mean(x$up) else NA_real_,
+      share_persisting = if (nrow(x) > 0) mean(x$persists) else NA_real_,
+      area_assessed = sum(x$shared_known),
+      share_shared_in_area = if (any(x$shared_known)) mean(x$shared[x$shared_known]) else NA_real_
+    )
+  }))
+  by_year <- dplyr::count(e, year, band, class, name = 'outlier_rows')
+  probs <- c(0.05, 0.25, 0.5, 0.75, 0.95)
+  other_band <- dplyr::tibble(
+    quantile = probs,
+    other_residual_when_up = if (any(e$up & !is.na(e$other))) unname(stats::quantile(e$other[e$up], probs, na.rm = TRUE)) else NA_real_,
+    other_residual_when_down = if (any(!e$up & !is.na(e$other))) unname(stats::quantile(e$other[!e$up], probs, na.rm = TRUE)) else NA_real_
+  )
+  list(by_class = by_class, by_year = by_year, other_band = other_band)
 }

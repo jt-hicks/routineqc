@@ -166,13 +166,25 @@
 
 .qc_modifier_notes <- function() {
   dplyr::tibble(
-    flag = c('flag_isolated_extreme', 'flag_temporal_context_insufficient', 'flag_positive_assumed_zero'),
-    label = c('Isolated extreme', 'Not enough temporal context', 'Positive count assumed zero'),
+    flag = c('flag_isolated_extreme', 'flag_temporal_context_insufficient', 'flag_positive_assumed_zero',
+             'flag_booking_after_zero', 'flag_booking_columns_swapped', 'flag_resid_bands_agree',
+             'flag_resid_other_band_normal'),
+    label = c('Isolated extreme', 'Not enough temporal context', 'Positive count assumed zero',
+              'Bookings after 12 weeks reported as zero', 'Booking columns look swapped',
+              'Other age band moves the same way', 'Other age band as expected'),
     definition = c(
       'An extreme residual whose neighbouring months are both present, consecutive and not extreme.',
       'An extreme residual that lacks consecutive months on one side, so it cannot be called isolated.',
       paste('A blank positive count was read as zero, as for sources that do not store zeros.',
-            'The zero is used like a reported one; an implausible zero is caught by the all-negative rule.')
+            'The zero is used like a reported one; an implausible zero is caught by the all-negative rule.'),
+      paste('A booking-timing flag where no booking after 12 weeks was reported. In a source without',
+            'stored zeros this is often a blank cell.'),
+      paste('A booking-timing flag where the share would fit the facility\'s history if the before and',
+            'after 12-week counts were exchanged.'),
+      paste('A positivity outlier whose other age band, in the same facility and month, is off in the',
+            'same direction by at least 2 (scaled residual): more likely a real change than an entry error.'),
+      paste('A positivity outlier whose other age band, in the same facility and month, is within 2 of',
+            'expectation: more likely an entry error in this band.')
     ),
     effect = 'Context for reviewers. It does not change priority or the action.'
   )

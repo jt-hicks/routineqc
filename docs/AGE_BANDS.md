@@ -138,6 +138,13 @@ tested in each band (positivity). A swap is an age-mix shift where the
 exchanged bands would have a z-score of at most 2. No direction is assumed for
 positivity.
 
+A booking-timing flag carries one of two context flags when it fits:
+`flag_booking_after_zero` when no booking after 12 weeks was reported (in a
+source without stored zeros this is often a blank cell), otherwise
+`flag_booking_columns_swapped` when the share would fit the baseline with the
+before and after counts exchanged. They have no priority or action; they
+choose the reason shown for review.
+
 These checks form the evidence domain "age structure", which counts towards
 `review_multiple_signals`; alone they give `review_age_structure`. A missing
 band is a completeness issue (`review_count_completeness`).
@@ -151,9 +158,30 @@ The measurements are kept on both band rows (`age_mix_share`,
 `summarise_age_band_deviations()` summarises them as aggregate quantiles and
 exceedance shares, with no identifiers, for choosing thresholds from real data.
 
+## One age band or both?
+
+An extreme positivity residual in one band (`flag_resid_extreme`) is compared
+with the other band of the same facility-month, using its dispersion-scaled
+residual (kept in `resid_other_band`):
+
+- `flag_resid_other_band_normal`: the other band is within 2 of expectation.
+  Only this band moved, which points to an entry error in it.
+- `flag_resid_bands_agree`: the other band moves the same way by at least 2.
+  Both bands moved, which points to a real change in positivity.
+
+Both are context only for now: they add a reason for review but do not change
+the priority or what any scenario omits. `summarise_residual_agreement()`
+gives aggregate evidence for deciding whether agreeing outliers should get a
+lower priority: how outliers split between the classes, and, for each class,
+how often the outlier persists into the neighbouring month and how often
+other facilities in the same area move the same way that month. Real changes
+in transmission tend to persist and to be shared; entry errors tend to do
+neither.
+
 ## Not yet included
 
-Classifying a model residual as appearing in one band or both, age-specific
+A lower priority for outliers where both bands agree (pending the evidence
+above), age-specific
 estimates (where the age-structure flags would omit counts), and age filters
 in the dashboard are later phases. In the dashboard, a flagged record is still
 one band's row.
