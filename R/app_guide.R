@@ -32,6 +32,10 @@
   # Same merge as assign_qc_action(), so a partial priority setting falls back
   # to the default for each flag it leaves out.
   pr <- utils::modifyList(.default_qc_priority(), .if_null(cfg$priority, list()))
+  ag <- utils::modifyList(.age_structure_defaults(), .if_null(config$age_structure, list()))
+  base <- paste0('the facility\'s pooled share over a baseline of up to ', .g(ag$baseline_window_months),
+                 ' months either side (earlier months only for a trailing baseline; at least ',
+                 .g(ag$min_baseline_months), ' usable)')
   resid_rule <- if (!is.null(p$resid_threshold)) {
     paste0('|Pearson residual| above ', .g(p$resid_threshold))
   } else {
@@ -116,6 +120,26 @@
     row('band_sum_partial_positive', 'Count consistency', 'Positives from incomplete age bands',
         paste('Positives were summed from finer age bands and only some were reported, so they are',
               'probably an undercount.'), 'Band counts from the preparation step'),
+    row('age_band_missing', 'Count consistency', 'Age band missing',
+        'The month has rows for some age bands but not all the bands in the data.', 'Age bands'),
+    row('age_mix_shift', 'Age structure', 'Age mix differs from usual',
+        paste0('The share of first-ANC bookings in the younger band differs from ', base,
+               ': |z| above ', .g(ag$mix_z_threshold), ' and a shift of at least ', .g(100 * ag$mix_min_shift),
+               ' percentage points, with at least ', .g(ag$min_bookings), ' bookings.'),
+        'Bookings in both bands and a baseline'),
+    row('age_bands_swapped', 'Age structure', 'Age bands look swapped',
+        paste0('An age-mix shift that fits the baseline if the two bands are exchanged (|z| of the ',
+               'exchanged bands at most ', .g(ag$swap_z_max), '), as when values go in the wrong columns.'),
+        'Bookings in both bands and a baseline'),
+    row('booking_timing_shift', 'Age structure', 'Booking timing differs from usual',
+        paste0('The share of bookings before 12 weeks differs from ', base, ': |z| above ',
+               .g(ag$timing_z_threshold), ' and a shift of at least ', .g(100 * ag$timing_min_shift),
+               ' percentage points.'), 'Bookings by timing and a baseline'),
+    row('age_positivity_contrast', 'Age structure', 'Positivity gap between bands differs',
+        paste0('Positivity in the younger band relative to the older (a log odds ratio) differs from the ',
+               'facility\'s usual contrast: |z| above ', .g(ag$contrast_z_threshold), ' and a change of at least ',
+               .g(ag$contrast_min_log_or_shift), ' on the log scale, with at least ', .g(ag$min_tested_band),
+               ' tested in each band. No direction is assumed.'), 'Tested and positives in both bands'),
     row('band_sum_partial_attending', 'Attendance', 'Attendance from incomplete age bands',
         'A booking count behind attendance was summed from finer age bands and only some were reported.',
         'Band counts from the preparation step'),
@@ -135,7 +159,7 @@
   }, character(1))
   catalog$authorizes_exclusion <- catalog$key %in% .qc_always_critical
   catalog$domain <- factor(catalog$domain, levels = c('Count consistency', 'Prevalence', 'Tested volume',
-                                                       'Attendance', 'Testing coverage'))
+                                                       'Attendance', 'Testing coverage', 'Age structure'))
   attr(catalog, 'defaulted_sections') <- attr(cfg, 'defaulted_sections')
   catalog
 }

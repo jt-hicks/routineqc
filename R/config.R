@@ -42,9 +42,18 @@
     band_sum_partial_positive = 'high',
     band_metadata_inconsistent = 'high',
     attendance_sum_mismatch = 'medium',
-    band_sum_partial_attending = 'medium'
+    band_sum_partial_attending = 'medium',
+    # Age-structure checks (schema 9).
+    age_bands_swapped = 'high',
+    age_band_missing = 'medium',
+    age_mix_shift = 'medium',
+    age_positivity_contrast = 'medium',
+    booking_timing_shift = 'low'
   )
 }
+
+.age_structure_priority_keys <- c('age_bands_swapped', 'age_band_missing', 'age_mix_shift',
+                                  'age_positivity_contrast', 'booking_timing_shift')
 
 .age_band_priority_keys <- c('band_sum_partial_tested', 'band_sum_partial_positive',
                              'band_metadata_inconsistent', 'attendance_sum_mismatch',
@@ -86,6 +95,7 @@
       coverage_from = NULL
     ),
     priority = .default_qc_priority(),
+    age_structure = .age_structure_defaults(),
     tested_volume = list(
       baseline_mode = 'trailing',
       baseline_window_months = 6,
@@ -166,6 +176,9 @@
 #'   rules.
 #' @param priority Named list overriding the review priority (`critical`,
 #'   `high`, `medium`, `low`) of individual flags. See `docs/ACTION_POLICY.md`.
+#' @param age_structure Named list of age-structure overrides: the band codes
+#'   compared, the baseline window, minimum counts, and z-score and shift
+#'   thresholds. See [add_age_structure_qc_flags()].
 #'
 #' @return An object of class `routineqc_config`.
 #' @export
@@ -177,7 +190,8 @@ qc_config <- function(profile = c('recommended', 'operational', 'retrospective',
                       action_policy = list(),
                       tested_volume = list(),
                       attendance = list(),
-                      priority = list()) {
+                      priority = list(),
+                      age_structure = list()) {
   profile <- match.arg(profile)
   defaults <- .qc_profile_defaults(profile)
   config <- list(
@@ -189,7 +203,8 @@ qc_config <- function(profile = c('recommended', 'operational', 'retrospective',
     action_policy = .merge_config_section(defaults$action_policy, action_policy, 'action_policy'),
     tested_volume = .merge_config_section(defaults$tested_volume, tested_volume, 'tested_volume'),
     attendance = .merge_config_section(defaults$attendance, attendance, 'attendance'),
-    priority = .merge_config_section(defaults$priority, priority, 'priority')
+    priority = .merge_config_section(defaults$priority, priority, 'priority'),
+    age_structure = .merge_config_section(defaults$age_structure, age_structure, 'age_structure')
   )
   class(config) <- c('routineqc_config', 'list')
   validate_qc_config(config)
@@ -199,14 +214,16 @@ qc_config <- function(profile = c('recommended', 'operational', 'retrospective',
 # Schema 5 added prevalence$all_negative_max_probability; schema 6 added the
 # attendance and priority sections; schema 7 added the age-band priorities;
 # schema 8 removed `positive_assumed_zero`, which became context without a
-# priority. A stored configuration is valid with the keys of its own schema.
-.qc_config_schema_version <- 8L
+# priority; schema 9 added the age-structure section and priorities. A stored
+# configuration is valid with the keys of its own schema.
+.qc_config_schema_version <- 9L
 .qc_config_keys_added <- list(
   `5` = list(prevalence = 'all_negative_max_probability'),
-  `7` = list(priority = c(.age_band_priority_keys, 'positive_assumed_zero'))
+  `7` = list(priority = c(.age_band_priority_keys, 'positive_assumed_zero')),
+  `9` = list(priority = .age_structure_priority_keys)
 )
 .qc_config_keys_removed <- list(`8` = list(priority = 'positive_assumed_zero'))
-.qc_config_sections_added <- list(`6` = c('attendance', 'priority'))
+.qc_config_sections_added <- list(`6` = c('attendance', 'priority'), `9` = 'age_structure')
 
 .validate_attendance_config <- function(attendance) {
   numeric_names <- c('excess_ratio', 'excess_min', 'coverage_low',
@@ -252,7 +269,7 @@ validate_qc_config <- function(config) {
   if (!is.list(config) || !all(required %in% names(config))) {
     rlang::abort('QC configuration is missing required sections.')
   }
-  supported <- if (stored) c(4L, 5L, 6L, 7L, .qc_config_schema_version) else .qc_config_schema_version
+  supported <- if (stored) c(4L, 5L, 6L, 7L, 8L, .qc_config_schema_version) else .qc_config_schema_version
   if (!is.integer(config$schema_version) || length(config$schema_version) != 1L ||
       !config$schema_version %in% supported) {
     rlang::abort('Unsupported QC configuration schema version.')
@@ -341,6 +358,7 @@ validate_qc_config <- function(config) {
   }
   .check_action_policy_version(config$action_policy$version, stored = stored)
   if (!is.null(config$attendance)) .validate_attendance_config(config$attendance)
+  if (!is.null(config$age_structure)) .validate_age_structure_config(config$age_structure)
   if (!is.null(config$priority)) {
     bad <- !vapply(config$priority, function(x) {
       is.character(x) && length(x) == 1L && x %in% .qc_priority_levels

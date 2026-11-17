@@ -33,6 +33,7 @@
     review_tested_volume = 'Review: tested volume',
     review_coverage = 'Review: testing coverage',
     review_count_completeness = 'Review: incomplete or assumed count',
+    review_age_structure = 'Review: age structure',
     review_temporal_context = 'Review: temporal context'
   )
   out <- unname(labels[x])

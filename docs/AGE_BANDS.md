@@ -105,9 +105,55 @@ bands make denominators small: with 95% true coverage, fewer than 2% of such
 rows fall below 85% by chance. Coverage above 100% is the existing
 tested-above-attendance flag.
 
+## Checks across bands
+
+`add_age_structure_qc_flags()` compares the bands of one facility-month with
+each other and with the facility's own history. Settings are in
+`qc_config(age_structure = list(...))`; the bands compared are `lt20` and
+`ge20` by default.
+
+| Flag | What it compares | Default priority |
+|---|---|---|
+| `flag_age_band_missing` | A month with rows for some bands but not all | medium |
+| `flag_age_mix_shift` | Share of bookings in the younger band | medium |
+| `flag_age_bands_swapped` | An age-mix shift that fits if the bands are exchanged | high |
+| `flag_booking_timing_shift` | Share of bookings before 12 weeks | low |
+| `flag_age_positivity_contrast` | Younger-band positivity relative to the older (log odds ratio) | medium |
+
+Every check is count-based, because ratios at band level are unstable (many
+months have no young bookings or no positives). The current month is compared
+with the facility's pooled counts over a baseline window: 12 months before it
+for an operational run, and 12 months either side for a retrospective run,
+restarting where the band construction changes. At least 6 usable baseline
+months are needed. The z-score is binomial, inflated by the month-to-month
+overdispersion seen in the baseline. A flag needs both:
+
+- a z-score beyond the threshold (4 by default), and
+- a shift at least as large as the minimum: 15 percentage points for age mix,
+  20 for booking timing, and 1 on the log odds ratio scale for positivity
+  (about a 2.7-fold change in the odds ratio),
+
+and the current month must have at least 20 bookings (age mix, timing) or 20
+tested in each band (positivity). A swap is an age-mix shift where the
+exchanged bands would have a z-score of at most 2. No direction is assumed for
+positivity.
+
+These checks form the evidence domain "age structure", which counts towards
+`review_multiple_signals`; alone they give `review_age_structure`. A missing
+band is a completeness issue (`review_count_completeness`).
+
+**They are review-only.** A value entered in the wrong band leaves the
+facility's totals intact, so no count is omitted from all-band estimates. They
+will matter for age-specific estimates, which are a later phase.
+
+The measurements are kept on both band rows (`age_mix_share`,
+`age_mix_baseline`, `age_mix_z`, `booking_early_*`, `age_positivity_*`).
+`summarise_age_band_deviations()` summarises them as aggregate quantiles and
+exceedance shares, with no identifiers, for choosing thresholds from real data.
+
 ## Not yet included
 
-Checks across the bands of one facility-month (age mix, timing of booking,
-the positivity ratio between bands, and whether a model residual appears in
-one band or both) and age filters in the dashboard are later phases. In the
-dashboard, a flagged record is still one band's row.
+Classifying a model residual as appearing in one band or both, age-specific
+estimates (where the age-structure flags would omit counts), and age filters
+in the dashboard are later phases. In the dashboard, a flagged record is still
+one band's row.

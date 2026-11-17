@@ -13,7 +13,8 @@ qc_config(
   action_policy = list(),
   tested_volume = list(),
   attendance = list(),
-  priority = list()
+  priority = list(),
+  age_structure = list()
 )
 }
 \arguments{
@@ -39,6 +40,10 @@ rules.}
 
 \item{priority}{Named list overriding the review priority (\code{critical},
 \code{high}, \code{medium}, \code{low}) of individual flags. See \code{docs/ACTION_POLICY.md}.}
+
+\item{age_structure}{Named list of age-structure overrides: the band codes
+compared, the baseline window, minimum counts, and z-score and shift
+thresholds. See \code{\link[=add_age_structure_qc_flags]{add_age_structure_qc_flags()}}.}
 }
 \value{
 An object of class \code{routineqc_config}.

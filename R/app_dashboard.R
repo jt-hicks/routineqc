@@ -152,7 +152,8 @@
       shiny::column(5, shiny::textInput('gd_search', 'Search', placeholder = 'for example residual, coverage')),
       shiny::column(4, shiny::selectInput(
         'gd_domain', 'Issue family',
-        choices = c('All', 'Count consistency', 'Prevalence', 'Tested volume', 'Attendance', 'Testing coverage')
+        choices = c('All', 'Count consistency', 'Prevalence', 'Tested volume', 'Attendance', 'Testing coverage',
+                    'Age structure')
       ))
     ),
     DT::DTOutput('gd_catalog'),

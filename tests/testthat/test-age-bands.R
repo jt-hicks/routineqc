@@ -98,7 +98,7 @@ testthat::test_that('the pipeline models age bands and recovers what was injecte
   testthat::expect_identical(x$flag_positive_assumed_zero, zero)
   testthat::expect_true(all(x$qc_action[x$injected_partial & !x$injected_error] != 'retain'))
   testthat::expect_gt(mean(x$flag_any_qc_issue[x$injected_error]), 0.6)
-  clean <- !x$injected_error & !x$injected_partial
+  clean <- !x$injected_error & !x$injected_partial & !x$injected_swap
   testthat::expect_lt(mean(x$flag_any_qc_issue[clean]), 0.05)
   # An assumed zero is context: on its own it leaves a row retained.
   testthat::expect_false(any(grepl('assumed zero', x$qc_reason)))
@@ -190,11 +190,14 @@ testthat::test_that('the first-ANC profile and stored schema 6 configurations va
   testthat::expect_null(anc$priority$positive_assumed_zero)
   old <- routineqc::qc_config()
   old$schema_version <- 6L
-  old$priority[routineqc:::.age_band_priority_keys] <- NULL
+  old$age_structure <- NULL
+  old$priority[c(routineqc:::.age_band_priority_keys, routineqc:::.age_structure_priority_keys)] <- NULL
   testthat::expect_invisible(routineqc:::.validate_qc_config(old, stored = TRUE))
   # A schema 7 configuration still carries the removed priority.
   seven <- routineqc::qc_config()
   seven$schema_version <- 7L
+  seven$age_structure <- NULL
+  seven$priority[routineqc:::.age_structure_priority_keys] <- NULL
   testthat::expect_error(routineqc:::.validate_qc_config(seven, stored = TRUE), 'missing or unknown')
   seven$priority$positive_assumed_zero <- 'low'
   testthat::expect_invisible(routineqc:::.validate_qc_config(seven, stored = TRUE))

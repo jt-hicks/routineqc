@@ -58,7 +58,7 @@ told apart by the `implementation_hash` in the manifest, which is part of
 `analysis_id`, not by the policy version. A later change that reinterprets an
 existing flag, priority or action must bump the policy version.
 
-### Age bands (configuration schemas 7 and 8)
+### Age bands (configuration schemas 7, 8 and 9)
 
 Age-disaggregated first-ANC data (see `docs/AGE_BANDS.md`) add five flags with
 priorities in `config$priority`. None authorizes exclusion, and none
@@ -82,6 +82,15 @@ An attendance mismatch is an attendance issue and counts towards
 `review_multiple_signals`. The other four describe how a count was built
 rather than evidence of an anomaly, so they are not an evidence domain: alone
 they give the action `review_count_completeness`.
+
+Schema 9 adds the `age_structure` settings section and five age-structure
+priorities: `age_bands_swapped` (high), `age_band_missing`, `age_mix_shift`,
+`age_positivity_contrast` (medium) and `booking_timing_shift` (low). A missing
+band is a completeness issue. The other four form the evidence domain "age
+structure", which counts towards `review_multiple_signals`; alone they give
+`review_age_structure`. None omits a count in any scenario: a value in the
+wrong band leaves the facility's totals intact. Stored schema 8 configurations
+stay valid without the new section and keys.
 
 Attendance contradictions are review-only, even with an approved attendance
 definition. They can reflect a problem with the external attendance denominator
@@ -111,7 +120,8 @@ underlying evidence.
 | `review_coverage` | medium | Low or very low testing coverage against attendance, without another active domain |
 | `review_prevalence` | medium | Prevalence/statistical issue without another active domain |
 | `review_tested_volume` | medium | Tested-volume issue without another active domain |
-| `review_count_completeness` | per flag | A count summed from incomplete age bands, or contradicted by its band counts, without another active domain |
+| `review_age_structure` | per flag | Age mix, booking timing or the positivity contrast between age bands differs from the facility's history, or the bands look swapped, without another active domain |
+| `review_count_completeness` | per flag | A count summed from incomplete age bands, contradicted by its band counts, or a missing age band, without another active domain |
 | `review_temporal_context` | low | Legacy label shown by the app for stored runs; version 3 never assigns it (temporal context only qualifies `qc_reason`) |
 | `retain` | none | This policy recommends neither review nor exclusion |
 

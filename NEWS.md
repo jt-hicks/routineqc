@@ -18,8 +18,16 @@
 - New `qc_config('anc_first_visit')` profile with coverage cutoffs for first
   ANC attendance. Configuration schema 8 holds the five new priorities; stored
   schema 6 and 7 configurations remain valid. Policy version 3 is unchanged.
+- New `add_age_structure_qc_flags()` compares the bands of a facility-month
+  with each other and with the facility's history: a missing band, age mix,
+  swapped bands, booking timing, and the positivity contrast between bands.
+  Count-based z-scores with overdispersion and minimum shifts; review-only
+  (no count is omitted). New action `review_age_structure`. Settings in the new
+  `age_structure` configuration section (schema 9).
+- New `summarise_age_band_deviations()`: aggregate distributions of the
+  age-structure measurements, for choosing thresholds.
 - New `simulate_qc_age_data()` for synthetic age-band data, without stored
-  zeros.
+  zeros and with some swapped bands.
 
 ## Dashboard redesign
 

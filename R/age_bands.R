@@ -215,8 +215,8 @@ add_age_band_qc_flags <- function(data) {
 #' (`bands_expected = 1`); from it on, `<20` is summed from two finer bands and
 #' `>=20` from four. As in a source that never stores zeros, every zero
 #' positive is a blank read as zero (`positive_zero_filled = TRUE`). Some rows
-#' have partial sums and injected errors in one band only; truth columns
-#' record which.
+#' have partial sums and injected errors in one band only, and some
+#' facility-months have their two bands swapped; truth columns record which.
 #'
 #' @param n_regions,councils_per_region,facilities_per_council Hierarchy size.
 #' @param n_months Number of months.
@@ -224,13 +224,16 @@ add_age_band_qc_flags <- function(data) {
 #' @param break_month First month in which bands are summed from finer bands.
 #' @param partial_fraction,error_fraction Approximate proportions of rows given
 #'   a partial sum and an injected count error.
+#' @param swap_fraction Approximate proportion of facility-months whose two
+#'   bands are entered in each other's columns.
 #' @param seed Random seed.
 #'
 #' @return A tibble, one row per facility, month and age band.
 #' @export
 simulate_qc_age_data <- function(n_regions = 2, councils_per_region = 2, facilities_per_council = 4,
                                  n_months = 36, start_month = '2019-07-01', break_month = '2021-01-01',
-                                 partial_fraction = 0.03, error_fraction = 0.02, seed = 1) {
+                                 partial_fraction = 0.03, error_fraction = 0.02, swap_fraction = 0.01,
+                                 seed = 1) {
   set.seed(seed)
   months <- seq.Date(as.Date(start_month), by = 'month', length.out = n_months)
   facilities <- dplyr::bind_rows(lapply(seq_len(n_regions), function(r) {
@@ -274,7 +277,7 @@ simulate_qc_age_data <- function(n_regions = 2, councils_per_region = 2, facilit
     tested_bands_reported = expected, positive_bands_reported = expected,
     anc_before_12wk_bands_reported = expected, anc_after_12wk_bands_reported = expected,
     source_id = ifelse(summed, 'synthetic-5yr-bands', 'synthetic-2-bands'),
-    injected_error = FALSE, injected_partial = FALSE
+    injected_error = FALSE, injected_partial = FALSE, injected_swap = FALSE
   )
 
   pick <- function(pool, fraction) {
@@ -296,6 +299,20 @@ simulate_qc_age_data <- function(n_regions = 2, councils_per_region = 2, facilit
   out$positive[err[half]] <- out$tested[err[half]]
   out$tested[err[!half]] <- out$tested[err[!half]] * 10
   out$injected_error[err] <- TRUE
+  # Swaps: a facility-month whose two bands went in each other's columns.
+  month_key <- paste(out$facility_id, out$month_date)
+  young_rows <- which(grid$code == 'lt20')
+  old_rows <- which(grid$code == 'ge20')
+  untouched <- young_rows[!month_key[young_rows] %in% month_key[c(part, err)]]
+  n_swap <- if (swap_fraction > 0) min(length(untouched), max(1L, round(swap_fraction * n / 2))) else 0L
+  swap_young <- if (n_swap > 0L) untouched[sample.int(length(untouched), n_swap)] else integer()
+  swap_old <- old_rows[match(month_key[swap_young], month_key[old_rows])]
+  for (col in c('attending', 'tested', 'positive', 'anc_before_12wk', 'anc_after_12wk')) {
+    held <- out[[col]][swap_young]
+    out[[col]][swap_young] <- out[[col]][swap_old]
+    out[[col]][swap_old] <- held
+  }
+  out$injected_swap[c(swap_young, swap_old)] <- TRUE
   # The source stores no zeros: a zero positive was a blank, read as zero.
   out$positive_zero_filled <- out$tested > 0 & out$positive == 0
   out

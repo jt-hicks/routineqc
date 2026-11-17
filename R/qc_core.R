@@ -1091,7 +1091,9 @@ assign_qc_action <- function(data,
     'flag_tested_gt_attending_major', 'flag_attending_negative',
     'flag_coverage_low', 'flag_coverage_very_low', 'flag_attendance_sum_mismatch',
     'flag_band_sum_partial_tested', 'flag_band_sum_partial_positive',
-    'flag_band_sum_partial_attending', 'flag_band_metadata_inconsistent'
+    'flag_band_sum_partial_attending', 'flag_band_metadata_inconsistent',
+    'flag_age_band_missing', 'flag_age_mix_shift', 'flag_age_bands_swapped',
+    'flag_booking_timing_shift', 'flag_age_positivity_contrast'
   )
   for (nm in flag_names) {
     if (!nm %in% names(out)) out[[nm]] <- FALSE
@@ -1110,9 +1112,13 @@ assign_qc_action <- function(data,
   # Not an evidence domain: it says how a value was built, not that it is
   # anomalous. An assumed-zero positive is context only and is not here.
   completeness_issue <- on('flag_band_sum_partial_tested') | on('flag_band_sum_partial_positive') |
-    on('flag_band_sum_partial_attending') | on('flag_band_metadata_inconsistent')
+    on('flag_band_sum_partial_attending') | on('flag_band_metadata_inconsistent') |
+    on('flag_age_band_missing')
+  # How the bands of a facility-month fit together and with their history.
+  age_issue <- on('flag_age_mix_shift') | on('flag_age_bands_swapped') |
+    on('flag_booking_timing_shift') | on('flag_age_positivity_contrast')
   n_domains <- as.integer(prevalence_issue) + as.integer(tested_issue) +
-    as.integer(attendance_issue) + as.integer(coverage_issue)
+    as.integer(attendance_issue) + as.integer(coverage_issue) + as.integer(age_issue)
   multiple <- n_domains >= 2L
 
   # Highest priority among active flags, as an index into the levels (1 =
@@ -1128,7 +1134,7 @@ assign_qc_action <- function(data,
   raise(multiple, priority$multiple_signals)
   # Data carrying only a domain summary flag, without the flags it summarises,
   # still gets a review priority.
-  raise(rank == 5L & (prevalence_issue | tested_issue | attendance_issue | coverage_issue), 'medium')
+  raise(rank == 5L & (prevalence_issue | tested_issue | attendance_issue | coverage_issue | age_issue), 'medium')
   review_priority <- c(.qc_priority_levels, 'none')[rank]
 
   qc_action <- dplyr::case_when(
@@ -1139,6 +1145,7 @@ assign_qc_action <- function(data,
     tested_issue ~ 'review_tested_volume',
     attendance_issue ~ 'review_attendance',
     coverage_issue ~ 'review_coverage',
+    age_issue ~ 'review_age_structure',
     completeness_issue ~ 'review_count_completeness',
     TRUE ~ 'retain'
   )
@@ -1153,7 +1160,7 @@ assign_qc_action <- function(data,
       flag_exclude_authorized = qc_action == 'exclude_core_invalid',
       flag_review_recommended = startsWith(qc_action, 'review_'),
       flag_sensitivity = !core_invalid & !count_invalid &
-        (attendance_issue | prevalence_issue | tested_issue | coverage_issue),
+        (attendance_issue | prevalence_issue | tested_issue | coverage_issue | age_issue),
       flag_any_qc_issue = qc_action != 'retain',
       flag_tested_only_issue = tested_issue & !prevalence_issue & !attendance_issue &
         !coverage_issue & !core_invalid,
@@ -1190,6 +1197,11 @@ assign_qc_action <- function(data,
   add(on('flag_band_sum_partial_positive'), 'positives summed from incomplete age bands')
   add(on('flag_band_sum_partial_attending'), 'attendance summed from incomplete age bands')
   add(on('flag_band_metadata_inconsistent'), 'band counts contradict the reported values')
+  add(on('flag_age_band_missing'), 'an age band is missing for this month')
+  add(on('flag_age_bands_swapped'), 'age bands look swapped')
+  add(on('flag_age_mix_shift') & !on('flag_age_bands_swapped'), 'age mix differs from the facility\'s usual')
+  add(on('flag_booking_timing_shift'), 'share booking before 12 weeks differs from the facility\'s usual')
+  add(on('flag_age_positivity_contrast'), 'positivity gap between age bands differs from the facility\'s usual')
   out$qc_reason <- dplyr::if_else(qc_reason == '', 'No QC issue detected', qc_reason)
   out
 }
@@ -1438,6 +1450,9 @@ run_threshold_sensitivity <- function(data,
   dat <- do.call(add_prevalence_qc_flags, c(list(data = data), config$prevalence))
   dat <- do.call(add_tested_volume_qc, c(list(data = dat), config$tested_volume))
   dat <- do.call(add_temporal_qc_flags, c(list(data = dat), config$temporal))
+  age <- if (is.null(config$age_structure)) .age_structure_defaults() else config$age_structure
+  dat <- do.call(add_age_structure_qc_flags,
+                 c(list(data = dat, baseline_mode = config$tested_volume$baseline_mode), age))
   assign_qc_action(
     dat,
     policy = config$action_policy$name,
