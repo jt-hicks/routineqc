@@ -51,6 +51,29 @@
   once per band. Scenario provenance adds `records_total`.
 - New `simulate_qc_age_data()` for synthetic age-band data, without stored
   zeros and with some swapped bands.
+- Reasons and the QC guide say "age group" rather than "age band" (for
+  example "other age group as expected"). Function arguments and flag names
+  are unchanged.
+
+### Dashboard: age groups
+
+- One **Age group** setting beside the run picker, shown for age-disaggregated
+  runs, applies to every tab. With one age group chosen, every view shows only
+  its records, and Filter impact and the Overview impact chart give that
+  group's own estimates (`by_age_band = TRUE`).
+- Explore data: "Compare age groups" draws one line per group; flagged
+  records sit on their own group's line, or on the month's total when groups
+  are shown together. "Show model expectation" adds the model's expected
+  positivity, or the rolling tested baseline, for a selected facility. The
+  reporting strip has one row per age group for a facility and a single axis
+  otherwise. The records table has readable columns, an age-group column, a
+  priority filter and optional model and tested-volume columns. A selected
+  record shows every age group of its month side by side.
+- The District grid draws one line per age group for each facility.
+- The Review queue sub-tab is retired (its records are the Explore data
+  table); the Diagnostics run-wide scatters move to Run details > Model checks.
+- Fixed: "Share of records flagged" divided flagged records by facility-months,
+  overstating it for age-disaggregated data.
 
 ## Dashboard redesign
 

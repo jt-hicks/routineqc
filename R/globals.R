@@ -59,5 +59,5 @@ utils::globalVariables(c(
   'share_flagged', 'status', 'tested_matched', 'tested_status', 'tested_total', 'unit',
   '.source', 'key', 'flag_priority', 'record_priority', 'records', 'flagged_months', 'flagged_records',
   'critical_high_records', 'persistent_facilities', '.series', 'flagged', 'year', 'band',
-  'age_group', 'age_group_code'
+  'age_group', 'age_group_code', '.line', '.line_color', 'a', 'b', 'e'
 ))

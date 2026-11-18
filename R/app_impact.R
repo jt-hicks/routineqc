@@ -9,8 +9,9 @@
 }
 
 # Applies every scenario once, to the whole dataset, before selecting geography.
-.impact_apply <- function(data, scenarios, priority = .default_qc_priority()) {
-  lapply(scenarios, function(s) apply_qc_scenario(data, s, priority))
+# `by_age_band = TRUE` gives the omissions for estimates of one age group.
+.impact_apply <- function(data, scenarios, priority = .default_qc_priority(), by_age_band = FALSE) {
+  lapply(scenarios, function(s) apply_qc_scenario(data, s, priority, by_age_band = by_age_band))
 }
 
 .impact_geography <- function(selection, data) {

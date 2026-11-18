@@ -410,6 +410,12 @@
   } else {
     NA_real_
   }
+  # With several age groups, each facility has one line per group, in the
+  # age-group colours; otherwise one grey line per facility.
+  groups <- if (.qc_is_age_disaggregated(dat)) unique(as.character(dat$age_group_code)) else character()
+  grouped <- length(groups) > 1L
+  dat$.line <- if (grouped) paste(dat$facility_id, dat$age_group_code) else as.character(dat$facility_id)
+  dat$.line_color <- if (grouped) unname(.age_group_colors(groups)[as.character(dat$age_group_code)]) else '#5d6a63'
   dat <- dplyr::bind_cols(dat, .district_flag_marks(dat, metric, priority))
   marks <- dat[!is.na(dat$.mark_family) & !is.na(dat$.metric), , drop = FALSE]
   marks <- dplyr::left_join(marks, .qc_priority_style, by = c('.mark_priority' = 'priority'))
@@ -418,7 +424,7 @@
   marks <- marks[order(match(marks$.mark_priority, .qc_priority_levels), decreasing = TRUE), , drop = FALSE]
 
   plot <- ggplot2::ggplot(
-    dat, ggplot2::aes(x = month_date, y = .metric, group = facility_id)
+    dat, ggplot2::aes(x = month_date, y = .metric, group = .line)
   )
   if (metric == 'coverage') {
     plot <- plot +
@@ -426,14 +432,15 @@
       ggplot2::geom_hline(yintercept = 0.8, color = '#9aa59f', linetype = 'dashed')
   }
   plot <- plot +
-    ggplot2::geom_line(color = '#5d6a63', linewidth = 0.4, na.rm = TRUE) +
+    ggplot2::geom_line(ggplot2::aes(color = I(.line_color)), linewidth = 0.4, na.rm = TRUE) +
     suppressWarnings(
       ggplot2::geom_point(
-        ggplot2::aes(text = .tooltip), color = '#5d6a63', size = 0.7, na.rm = TRUE
+        ggplot2::aes(text = .tooltip, color = I(.line_color)), size = 0.7, na.rm = TRUE
       )
     ) +
     ggplot2::geom_line(
-      ggplot2::aes(y = .reference), color = '#9aa59f', linetype = 'dashed', na.rm = TRUE
+      ggplot2::aes(y = .reference, color = I(if (grouped) .line_color else '#9aa59f')),
+      linetype = 'dashed', alpha = if (grouped) 0.6 else 1, na.rm = TRUE
     )
   if (nrow(marks) > 0L) {
     plot <- plot + suppressWarnings(
@@ -463,7 +470,7 @@
 }
 
 # Key for the facet marks, as HTML so it reads without hovering.
-.district_flag_key <- function(metric) {
+.district_flag_key <- function(metric, groups = character()) {
   fams <- Filter(function(s) metric %in% s$metrics, .qc_flag_families)
   swatch <- function(color, filled, size) {
     shiny::tags$span(style = paste0(
@@ -483,7 +490,14 @@
     item(swatch('#3f4744', TRUE, 12), 'High'),
     item(swatch('#3f4744', FALSE, 12), 'Medium'),
     item(swatch('#3f4744', FALSE, 9), 'Low'),
-    if (metric == 'coverage') item('Dashed line 80%, dotted 100%')
+    if (metric == 'coverage') item('Dashed line 80%, dotted 100%'),
+    if (length(groups) > 1L) shiny::tagList(
+      shiny::tags$br(),
+      shiny::tags$strong('Age group: ', style = 'margin-right:8px;'),
+      lapply(names(groups), function(lab) item(shiny::tags$span(style = paste0(
+        'display:inline-block;width:18px;height:3px;background:', .age_group_colors(unname(groups))[[groups[[lab]]]],
+        ';vertical-align:middle;margin-right:6px;')), lab))
+    )
   )
 }
 

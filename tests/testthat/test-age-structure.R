@@ -170,7 +170,7 @@ testthat::test_that('positivity outliers are classed by the other age band', {
   testthat::expect_gt(mean(x$flag_resid_bands_agree[outbreaks]), 0.5)
   # Labels do not change priority: an agreeing outlier keeps its residual priority.
   testthat::expect_true(all(x$review_priority[x$flag_resid_bands_agree] %in% c('critical', 'high')))
-  testthat::expect_true(any(grepl('other age band also off in the same direction', x$qc_reason)))
+  testthat::expect_true(any(grepl('other age group also off in the same direction', x$qc_reason)))
   s <- routineqc::summarise_residual_agreement(x)
   testthat::expect_identical(s$by_class$class, c('other_normal', 'both_agree', 'other_inconclusive', 'opposite', 'other_not_assessed'))
   testthat::expect_equal(sum(s$by_class$outlier_rows), sum(e & !is.na(x$pearson_resid_scaled)))

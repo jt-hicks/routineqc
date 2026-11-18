@@ -100,6 +100,13 @@
   facts <- c(
     Dataset = if (is.null(dataset) || is.na(dataset)) 'Not recorded' else as.character(dataset),
     `Reporting period` = paste(format(min(data$month_date), '%b %Y'), 'to', format(max(data$month_date), '%b %Y')),
+    `Age group` = {
+      g <- .age_group_of(run)
+      if (is.null(g)) '' else {
+        label <- if ('age_group' %in% names(data)) as.character(data$age_group[1]) else g
+        paste(label, 'only (choose at the top)')
+      }
+    },
     Records = format(nrow(data), big.mark = ','),
     Facilities = format(dplyr::n_distinct(data$facility_id), big.mark = ','),
     stats::setNames(format(length(unique(units)), big.mark = ','), unit_label),

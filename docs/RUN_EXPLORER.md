@@ -45,15 +45,23 @@ unchanged and now sit inside them.
   there is no composite quality score. Expected facility-months are inferred
   from each facility's first to last report unless a schedule is supplied; the
   page says so.
-- **Explore data** (*Explorer*, then *Review queue*, *Diagnostics*, *District
-  grid*): cascading National, Region, Council or District, Facility navigation
+- **Age group** (age-disaggregated runs only): a setting beside the run picker
+  that applies to every tab, either all age groups together or one group. With
+  one group, every view holds only its records and Filter impact gives that
+  group's own estimates. See `docs/AGE_BANDS.md`.
+- **Explore data** (*Explorer*, then *District grid*): cascading National, Region, Council or District, Facility navigation
   with a breadcrumb and reset. Four measures (positivity, tested, attendance,
   coverage) are computed as totals over matched records, never as averages of
   facility percentages. Months without a valid value are gaps, not zeros. A
   facility selection shows its reporting states (reported, zero tested, missing
   count, invalid count, absent) and marks flagged records; clicking a mark, or a
-  row of the review table, explains the flags with the thresholds of the run.
-  The table of units one level down drills down when a row is selected.
+  row of the records table, explains the flags with the thresholds of the run
+  and shows every age group of that month side by side. For a facility, the
+  model's expected positivity or the rolling tested baseline can be drawn
+  dashed. With age groups, "Compare age groups" draws one line per group. The
+  records table can be filtered by priority and widened with model and
+  tested-volume columns. The table of units one level down drills down when a
+  row is selected.
 - **Filter impact:** how hypothetical observation-level QC choices change aggregate
   estimates. All preset scenarios include facilities regardless of reporting
   completeness; flags omit only affected counts in each facility-month. See
@@ -63,7 +71,9 @@ unchanged and now sit inside them.
   actually used by the selected run (runs saved without some settings show the
   current defaults and say so), the context modifiers, and the flag, priority and
   action distinction.
-- **Run details:** configuration, provenance and the *Attendance* panel.
+- **Run details:** configuration, provenance, the *Attendance* panel and
+  *Model checks* (the run-wide residual and tested robust-z scatters, and
+  before/after prevalence).
 
 The earlier panels are described below.
 
@@ -94,14 +104,16 @@ The earlier panels are described below.
   definition the run carries, an overall summary, the monthly proportion, and a
   table by district, region, or facility ranked by that proportion. Runs without
   attendance data say so.
-- **Review queue:** display-only filters for action, priority, geography,
+- **Review queue** (retired from the dashboard; its records are the Explore
+  data table): display-only filters for action, priority, geography,
   facility, reason, prediction status, reporting dates, and reporting-consistency
   cohort. Focused column
   views cover review essentials, counts, model assessment, and tested-volume
   assessment; an all-fields view remains available. Hovering over a heading
   shows its definition. Date filtering is opt-in, the displayed row count is
   explicit, and one button resets all queue filters.
-- **Diagnostics:** interactive selected-facility prevalence and tested-count
+- **Diagnostics** (now *Model checks*; the facility series are in Explore
+  data): interactive selected-facility prevalence and tested-count
   time series, prevalence residuals, tested-volume robust z-scores, and
   before/after prevalence. Facility plots compare observations with the
   already-stored GAM expectation or tested-volume rolling baseline; they do not

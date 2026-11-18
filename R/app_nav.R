@@ -167,3 +167,43 @@
 .explore_metric_labels <- function() {
   stats::setNames(names(.explore_metrics), vapply(.explore_metrics, `[[`, character(1), 'label'))
 }
+
+# Age groups of an age-disaggregated run, as choices named by their labels,
+# younger groups first. Empty for data without age groups.
+.age_group_choices <- function(data) {
+  if (!.qc_is_age_disaggregated(data)) return(character())
+  codes <- unique(as.character(data$age_group_code[!is.na(data$age_group_code)]))
+  if (length(codes) < 2L) return(character())
+  codes <- codes[order(!startsWith(codes, 'lt'), codes)]
+  labels <- if ('age_group' %in% names(data)) {
+    as.character(data$age_group[match(codes, as.character(data$age_group_code))])
+  } else {
+    codes
+  }
+  labels[is.na(labels) | labels == ''] <- codes[is.na(labels) | labels == '']
+  stats::setNames(codes, labels)
+}
+
+# The run as one age group sees it: only that group's records. Any other
+# value (NULL, 'all', an unknown code) leaves the run whole.
+.run_for_age_group <- function(run, group) {
+  data <- run$data_flagged
+  if (is.null(group) || identical(group, 'all') || !.qc_is_age_disaggregated(data) ||
+      !group %in% data$age_group_code) {
+    return(run)
+  }
+  run$data_flagged <- data[as.character(data$age_group_code) %in% group, , drop = FALSE]
+  attr(run, 'age_group') <- group
+  run
+}
+
+.age_group_of <- function(run) attr(run, 'age_group', exact = TRUE)
+
+# Colours for age groups, younger first; validated as a pair for colour-vision
+# deficiency and contrast on a light surface.
+.age_group_palette <- c('#2e9a6e', '#2b5fb3', '#8a5a00', '#6b4c9a')
+.age_group_colors <- function(codes) {
+  codes <- unique(codes)
+  ordered <- codes[order(!startsWith(codes, 'lt'), codes)]
+  stats::setNames(.age_group_palette[seq_along(ordered)], ordered)[codes]
+}

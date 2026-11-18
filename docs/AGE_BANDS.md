@@ -228,7 +228,12 @@ refuses an imputation made for the other kind.
 month's bands count once in all-band results, and once per band in band
 results.
 
-## Not yet included
+## In the dashboard
 
-Age filters in the dashboard are a later phase. In the dashboard, a flagged
-record is still one band's row, and results are all-band.
+The run explorer calls bands "age groups". For an age-disaggregated run, an
+**Age group** setting beside the run picker applies to every tab: all age
+groups together, or one group. With one group, every view shows only its
+records, and Filter impact gives that group's own estimates, with the
+omissions above. Explore data can also compare the age groups as one line
+each, and a selected record shows every age group of its month side by side.
+The District grid draws one line per age group for each facility.

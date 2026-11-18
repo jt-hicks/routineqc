@@ -328,7 +328,10 @@ filter_qc_review <- function(data,
     ),
     shiny::titlePanel('routineqc Run Explorer'),
     shiny::p('Read-only local review of validated persisted QC runs.'),
-    shiny::uiOutput('run_selector'),
+    shiny::fluidRow(
+      shiny::column(4, shiny::uiOutput('run_selector')),
+      shiny::column(8, shiny::uiOutput('age_group_selector'))
+    ),
     .dashboard_ui(.qc_legacy_tabs())
   )
 }
@@ -471,12 +474,9 @@ filter_qc_review <- function(data,
         DT::DTOutput('review_table')
       ),
       diagnostics = shiny::tabPanel(
-        'Diagnostics',
-        shiny::selectInput('plot_facility', 'Facility time series', choices = NULL),
-        shiny::fluidRow(
-          shiny::column(6, plotly::plotlyOutput('facility_plot', height = '360px')),
-          shiny::column(6, plotly::plotlyOutput('facility_tested_plot', height = '360px'))
-        ),
+        'Model checks',
+        shiny::p('Every record against the rule thresholds, coloured by action. ',
+                 'One facility\'s series against its model expectation is in Explore data.'),
         shiny::fluidRow(
           shiny::column(6, plotly::plotlyOutput('residual_plot', height = '360px')),
           shiny::column(6, plotly::plotlyOutput('tested_plot', height = '360px'))
@@ -550,14 +550,25 @@ filter_qc_review <- function(data,
       error = function(e) list(ok = FALSE, run = NULL, message = conditionMessage(e))
     )
   })
-  selected_run <- shiny::reactive({
+  run_raw <- shiny::reactive({
     value <- loaded()
     shiny::validate(shiny::need(value$ok, paste('Run validation failed:', value$message)))
     value$run
   })
+  # One age-group setting for every tab: the run each view sees holds only the
+  # chosen group's records. Navigation and choices follow the whole run.
+  output$age_group_selector <- shiny::renderUI({
+    groups <- .age_group_choices(run_raw()$data_flagged)
+    if (length(groups) == 0L) return(NULL)
+    shiny::radioButtons('age_group', 'Age group', inline = TRUE,
+                        choices = c('All age groups' = 'all', groups), selected = 'all')
+  })
+  selected_run <- shiny::reactive({
+    .run_for_age_group(run_raw(), input$age_group)
+  })
 
-  shiny::observeEvent(selected_run(), {
-    data <- selected_run()$data_flagged
+  shiny::observeEvent(run_raw(), {
+    data <- run_raw()$data_flagged
     choices <- function(column) {
       if (!column %in% names(data)) return(character())
       sort(unique(as.character(data[[column]][!is.na(data[[column]])])))
@@ -845,7 +856,7 @@ filter_qc_review <- function(data,
     )
   })
   output$district_flag_key <- shiny::renderUI({
-    .district_flag_key(.value_or(input$district_plot_metric, 'prevalence'))
+    .district_flag_key(.value_or(input$district_plot_metric, 'prevalence'), .age_group_choices(selected_run()$data_flagged))
   })
   output$district_plot_ui <- shiny::renderUI({
     shiny::req(input$plot_district)
@@ -879,7 +890,7 @@ filter_qc_review <- function(data,
   output$configuration <- shiny::renderPrint({ selected_run()$config })
   output$provenance <- shiny::renderPrint({ selected_run()$manifest$provenance })
 
-  .dashboard_server(input, output, session, selected_run)
+  .dashboard_server(input, output, session, selected_run, run_raw)
 
   invisible(list(selected_run = selected_run, review_data = review_data))
 }

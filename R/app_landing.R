@@ -77,7 +77,7 @@
         'Records by QC priority',
         help_id = 'landing_priority_definitions',
         plotly::plotlyOutput('landing_priorities', height = '265px'),
-        shiny::helpText('Each submitted facility-month is counted once at its assigned review priority.')
+        shiny::helpText('Each submitted record (a facility-month, or one age group of it) is counted once at its assigned review priority.')
       )),
       shiny::column(8, card(
         'QC filter impact',
@@ -168,7 +168,8 @@
 
   applied <- shiny::reactive({
     .impact_apply(filtered_flagged_r(), list(moderate = moderate),
-                  .if_null(selected_run()$config$priority, .default_qc_priority()))
+                  .if_null(selected_run()$config$priority, .default_qc_priority()),
+                  by_age_band = !is.null(.age_group_of(selected_run())))
   })
   observed <- shiny::reactive(
     .impact_compute(applied(), list(level = 'national', unit = NULL))

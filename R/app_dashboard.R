@@ -12,7 +12,7 @@
       nested(
         'explore_tabs',
         shiny::tabPanel('Explorer', .explorer_ui()),
-        legacy$review_queue, legacy$diagnostics, legacy$district_grid
+        legacy$district_grid
       )
     ),
     shiny::tabPanel(
@@ -21,7 +21,7 @@
     ),
     shiny::tabPanel('QC guide', .guide_ui()),
     shiny::tabPanel('Run details', nested(
-      'details_tabs', legacy$configuration, legacy$attendance,
+      'details_tabs', legacy$configuration, legacy$attendance, legacy$diagnostics,
       shiny::tabPanel(
         'Run and artifacts',
         shiny::verbatimTextOutput('run_details'),
@@ -42,25 +42,37 @@
     shiny::strong(shiny::textOutput('ex_breadcrumb', inline = TRUE)),
     shiny::fluidRow(
       shiny::column(
-        6,
+        5,
         shiny::radioButtons('ex_metric', 'Measure', choices = .explore_metric_labels(),
                             selected = 'positivity', inline = TRUE)
       ),
-      shiny::column(3, shiny::checkboxInput('ex_panels', 'Show all four measures together', FALSE)),
-      shiny::column(3, shiny::checkboxInput('ex_points', 'Mark flagged records', TRUE))
+      shiny::column(
+        7,
+        shiny::div(
+          style = 'display:flex;flex-wrap:wrap;column-gap:24px;',
+          shiny::uiOutput('ex_compare_ui'),
+          shiny::checkboxInput('ex_points', 'Mark flagged records', TRUE),
+          shiny::uiOutput('ex_expected_ui'),
+          shiny::checkboxInput('ex_panels', 'Show all four measures together', FALSE)
+        )
+      )
     ),
     shiny::uiOutput('ex_chart_ui'),
-    shiny::helpText(
-      'Gaps are months with no valid value, not zeros. Select a facility to mark its flagged records, ',
-      'then click a marked point to see why it was flagged; the table below lists flagged records for any selection.'
-    ),
+    shiny::helpText(shiny::textOutput('ex_chart_help', inline = TRUE)),
+    shiny::h5(shiny::textOutput('ex_strip_title', inline = TRUE)),
     plotly::plotlyOutput('ex_strip', height = '150px'),
-    shiny::h4(shiny::textOutput('ex_children_title', inline = TRUE)),
-    shiny::helpText('Select a row to move down a level.'),
-    DT::DTOutput('ex_children'),
-    shiny::h4('Records to review in this selection'),
+    shiny::uiOutput('ex_children_ui'),
+    shiny::h4(shiny::textOutput('ex_queue_title', inline = TRUE)),
+    shiny::fluidRow(
+      shiny::column(5, shiny::checkboxGroupInput(
+        'ex_queue_priority', 'Priority', inline = TRUE,
+        choices = c('Critical' = 'critical', 'High' = 'high', 'Medium' = 'medium', 'Low' = 'low'),
+        selected = c('critical', 'high', 'medium', 'low')
+      )),
+      shiny::column(4, shiny::checkboxInput('ex_queue_more', 'More columns: model and tested volume', FALSE))
+    ),
     DT::DTOutput('ex_queue'),
-    shiny::h4('Selected record'),
+    shiny::h4(shiny::textOutput('ex_record_title', inline = TRUE)),
     shiny::fluidRow(
       shiny::column(5, shiny::tableOutput('ex_record')),
       shiny::column(7, shiny::uiOutput('ex_explanation'))
@@ -79,6 +91,7 @@
       'in flagged facility-months according to its priority and authorized-exclusion rules.'
     ),
     shiny::strong(shiny::textOutput('fi_geography', inline = TRUE)),
+    shiny::uiOutput('fi_age_note'),
     shiny::fluidRow(
       shiny::column(
         4,
@@ -180,15 +193,26 @@
                               selected = .if_null(sel$facility, ''), server = FALSE)
 }
 
-.dashboard_server <- function(input, output, session, selected_run) {
-  data_r <- shiny::reactive(.explore_prepare(selected_run()$data_flagged))
+.dashboard_server <- function(input, output, session, selected_run, run_raw = selected_run) {
+  # Every record of the run, with a stable row id; each view sees the records
+  # of the chosen age group, with the same ids.
+  all_r <- shiny::reactive(.explore_prepare(run_raw()$data_flagged))
+  group_r <- shiny::reactive(.age_group_of(selected_run()))
+  data_r <- shiny::reactive({
+    data <- all_r()
+    g <- group_r()
+    if (is.null(g)) data else data[as.character(data$age_group_code) %in% g, , drop = FALSE]
+  })
+  has_groups_r <- shiny::reactive(length(.age_group_choices(all_r())) > 0L)
+  compare_r <- shiny::reactive(has_groups_r() && is.null(group_r()) && isTRUE(input$ex_compare))
   catalog_r <- shiny::reactive(.qc_flag_catalog(selected_run()$config))
   selection <- shiny::reactiveVal(.nav_empty())
   record <- shiny::reactiveVal(NULL)
 
   sync_inputs <- function(data, sel) .dashboard_sync_inputs(session, data, sel)
+  # Navigation uses every record, so a selection survives a change of age group.
   move <- function(level, value) {
-    data <- data_r()
+    data <- all_r()
     current <- selection()
     value <- .nav_clean(value)
     wanted <- if (length(value) == 0L) NULL else value[[1]]
@@ -199,10 +223,10 @@
     sync_inputs(data, updated)
   }
 
-  shiny::observeEvent(selected_run(), {
+  shiny::observeEvent(run_raw(), {
     selection(.nav_empty())
     record(NULL)
-    sync_inputs(data_r(), .nav_empty())
+    sync_inputs(all_r(), .nav_empty())
   }, ignoreInit = FALSE)
   shiny::observeEvent(input$ex_region, move('region', input$ex_region), ignoreInit = TRUE)
   shiny::observeEvent(input$ex_mid, move('mid', input$ex_mid), ignoreInit = TRUE)
@@ -210,11 +234,39 @@
   shiny::observeEvent(input$ex_reset, {
     selection(.nav_empty())
     record(NULL)
-    sync_inputs(data_r(), .nav_empty())
+    sync_inputs(all_r(), .nav_empty())
   })
 
   sub_r <- shiny::reactive(.nav_subset(data_r(), selection()))
-  series_r <- shiny::reactive(.explore_series(data_r(), selection()))
+  series_r <- shiny::reactive({
+    if (compare_r()) .explore_series_by_group(data_r(), selection()) else .explore_series(data_r(), selection())
+  })
+  facility_selected_r <- shiny::reactive(!is.null(.nav_normalise(selection())$facility))
+  output$ex_compare_ui <- shiny::renderUI({
+    if (!has_groups_r() || !is.null(group_r())) return(NULL)
+    shiny::checkboxInput('ex_compare', 'Compare age groups', isTRUE(shiny::isolate(input$ex_compare)))
+  })
+  output$ex_expected_ui <- shiny::renderUI({
+    if (!facility_selected_r()) return(NULL)
+    shiny::checkboxInput('ex_expected', 'Show model expectation', isTRUE(shiny::isolate(input$ex_expected)))
+  })
+  expected_on_r <- shiny::reactive(facility_selected_r() && isTRUE(input$ex_expected))
+  output$ex_chart_help <- shiny::renderText(paste0(
+    'Gaps are months with no valid value, not zeros. ',
+    if (facility_selected_r()) {
+      paste0('Diamonds are flagged records', if (compare_r()) ', on their own age group\'s line' else
+        if (has_groups_r() && is.null(group_r())) ', drawn at the month\'s total for all age groups' else '',
+        '; click one to see the record. ',
+        'The dashed line, when shown, is what the QC model expected (positivity) or the rolling baseline (tested).')
+    } else {
+      'Select a facility to mark its flagged records; the table below lists flagged records for any selection.'
+    }
+  ))
+  output$ex_strip_title <- shiny::renderText({
+    if (facility_selected_r()) {
+      if (has_groups_r()) 'Reporting each month, by age group' else 'Reporting each month'
+    } else 'Facilities reporting each month'
+  })
   children_r <- shiny::reactive(.explore_children(data_r(), selection()))
   mid_field_r <- shiny::reactive(.nav_mid_field(data_r()))
 
@@ -222,7 +274,7 @@
 
   points_for <- function(metric) {
     if (!isTRUE(input$ex_points) || is.null(.nav_normalise(selection())$facility)) return(NULL)
-    .explore_flagged_points(data_r(), selection(), metric)
+    .explore_flagged_points(data_r(), selection(), metric, by_group = compare_r() || !is.null(group_r()))
   }
   output$ex_chart_ui <- shiny::renderUI({
     if (isTRUE(input$ex_panels)) plotly::plotlyOutput('ex_panels_plot', height = '640px')
@@ -230,19 +282,28 @@
   })
   output$ex_plot <- plotly::renderPlotly({
     metric <- .value_or(input$ex_metric, 'positivity')
-    p <- .plot_explore_series(series_r(), metric, points_for(metric))
+    p <- .plot_explore_series(series_r(), metric, points_for(metric), expected = expected_on_r())
     plotly::event_register(p, 'plotly_click')
   })
   output$ex_panels_plot <- plotly::renderPlotly({
     pts <- stats::setNames(lapply(names(.explore_metrics), points_for), names(.explore_metrics))
-    .plot_explore_panels(series_r(), pts)
+    .plot_explore_panels(series_r(), pts, expected = expected_on_r())
   })
   output$ex_strip <- plotly::renderPlotly({
     sel <- .nav_normalise(selection())
-    states <- if (!is.null(sel$facility)) .explore_facility_states(data_r(), sel$facility) else NULL
+    states <- if (!is.null(sel$facility)) .explore_facility_states(data_r(), sel$facility, by_group = TRUE) else NULL
     .plot_explore_strip(series_r(), states)
   })
 
+  # The level below the selection; nothing below a facility.
+  output$ex_children_ui <- shiny::renderUI({
+    if (facility_selected_r()) return(NULL)
+    shiny::tagList(
+      shiny::h4(shiny::textOutput('ex_children_title', inline = TRUE)),
+      shiny::helpText('Select a row to move down a level.'),
+      DT::DTOutput('ex_children')
+    )
+  })
   output$ex_children_title <- shiny::renderText({
     child <- .nav_child_level(.nav_normalise(selection()), mid_field_r())
     if (is.na(child)) 'Facility' else paste('Within this selection:', switch(
@@ -254,8 +315,8 @@
     shiny::validate(shiny::need(!is.null(ch), 'Facility selected: there is no lower level.'))
     show <- dplyr::transmute(
       ch, Unit = unit, Facilities = facilities, `Positivity` = positivity, Tested = tested,
-      Coverage = coverage, `Review rows` = review_rows, `High priority rows` = high_priority_rows,
-      `Share of records flagged` = share_flagged
+      Coverage = coverage, Records = records, `Flagged records` = review_rows,
+      `Critical or high` = high_priority_rows, `Share of records flagged` = share_flagged
     )
     DT::datatable(show, rownames = FALSE, selection = 'single', options = list(pageLength = 10)) %>%
       DT::formatPercentage(c('Positivity', 'Coverage', 'Share of records flagged'), 1) %>%
@@ -272,14 +333,22 @@
   queue_r <- shiny::reactive({
     sub <- sub_r()
     sub <- sub[.is_flagged_row(sub), , drop = FALSE]
+    keep <- .if_null(input$ex_queue_priority, character())
+    sub <- sub[as.character(sub$review_priority) %in% keep, , drop = FALSE]
     rank <- match(as.character(sub$review_priority), c('critical', 'high', 'medium', 'low'), nomatch = 5L)
     sub[order(rank, sub$facility_id, sub$month_date), , drop = FALSE]
   })
+  output$ex_queue_title <- shiny::renderText(paste0(
+    'Records to review in this selection (', format(nrow(queue_r()), big.mark = ','), ')'
+  ))
   output$ex_queue <- DT::renderDT({
-    q <- queue_r()
-    cols <- intersect(c('facility_id', 'month_date', 'review_priority', 'qc_action', 'qc_reason', 'tested',
-                        'positive', 'attending'), names(q))
-    DT::datatable(q[cols], rownames = FALSE, selection = 'single', options = list(pageLength = 10))
+    show <- .explore_queue_table(queue_r(), isTRUE(input$ex_queue_more))
+    numeric <- intersect(c('Tested', 'Positive', 'Attendance', 'Tested baseline'), names(show))
+    DT::datatable(show, rownames = FALSE, selection = 'single',
+                  options = list(pageLength = 10, scrollX = TRUE)) %>%
+      DT::formatPercentage(c('Positivity', 'Expected'), 1) %>%
+      DT::formatRound(numeric, 0) %>%
+      DT::formatRound(intersect(c('Scaled residual', 'Tested robust z'), names(show)), 1)
   })
   shiny::observeEvent(input$ex_queue_rows_selected, {
     i <- input$ex_queue_rows_selected
@@ -295,18 +364,31 @@
   record_row <- shiny::reactive({
     r <- record()
     if (is.null(r)) return(NULL)
-    row <- data_r()[data_r()$.row == r, , drop = FALSE]
+    row <- all_r()[all_r()$.row == r, , drop = FALSE]
     if (nrow(row) == 1L) row else NULL
+  })
+  output$ex_record_title <- shiny::renderText({
+    row <- record_row()
+    if (is.null(row)) return('Selected record')
+    paste0('Selected record: ', row$facility_id[[1]], ', ', format(row$month_date[[1]], '%b %Y'),
+           if (has_groups_r()) ', all age groups' else '')
   })
   output$ex_record <- shiny::renderTable({
     row <- record_row()
     shiny::validate(shiny::need(!is.null(row), 'Click a marked point or select a record above.'))
-    .record_details_table(row)
-  }, colnames = FALSE)
+    tab <- .record_month_table(all_r(), row)
+    names(tab)[1] <- ''
+    selected <- attr(tab, 'selected')
+    if (!is.null(selected)) names(tab)[names(tab) == selected] <- paste0(selected, ' (selected)')
+    tab
+  })
   output$ex_explanation <- shiny::renderUI({
     row <- record_row()
     if (is.null(row)) return(NULL)
-    shiny::tagList(lapply(.explain_record(row, catalog_r()), shiny::p))
+    lead <- if (has_groups_r() && 'age_group' %in% names(row)) {
+      shiny::p(shiny::strong(paste0('Why age group ', row$age_group[[1]], ' was flagged')))
+    }
+    shiny::tagList(lead, lapply(.explain_record(row, catalog_r()), shiny::p))
   })
 
   # Overview
@@ -324,7 +406,7 @@
   # QC details. A row in its ranked table opens that unit in Explore data.
   open_unit <- function(field, unit) {
     level <- if (identical(field, 'region')) 'region' else 'mid'
-    data <- data_r()
+    data <- all_r()
     updated <- .nav_set(data, .nav_empty(), level, unit)
     selection(updated)
     record(NULL)
@@ -338,18 +420,36 @@
   geography_r <- shiny::reactive(.impact_geography(selection(), data_r()))
   output$fi_geography <- shiny::renderText(paste('Geography:', geography_r()$label))
   priority_r <- shiny::reactive(.if_null(selected_run()$config$priority, .default_qc_priority()))
+  # One age group: estimates for that group, which also omit what the
+  # age-structure flags put in doubt.
+  by_group_r <- shiny::reactive(!is.null(group_r()))
   applied_r <- shiny::reactive({
-    .impact_apply(selected_run()$data_flagged, .impact_scenarios(), priority_r())
+    .impact_apply(selected_run()$data_flagged, .impact_scenarios(), priority_r(), by_age_band = by_group_r())
   })
   imputed <- shiny::reactiveVal(NULL)
   shiny::observeEvent(selected_run(), imputed(NULL))
+  output$fi_age_note <- shiny::renderUI({
+    g <- group_r()
+    if (!has_groups_r()) return(NULL)
+    if (is.null(g)) {
+      return(shiny::helpText('Estimates for all age groups together. Choose one age group at the top for ',
+                             'its own estimates, which also leave out months where the age groups look ',
+                             'swapped (moderate) and age-mix or positivity-gap changes (strict).'))
+    }
+    label <- names(.age_group_choices(all_r()))[.age_group_choices(all_r()) == g]
+    shiny::tags$div(class = 'alert alert-info', paste0(
+      'Estimates for age group ', label, ' only. They also leave out the counts that the age-structure ',
+      'checks put in doubt: months where the age groups look swapped (from moderate), and age-mix ',
+      'shifts and positivity-gap changes (from strict).'))
+  })
   shiny::observeEvent(input$fi_run_imputation, {
     scenario <- .impact_scenarios()[[input$fi_scenario]]
     result <- tryCatch(
       shiny::withProgress(message = 'Fitting imputation models', value = 0.3, {
         qc_impute_scenario(selected_run()$data_flagged, scenario, mode = input$fi_mode,
                            method = input$fi_method, n_imputations = as.integer(input$fi_n),
-                           seed = as.integer(input$fi_seed), priority = priority_r())
+                           seed = as.integer(input$fi_seed), priority = priority_r(),
+                           by_age_band = by_group_r())
       }),
       error = function(e) e
     )
