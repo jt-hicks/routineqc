@@ -40,6 +40,18 @@
   attendance_sum_mismatch = 'attending'
 )
 
+# Age-structure flags put a band's counts in doubt but leave the facility's
+# totals intact (a count in the wrong band is still in the total). They omit
+# counts only from estimates by age band. A swap puts every count of both
+# bands in doubt; an age-mix shift the bookings; a positivity contrast the
+# positives. Booking timing and a missing band omit nothing: no estimate uses
+# the timing split, and a missing band has no counts to omit.
+.qc_band_flag_targets <- list(
+  age_bands_swapped = c('tested', 'positive', 'attending'),
+  age_mix_shift = 'attending',
+  age_positivity_contrast = 'positive'
+)
+
 .qc_always_critical <- c(
   'core_invalid', 'positive_gt_tested', 'zero_tested_positive',
   'tested_negative', 'positive_negative'
@@ -182,8 +194,10 @@ describe_qc_scenarios <- function(presets = qc_scenario_presets()) {
   list(tested = clean(usable$tested), positive = clean(usable$positive), attending = attending)
 }
 
-# Flags that put each count in doubt, at the cutoff of the scenario.
-.qc_omission_masks <- function(data, observation, priority = .default_qc_priority()) {
+# Flags that put each count in doubt, at the cutoff of the scenario. Estimates
+# by age band also omit what the age-structure flags put in doubt.
+.qc_omission_masks <- function(data, observation, priority = .default_qc_priority(),
+                               by_age_band = FALSE) {
   n <- nrow(data)
   omit <- list(
     tested = rep(FALSE, n), positive = rep(FALSE, n),
@@ -198,13 +212,22 @@ describe_qc_scenarios <- function(presets = qc_scenario_presets()) {
     omit$tested <- omit$tested | authorized
     omit$positive <- omit$positive | authorized
   }
-  for (key in names(.qc_flag_targets)) {
+  targets <- c(.qc_flag_targets, if (isTRUE(by_age_band)) .qc_band_flag_targets)
+  for (key in names(targets)) {
     column <- paste0('flag_', key)
     if (!column %in% names(data) || .flag_priority_rank(key, priority) > cutoff) next
     active <- dplyr::coalesce(as.logical(data[[column]]), FALSE)
-    for (target in .qc_flag_targets[[key]]) omit[[target]] <- omit[[target]] | active
+    for (target in targets[[key]]) omit[[target]] <- omit[[target]] | active
   }
   omit
+}
+
+.check_by_age_band <- function(data, by_age_band) {
+  if (!rlang::is_bool(by_age_band)) rlang::abort('`by_age_band` must be TRUE or FALSE.')
+  if (by_age_band && !.qc_is_age_disaggregated(data)) {
+    rlang::abort('Estimates by age band need age-disaggregated data (an `age_group_code` column).')
+  }
+  invisible(by_age_band)
 }
 
 # Facilities that meet the scenario's eligibility criteria, measured on the
@@ -235,20 +258,30 @@ describe_qc_scenarios <- function(presets = qc_scenario_presets()) {
 #' Pre-existing missingness (`missing` counts) is kept apart from missingness
 #' created by QC (`qc_omitted`, and `invalid` counts, which QC detected).
 #'
+#' With `by_age_band = TRUE` the omissions are those for estimates by age
+#' band: the age-structure flags also omit the counts they put in doubt (a swap
+#' every count of both bands, an age-mix shift the bookings, a positivity
+#' contrast the positives), at their configured priority. Estimates across all
+#' bands do not omit them, because a count in the wrong band is still in the
+#' facility's total.
+#'
 #' @param data Flagged data, such as `run$data_flagged`.
 #' @param scenario A [qc_scenario()].
 #' @param priority Flag priorities, as in `qc_config()$priority`.
+#' @param by_age_band Whether the omissions are for estimates by age band.
+#'   Needs age-disaggregated data.
 #'
 #' @return `data` with added columns and the scenario in attribute `scenario`.
 #' @export
-apply_qc_scenario <- function(data, scenario, priority = .default_qc_priority()) {
+apply_qc_scenario <- function(data, scenario, priority = .default_qc_priority(), by_age_band = FALSE) {
   if (!inherits(scenario, 'qc_scenario')) rlang::abort('`scenario` must come from `qc_scenario()`.')
   .validate_required_columns(data, c('facility_id', 'month_date', 'tested'))
+  .check_by_age_band(data, by_age_band)
   out <- dplyr::as_tibble(data)
   counts <- .baseline_counts(out)
   eligible <- as.character(out$facility_id) %in%
     .scenario_eligible_facilities(out, scenario$eligibility)
-  omit <- .qc_omission_masks(out, scenario$observation, priority)
+  omit <- .qc_omission_masks(out, scenario$observation, priority, by_age_band)
 
   state <- function(raw, usable, omitted, invalid) {
     dplyr::case_when(
@@ -268,6 +301,7 @@ apply_qc_scenario <- function(data, scenario, priority = .default_qc_priority())
   out$scn_tested_state <- state(out$tested, counts$tested, omit$tested, invalid_row)
   out$scn_positive_state <- state(out$positive, counts$positive, omit$positive, invalid_row)
   attr(out, 'scenario') <- scenario
+  attr(out, 'by_age_band') <- by_age_band
   out
 }
 
@@ -283,6 +317,8 @@ apply_qc_scenario <- function(data, scenario, priority = .default_qc_priority())
     council = if ('council' %in% names(scn)) as.character(scn$council) else NA_character_,
     district = if ('district' %in% names(scn)) as.character(scn$district) else NA_character_,
     month_date = scn$month_date,
+    age_group_code = if ('age_group_code' %in% names(scn)) as.character(scn$age_group_code) else NA_character_,
+    age_group = if ('age_group' %in% names(scn)) as.character(scn$age_group) else NA_character_,
     tested = counts$tested, positive = counts$positive, attending = counts$attending,
     coverage_ok = TRUE, tested_imputed = FALSE, positive_imputed = FALSE
   )
@@ -366,7 +402,9 @@ apply_qc_scenario <- function(data, scenario, priority = .default_qc_priority())
 #' come from the same records. Tested count is the sum of usable tested counts.
 #' Testing coverage is the sum of tested over the sum of attendance, over
 #' records where both are usable and attendance is above zero. Facility
-#' percentages are never averaged.
+#' percentages are never averaged. `facility_months` counts facility-months,
+#' not rows: with age-disaggregated data a month's bands count once, or once
+#' per band when `by_age_band = TRUE`.
 #'
 #' Positives/tested is positivity among those tested, not population prevalence.
 #'
@@ -375,13 +413,23 @@ apply_qc_scenario <- function(data, scenario, priority = .default_qc_priority())
 #'   the grouping columns that `level` needs.
 #' @param level `"national"`, `"region"`, `"council"`, `"district"` or `"facility"`.
 #' @param monthly Whether to return one row per month (otherwise the whole period).
+#' @param by_age_band Whether to return one row per age band (`age_group_code`,
+#'   with its label in `age_group`). Use a frame whose omissions were made for
+#'   estimates by age band.
 #'
 #' @return A tibble of aggregate results with explicit denominators.
 #' @export
 qc_aggregate_metrics <- function(frame, level = c('national', 'region', 'council', 'district', 'facility'),
-                                 monthly = TRUE) {
+                                 monthly = TRUE, by_age_band = FALSE) {
   level <- match.arg(level)
   groups <- .aggregate_group_vars(level)
+  if (!rlang::is_bool(by_age_band)) rlang::abort('`by_age_band` must be TRUE or FALSE.')
+  if (by_age_band) {
+    if (!'age_group_code' %in% names(frame) || all(is.na(frame$age_group_code))) {
+      rlang::abort('Aggregation by age band needs a populated `age_group_code` field.')
+    }
+    groups <- c(groups, 'age_group_code')
+  }
   .validate_required_columns(frame, c('facility_id', 'month_date', 'tested', 'positive', 'attending'))
   for (g in groups) {
     if (!g %in% names(frame) || all(is.na(frame[[g]]))) {
@@ -413,7 +461,7 @@ qc_aggregate_metrics <- function(frame, level = c('national', 'region', 'council
   by_facility <- f %>%
     dplyr::group_by(dplyr::across(dplyr::all_of(unique(c(keys, 'facility_id'))))) %>%
     dplyr::summarise(
-      dplyr::across(dplyr::starts_with('.'), sum), .rows = dplyr::n(), .groups = 'drop'
+      dplyr::across(dplyr::starts_with('.'), sum), .rows = dplyr::n_distinct(month_date), .groups = 'drop'
     )
   result <- by_facility %>%
     dplyr::group_by(dplyr::across(dplyr::all_of(keys))) %>%
@@ -446,6 +494,11 @@ qc_aggregate_metrics <- function(frame, level = c('national', 'region', 'council
       coverage = .safe_divide(coverage_tested, coverage_attendance),
       prop_tested_from_imputation = .safe_divide(matched_tested_from_imputation, tested_matched)
     )
+  if (by_age_band) {
+    labels <- dplyr::distinct(dplyr::as_tibble(frame)[, c('age_group_code', 'age_group')], age_group_code, .keep_all = TRUE)
+    result <- dplyr::left_join(result, labels, by = 'age_group_code') %>%
+      dplyr::relocate(age_group, .after = age_group_code)
+  }
   if (monthly) result <- dplyr::arrange(result, dplyr::across(dplyr::all_of(keys)))
   result
 }
@@ -461,18 +514,20 @@ qc_aggregate_metrics <- function(frame, level = c('national', 'region', 'council
 #' @param level Aggregation level for [qc_aggregate_metrics()].
 #' @param monthly Monthly or whole-period results.
 #' @param priority Flag priorities.
+#' @param by_age_band Whether to give estimates by age band, with the
+#'   omissions for them (see [apply_qc_scenario()]).
 #'
 #' @return A tibble with a `version` column (`reported`, `filtered_missing`).
 #'   Its attribute `scenario_provenance` records eligibility, handling and the
 #'   omission counts.
 #' @export
 compare_qc_scenario <- function(data, scenario, level = 'national', monthly = TRUE,
-                                priority = .default_qc_priority()) {
-  scn <- apply_qc_scenario(data, scenario, priority)
+                                priority = .default_qc_priority(), by_age_band = FALSE) {
+  scn <- apply_qc_scenario(data, scenario, priority, by_age_band)
   out <- dplyr::bind_rows(
-    dplyr::mutate(qc_aggregate_metrics(.scenario_frame(scn, 'reported'), level, monthly),
+    dplyr::mutate(qc_aggregate_metrics(.scenario_frame(scn, 'reported'), level, monthly, by_age_band),
                   version = 'reported'),
-    dplyr::mutate(qc_aggregate_metrics(.scenario_frame(scn, 'filtered'), level, monthly),
+    dplyr::mutate(qc_aggregate_metrics(.scenario_frame(scn, 'filtered'), level, monthly, by_age_band),
                   version = 'filtered_missing')
   )
   attr(out, 'scenario_provenance') <- .scenario_provenance(scn)
@@ -483,9 +538,11 @@ compare_qc_scenario <- function(data, scenario, level = 'national', monthly = TR
   scenario <- attr(scn, 'scenario')
   list(
     scenario = scenario,
+    by_age_band = isTRUE(attr(scn, 'by_age_band')),
     facilities_total = dplyr::n_distinct(scn$facility_id),
     facilities_eligible = dplyr::n_distinct(scn$facility_id[scn$scn_facility_eligible]),
-    facility_months_total = nrow(scn),
+    facility_months_total = nrow(dplyr::distinct(scn, facility_id, month_date)),
+    records_total = nrow(scn),
     omitted_tested = sum(scn$scn_omit_tested & scn$scn_facility_eligible),
     omitted_positive = sum(scn$scn_omit_positive & scn$scn_facility_eligible),
     omitted_attending = sum(scn$scn_omit_attending & scn$scn_facility_eligible),

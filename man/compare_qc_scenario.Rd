@@ -9,7 +9,8 @@ compare_qc_scenario(
   scenario,
   level = "national",
   monthly = TRUE,
-  priority = .default_qc_priority()
+  priority = .default_qc_priority(),
+  by_age_band = FALSE
 )
 }
 \arguments{
@@ -22,6 +23,9 @@ compare_qc_scenario(
 \item{monthly}{Monthly or whole-period results.}
 
 \item{priority}{Flag priorities.}
+
+\item{by_age_band}{Whether to give estimates by age band, with the
+omissions for them (see \code{\link[=apply_qc_scenario]{apply_qc_scenario()}}).}
 }
 \value{
 A tibble with a \code{version} column (\code{reported}, \code{filtered_missing}).

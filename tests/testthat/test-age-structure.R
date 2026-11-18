@@ -194,3 +194,65 @@ testthat::test_that('a small other band is inconclusive, not as expected', {
   out <- routineqc:::.add_residual_agreement(x, 'lt20', 'ge20')
   testthat::expect_true(out$flag_resid_other_band_normal[1])
 })
+
+testthat::test_that('estimates by age band omit what the age-structure flags put in doubt', {
+  data <- routineqc::simulate_qc_age_data(n_regions = 3, n_months = 48, seed = 5)
+  run <- suppressWarnings(routineqc::run_routine_qc(
+    data, facility_var = 'facility_id', region_var = 'region', month_var = 'month_date',
+    tested_var = 'tested', positive_var = 'positive', attending_var = 'attending',
+    attendance_definition = 'first ANC attendance', district_var = 'district',
+    age_group_var = 'age_group', config = routineqc::qc_config('anc_first_visit')
+  ))
+  x <- run$data_flagged
+  priority <- run$config$priority
+  moderate <- routineqc::qc_scenario_presets()$moderate
+  all_bands <- routineqc::apply_qc_scenario(x, moderate, priority)
+  by_band <- routineqc::apply_qc_scenario(x, moderate, priority, by_age_band = TRUE)
+  swapped <- x$flag_age_bands_swapped
+  testthat::expect_true(any(swapped))
+  # A swap (high) omits every count of both bands, but only from band estimates.
+  testthat::expect_true(all(by_band$scn_omit_tested[swapped] & by_band$scn_omit_positive[swapped] &
+                              by_band$scn_omit_attending[swapped]))
+  age_only <- x$qc_action == 'review_age_structure'
+  testthat::expect_false(any(all_bands$scn_omit_tested[age_only]))
+  # Band omissions only add to the all-band ones.
+  testthat::expect_true(all(by_band$scn_omit_tested >= all_bands$scn_omit_tested))
+  # Each age-structure flag omits its own counts, at its own priority.
+  flags <- tibble::tibble(flag_age_mix_shift = c(TRUE, FALSE, FALSE),
+                          flag_age_positivity_contrast = c(FALSE, TRUE, FALSE),
+                          flag_booking_timing_shift = c(FALSE, FALSE, TRUE))
+  masks <- function(level) routineqc:::.qc_omission_masks(
+    flags, list(omit_through = level, include_authorized = TRUE), priority, by_age_band = TRUE)
+  testthat::expect_false(any(unlist(masks('high'))))
+  strict <- masks('medium')
+  testthat::expect_identical(strict$attending, c(TRUE, FALSE, FALSE))
+  testthat::expect_identical(strict$positive, c(FALSE, TRUE, FALSE))
+  testthat::expect_false(any(strict$tested))
+  testthat::expect_false(any(unlist(masks('low'))[c(3, 6, 9, 12)]))
+
+  res <- routineqc::compare_qc_scenario(x, moderate, level = 'region', monthly = FALSE,
+                                        priority = priority, by_age_band = TRUE)
+  testthat::expect_setequal(unique(res$age_group_code), c('lt20', 'ge20'))
+  testthat::expect_true(all(c('age_group_code', 'age_group') %in% names(res)))
+  testthat::expect_true(attr(res, 'scenario_provenance')$by_age_band)
+  total <- routineqc::compare_qc_scenario(x, moderate, level = 'region', monthly = FALSE, priority = priority)
+  # Reported band totals add up to the all-band totals; facility-months count months, not rows.
+  rep_band <- res[res$version == 'reported', ]
+  rep_all <- total[total$version == 'reported', ]
+  testthat::expect_equal(sum(rep_band$tested_total), sum(rep_all$tested_total))
+  testthat::expect_equal(sum(rep_all$facility_months),
+                         nrow(dplyr::distinct(x, facility_id, month_date)))
+  testthat::expect_error(routineqc::apply_qc_scenario(dplyr::select(x, -age_group_code), moderate,
+                                                      by_age_band = TRUE), 'age-disaggregated')
+
+  imp <- suppressWarnings(routineqc::qc_impute_scenario(x, moderate, method = 'expected',
+                                                        priority = priority, by_age_band = TRUE))
+  testthat::expect_true(imp$provenance$by_age_band)
+  s <- routineqc::summarise_qc_imputation(imp, 'national', monthly = FALSE)
+  testthat::expect_setequal(s$age_group_code, c('lt20', 'ge20'))
+  testthat::expect_error(routineqc::qc_scenario_results(x, moderate, imputation = imp, priority = priority),
+                         'different estimate')
+  both <- routineqc::qc_scenario_results(x, moderate, monthly = FALSE, imputation = imp,
+                                         priority = priority, by_age_band = TRUE)
+  testthat::expect_setequal(both$version, c('reported', 'filtered_missing', 'filtered_imputed'))
+})

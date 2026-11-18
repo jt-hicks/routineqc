@@ -39,6 +39,16 @@
   large enough to tell) or `flag_resid_other_band_inconclusive` (too small to
   tell). Context only; priorities are unchanged. `summarise_residual_agreement()` gives aggregate evidence on
   how often each happens, with persistence and shared movement in the area.
+- Estimates by age band: `by_age_band = TRUE` in `compare_qc_scenario()`,
+  `qc_scenario_results()`, `qc_impute_scenario()`, `qc_aggregate_metrics()`
+  and `apply_qc_scenario()`. These estimates also omit what the age-structure
+  flags put in doubt, at their priority: swapped bands (all counts of both
+  bands), age-mix shifts (bookings) and positivity contrasts (positives).
+  All-band estimates are unchanged. An imputation records which kind it was
+  made for.
+- `facility_months` in aggregate results now counts facility-months rather
+  than rows, so age-disaggregated all-band results no longer count each month
+  once per band. Scenario provenance adds `records_total`.
 - New `simulate_qc_age_data()` for synthetic age-band data, without stored
   zeros and with some swapped bands.
 

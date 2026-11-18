@@ -168,6 +168,9 @@
 #'   `first_active_month`, `last_active_month`). Without it the facility window
 #'   is the first to last month it reported, and that is recorded.
 #' @param priority Flag priorities.
+#' @param by_age_band Whether the imputation is for estimates by age band, with
+#'   the omissions for them (see [apply_qc_scenario()]). Recorded in the
+#'   provenance; [summarise_qc_imputation()] then gives one row per band.
 #'
 #' @return A `qc_imputation` object.
 #' @export
@@ -177,9 +180,10 @@ qc_impute_scenario <- function(data, scenario,
                                n_imputations = 20L, seed = 1L,
                                min_train_rows = 60L, min_facility_months = 3L,
                                allow_unseen_facility = FALSE, schedule = NULL,
-                               priority = .default_qc_priority()) {
+                               priority = .default_qc_priority(), by_age_band = FALSE) {
   mode <- match.arg(mode)
   method <- match.arg(method)
+  .check_by_age_band(data, by_age_band)
   if (!.is_scalar_number(n_imputations) || n_imputations < 2) {
     rlang::abort('`n_imputations` must be at least 2.')
   }
@@ -192,7 +196,7 @@ qc_impute_scenario <- function(data, scenario,
     data$.facility_original <- as.character(data$facility_id)
     data$facility_id <- .qc_series_ids(data, segments = FALSE)
   }
-  scn <- apply_qc_scenario(data, scenario, priority)
+  scn <- apply_qc_scenario(data, scenario, priority, by_age_band)
   fill_pre <- isTRUE(scenario$handling$fill_preexisting)
   windows <- .facility_windows(scn, schedule)
   scn$.absent <- FALSE
@@ -381,7 +385,7 @@ qc_impute_scenario <- function(data, scenario,
     provenance = list(
       model_version = .imputation_model_version,
       package_version = .package_version(),
-      mode = mode, method = method, n_imputations = M, seed = seed,
+      mode = mode, method = method, n_imputations = M, seed = seed, by_age_band = by_age_band,
       min_train_rows = min_train_rows, min_facility_months = min_facility_months,
       allow_unseen_facility = allow_unseen_facility,
       fill_preexisting = fill_pre,
@@ -463,6 +467,7 @@ summary.qc_imputation <- function(object, ...) {
 #' not a measure of sensitivity across scenarios.
 #'
 #' An `"expected"` imputation has no interval (`ci_low`/`ci_high` are `NA`).
+#' An imputation made with `by_age_band = TRUE` gives one row per age band.
 #'
 #' @param object A [qc_impute_scenario()] result.
 #' @param level,monthly As for [qc_aggregate_metrics()].
@@ -475,9 +480,10 @@ summary.qc_imputation <- function(object, ...) {
 summarise_qc_imputation <- function(object, level = 'national', monthly = TRUE) {
   if (!inherits(object, 'qc_imputation')) rlang::abort('`object` must come from `qc_impute_scenario()`.')
   M <- object$provenance$n_imputations
-  keys <- c(.aggregate_group_vars(level), if (monthly) 'month_date')
+  by_band <- isTRUE(object$provenance$by_age_band)
+  keys <- c(.aggregate_group_vars(level), if (by_band) c('age_group_code', 'age_group'), if (monthly) 'month_date')
   draws <- lapply(seq_len(M), function(m) {
-    out <- qc_aggregate_metrics(.imputed_frame(object, m), level, monthly)
+    out <- qc_aggregate_metrics(.imputed_frame(object, m), level, monthly, by_band)
     out$.draw <- m
     out
   })
@@ -535,12 +541,18 @@ summarise_qc_imputation <- function(object, level = 'national', monthly = TRUE) 
 #' @param imputation Optional [qc_impute_scenario()] result for the same data
 #'   and scenario.
 #' @param priority Flag priorities.
+#' @param by_age_band Whether to give estimates by age band. An imputation must
+#'   have been made the same way.
 #'
 #' @return A tibble with a `version` column.
 #' @export
 qc_scenario_results <- function(data, scenario, level = 'national', monthly = TRUE,
-                                imputation = NULL, priority = .default_qc_priority()) {
-  out <- compare_qc_scenario(data, scenario, level, monthly, priority)
+                                imputation = NULL, priority = .default_qc_priority(),
+                                by_age_band = FALSE) {
+  if (!is.null(imputation) && !identical(isTRUE(imputation$provenance$by_age_band), by_age_band)) {
+    rlang::abort('The imputation was made for a different estimate: set `by_age_band` as in `qc_impute_scenario()`.')
+  }
+  out <- compare_qc_scenario(data, scenario, level, monthly, priority, by_age_band)
   provenance <- attr(out, 'scenario_provenance')
   if (!is.null(imputation)) {
     imputed <- summarise_qc_imputation(imputation, level, monthly)

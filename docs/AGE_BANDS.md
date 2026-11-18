@@ -157,9 +157,9 @@ These checks form the evidence domain "age structure", which counts towards
 `review_multiple_signals`; alone they give `review_age_structure`. A missing
 band is a completeness issue (`review_count_completeness`).
 
-**They are review-only.** A value entered in the wrong band leaves the
-facility's totals intact, so no count is omitted from all-band estimates. They
-will matter for age-specific estimates, which are a later phase.
+**They omit counts only from estimates by age band.** A value entered in the
+wrong band leaves the facility's totals intact, so nothing is omitted from
+all-band estimates. See "Estimates by age band" below.
 
 The measurements are kept on both band rows (`age_mix_share`,
 `age_mix_baseline`, `age_mix_z`, `booking_early_*`, `age_positivity_*`).
@@ -195,9 +195,40 @@ repeated across the form (for example tested counts copied into positives, or
 positives from another indicator), not a real change, and agreeing outliers
 keep their priority.
 
+## Estimates by age band
+
+`compare_qc_scenario()`, `qc_scenario_results()`, `qc_impute_scenario()` and
+`qc_aggregate_metrics()` take `by_age_band = TRUE` to give one result per band
+(`age_group_code`, labelled by `age_group`). All-band estimates, the default,
+are sums across bands.
+
+The two kinds of estimate omit different counts. Every flag omits what it puts
+in doubt from both. In estimates by age band, the age-structure flags also
+omit, at their configured priority:
+
+| Flag | Omits, from estimates by age band |
+|---|---|
+| `flag_age_bands_swapped` (high) | tested, positive and bookings of both bands |
+| `flag_age_mix_shift` (medium) | bookings of both bands |
+| `flag_age_positivity_contrast` (medium) | positives of both bands |
+| `flag_booking_timing_shift`, `flag_age_band_missing` | nothing |
+
+So with the default priorities, the moderate preset drops swapped months from
+band estimates, and the strict preset also drops age-mix shifts and positivity
+contrasts. Booking timing is not used by any estimate, and a missing band has
+no counts to omit. The cross-band flags are set on both bands of the month,
+because the check cannot tell which band is wrong.
+
+An imputation is made for one kind of estimate: `qc_impute_scenario(...,
+by_age_band = TRUE)` fills the band omissions too, and
+`summarise_qc_imputation()` then gives one row per band. `qc_scenario_results()`
+refuses an imputation made for the other kind.
+
+`facility_months` in aggregate results counts facility-months, not rows: a
+month's bands count once in all-band results, and once per band in band
+results.
+
 ## Not yet included
 
-Age-specific
-estimates (where the age-structure flags would omit counts), and age filters
-in the dashboard are later phases. In the dashboard, a flagged record is still
-one band's row.
+Age filters in the dashboard are a later phase. In the dashboard, a flagged
+record is still one band's row, and results are all-band.

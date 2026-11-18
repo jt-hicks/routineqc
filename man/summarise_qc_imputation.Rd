@@ -29,4 +29,5 @@ not a measure of sensitivity across scenarios.
 }
 \details{
 An \code{"expected"} imputation has no interval (\code{ci_low}/\code{ci_high} are \code{NA}).
+An imputation made with \code{by_age_band = TRUE} gives one row per age band.
 }

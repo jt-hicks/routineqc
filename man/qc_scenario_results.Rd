@@ -10,7 +10,8 @@ qc_scenario_results(
   level = "national",
   monthly = TRUE,
   imputation = NULL,
-  priority = .default_qc_priority()
+  priority = .default_qc_priority(),
+  by_age_band = FALSE
 )
 }
 \arguments{
@@ -24,6 +25,9 @@ qc_scenario_results(
 and scenario.}
 
 \item{priority}{Flag priorities.}
+
+\item{by_age_band}{Whether to give estimates by age band. An imputation must
+have been made the same way.}
 }
 \value{
 A tibble with a \code{version} column.

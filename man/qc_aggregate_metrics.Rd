@@ -7,7 +7,8 @@
 qc_aggregate_metrics(
   frame,
   level = c("national", "region", "council", "district", "facility"),
-  monthly = TRUE
+  monthly = TRUE,
+  by_age_band = FALSE
 )
 }
 \arguments{
@@ -18,6 +19,10 @@ the grouping columns that \code{level} needs.}
 \item{level}{\code{"national"}, \code{"region"}, \code{"council"}, \code{"district"} or \code{"facility"}.}
 
 \item{monthly}{Whether to return one row per month (otherwise the whole period).}
+
+\item{by_age_band}{Whether to return one row per age band (\code{age_group_code},
+with its label in \code{age_group}). Use a frame whose omissions were made for
+estimates by age band.}
 }
 \value{
 A tibble of aggregate results with explicit denominators.
@@ -28,7 +33,9 @@ contributions where both are valid, so numerator and denominator always
 come from the same records. Tested count is the sum of usable tested counts.
 Testing coverage is the sum of tested over the sum of attendance, over
 records where both are usable and attendance is above zero. Facility
-percentages are never averaged.
+percentages are never averaged. \code{facility_months} counts facility-months,
+not rows: with age-disaggregated data a month's bands count once, or once
+per band when \code{by_age_band = TRUE}.
 }
 \details{
 Positives/tested is positivity among those tested, not population prevalence.

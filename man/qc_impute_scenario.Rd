@@ -15,7 +15,8 @@ qc_impute_scenario(
   min_facility_months = 3L,
   allow_unseen_facility = FALSE,
   schedule = NULL,
-  priority = .default_qc_priority()
+  priority = .default_qc_priority(),
+  by_age_band = FALSE
 )
 }
 \arguments{
@@ -44,6 +45,10 @@ filled from the population-level model. \code{FALSE} leaves it missing.}
 is the first to last month it reported, and that is recorded.}
 
 \item{priority}{Flag priorities.}
+
+\item{by_age_band}{Whether the imputation is for estimates by age band, with
+the omissions for them (see \code{\link[=apply_qc_scenario]{apply_qc_scenario()}}). Recorded in the
+provenance; \code{\link[=summarise_qc_imputation]{summarise_qc_imputation()}} then gives one row per band.}
 }
 \value{
 A \code{qc_imputation} object.

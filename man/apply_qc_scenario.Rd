@@ -4,7 +4,12 @@
 \alias{apply_qc_scenario}
 \title{Apply a Scenario to Flagged Data}
 \usage{
-apply_qc_scenario(data, scenario, priority = .default_qc_priority())
+apply_qc_scenario(
+  data,
+  scenario,
+  priority = .default_qc_priority(),
+  by_age_band = FALSE
+)
 }
 \arguments{
 \item{data}{Flagged data, such as \code{run$data_flagged}.}
@@ -12,6 +17,9 @@ apply_qc_scenario(data, scenario, priority = .default_qc_priority())
 \item{scenario}{A \code{\link[=qc_scenario]{qc_scenario()}}.}
 
 \item{priority}{Flag priorities, as in \code{qc_config()$priority}.}
+
+\item{by_age_band}{Whether the omissions are for estimates by age band.
+Needs age-disaggregated data.}
 }
 \value{
 \code{data} with added columns and the scenario in attribute \code{scenario}.
@@ -23,4 +31,11 @@ source observations, flags and stored actions are not modified.
 \details{
 Pre-existing missingness (\code{missing} counts) is kept apart from missingness
 created by QC (\code{qc_omitted}, and \code{invalid} counts, which QC detected).
+
+With \code{by_age_band = TRUE} the omissions are those for estimates by age
+band: the age-structure flags also omit the counts they put in doubt (a swap
+every count of both bands, an age-mix shift the bookings, a positivity
+contrast the positives), at their configured priority. Estimates across all
+bands do not omit them, because a count in the wrong band is still in the
+facility's total.
 }

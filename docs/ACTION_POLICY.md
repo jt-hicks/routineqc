@@ -88,8 +88,10 @@ priorities: `age_bands_swapped` (high), `age_band_missing`, `age_mix_shift`,
 `age_positivity_contrast` (medium) and `booking_timing_shift` (low). A missing
 band is a completeness issue. The other four form the evidence domain "age
 structure", which counts towards `review_multiple_signals`; alone they give
-`review_age_structure`. None omits a count in any scenario: a value in the
-wrong band leaves the facility's totals intact. Stored schema 8 configurations
+`review_age_structure`. None omits a count from all-band estimates: a value
+in the wrong band leaves the facility's totals intact. Estimates by age band
+(`by_age_band = TRUE`) omit the band counts that swaps, age-mix shifts and
+positivity contrasts put in doubt (see `docs/AGE_BANDS.md`). Stored schema 8 configurations
 stay valid without the new section and keys.
 
 Attendance contradictions are review-only, even with an approved attendance
