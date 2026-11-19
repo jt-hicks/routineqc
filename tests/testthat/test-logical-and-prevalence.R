@@ -175,3 +175,36 @@ testthat::test_that('attendance flags grade the excess and judge coverage', {
     'Coverage cutoffs'
   )
 })
+
+testthat::test_that('extreme-count probabilities grow less lenient for small months', {
+  prob <- routineqc:::.extreme_count_probability
+  # No overdispersion: binomial.
+  testthat::expect_equal(prob(0.2, 5, rho = 0), 0.2^5)
+  testthat::expect_equal(prob(0.2, 5, rho = 0, all_positive = FALSE), 0.8^5)
+  # Beta-binomial: above binomial, and close to it for a small month.
+  bb <- prob(c(0.2, 0.2), c(5, 100), rho = c(0.04, 0.04), all_positive = FALSE)
+  testthat::expect_true(all(bb > c(0.8^5, 0.8^100)))
+  testthat::expect_lt(bb[1] / 0.8^5, 1.2)
+  # Matches the closed form for a beta-binomial with the same mean and correlation.
+  a <- 0.2 * 0.96 / 0.04; b <- 0.8 * 0.96 / 0.04
+  testthat::expect_equal(prob(0.2, 5, rho = 0.04), beta(a + 5, b) / beta(a, b))
+  # Without rho, the earlier deflated-binomial rule.
+  testthat::expect_equal(prob(0.2, 6, dispersion = 3), 0.2^2)
+  # rho estimate: a moment estimator, ignoring |r| >= 5.
+  rho <- routineqc:::.overdispersion_rho(c(2, 0, 10, NA), c(11, 11, 11, 11))
+  testthat::expect_equal(rho, (4 - 1 + 0 - 1) / 20)
+})
+
+testthat::test_that('a small all-positive month is judged with the size-aware overdispersion', {
+  x <- tibble::tibble(
+    facility_id = 'F1', month_date = as.Date('2024-01-01') + 0:1 * 31, tested = c(6, 6), positive = c(6, 6),
+    prevalence = 1, p_hat = 0.25, resid_dispersion = 3, pearson_resid = 0
+  )
+  # Deflated by the run-wide dispersion: 0.25^2 = 0.06, not flagged.
+  old <- routineqc::add_prevalence_qc_flags(x, all_positive_min_tested = 5, all_positive_max_probability = 0.001)
+  testthat::expect_false(any(old$flag_all_positive_large_n))
+  # With a modest rho the month is near binomial (0.25^6 = 0.00024): flagged.
+  x$resid_rho <- 0.02
+  new <- routineqc::add_prevalence_qc_flags(x, all_positive_min_tested = 5, all_positive_max_probability = 0.001)
+  testthat::expect_true(all(new$flag_all_positive_large_n))
+})

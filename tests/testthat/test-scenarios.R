@@ -81,8 +81,8 @@ testthat::test_that('coverage uses comparable contributions with an approved def
 testthat::test_that('a problem confined to attendance does not discard tested or positive', {
   d <- scenario_data()
   d$flag_attending_negative <- FALSE
-  d$flag_coverage_very_low <- FALSE
-  d$flag_coverage_very_low[1] <- TRUE
+  d$flag_tested_gt_attending <- FALSE
+  d$flag_tested_gt_attending[1] <- TRUE
   d$flag_attending_negative[2] <- TRUE
   scn <- routineqc::apply_qc_scenario(d, routineqc::qc_scenario('s', omit_through = 'low'))
   testthat::expect_false(any(scn$scn_omit_tested | scn$scn_omit_positive))
@@ -169,7 +169,7 @@ testthat::test_that('long gaps do not discard later unflagged facility-month cou
   data$flag_exclude_authorized <- FALSE
   data$flag_resid_extreme <- data$facility_id == 'early-gap' & data$month_date == as.Date('2023-02-01')
   data$flag_tested_extreme_high <- data$facility_id == 'early-gap' & data$month_date == as.Date('2023-03-01')
-  data$flag_coverage_low <- data$facility_id == 'early-gap' & data$month_date == as.Date('2023-04-01')
+  data$flag_tested_gt_attending <- data$facility_id == 'early-gap' & data$month_date == as.Date('2023-04-01')
   data$flag_exclude_authorized[data$facility_id == 'early-gap' & data$month_date == as.Date('2023-05-01')] <- TRUE
   data$qc_action <- ifelse(data$flag_exclude_authorized, 'exclude_core_invalid', 'retain')
   original <- data

@@ -607,6 +607,10 @@ fit_prevalence_gam <- function(data, nthreads = 1) {
 #' Pearson chi-square over residual degrees of freedom of the fit, floored at 1,
 #' and `pearson_resid_scaled` divides the residual by its square root. The
 #' residual rule in [add_prevalence_qc_flags()] uses the scaled residual.
+#' `resid_rho` is the overdispersion as a beta-binomial intra-month correlation:
+#' a moment estimate, `sum(r^2 - 1) / sum(tested - 1)` over rows with more than
+#' one tested and `|r| < 5`. The all-positive and all-negative rules use it, so
+#' their chance of a month grows with the tested count.
 #'
 #' @param data A prepared QC data frame.
 #' @param model A model returned by [fit_prevalence_gam()].
@@ -614,7 +618,7 @@ fit_prevalence_gam <- function(data, nthreads = 1) {
 #'   rows successfully assessed falls below this value.
 #'
 #' @return The input data with prediction columns appended, including
-#'   `pearson_resid`, `resid_dispersion`, and `pearson_resid_scaled`.
+#'   `pearson_resid`, `resid_dispersion`, `pearson_resid_scaled` and `resid_rho`.
 #' @export
 add_prevalence_predictions <- function(data, model, min_prediction_coverage = 0.8) {
   out <- dplyr::as_tibble(data)
@@ -714,7 +718,40 @@ add_prevalence_predictions <- function(data, model, min_prediction_coverage = 0.
       resid_dispersion = .model_dispersion(model),
       pearson_resid_scaled = pearson_resid / sqrt(resid_dispersion)
     )
+  out$resid_rho <- .overdispersion_rho(out$pearson_resid, out$tested)
 
+  out
+}
+
+# Overdispersion that grows with the tested count, as in a beta-binomial:
+# E[r^2] = 1 + (n - 1) * rho for a Pearson residual r on n tested. A moment
+# estimate over rows with |r| < 5, so that the outliers being looked for do not
+# set it. One run-wide value; NA without residuals.
+.overdispersion_rho <- function(resid, tested) {
+  use <- is.finite(resid) & !is.na(tested) & tested > 1 & abs(resid) < 5
+  if (!any(use)) return(NA_real_)
+  max(0, sum(resid[use]^2 - 1) / sum(tested[use] - 1))
+}
+
+# Chance that every one of `n` tests is positive (or, with `all_positive =
+# FALSE`, none is) when positivity is `p`. With `rho` it is beta-binomial, so a
+# small month varies little more than binomial and a large one more; without it
+# the tested count is deflated by the run-wide `dispersion` (the earlier rule).
+.extreme_count_probability <- function(p, n, rho = NULL, dispersion = 1, all_positive = TRUE) {
+  q <- if (all_positive) p else 1 - p
+  if (is.null(rho) || all(is.na(rho))) return(q^(n / dispersion))
+  rho <- dplyr::coalesce(rho, 0)
+  out <- q^n
+  bb <- !is.na(rho) & rho > 1e-8 & !is.na(p) & !is.na(n)
+  if (any(bb)) {
+    a <- p[bb] * (1 - rho[bb]) / rho[bb]
+    b <- (1 - p[bb]) * (1 - rho[bb]) / rho[bb]
+    out[bb] <- if (all_positive) {
+      exp(lbeta(a + n[bb], b) - lbeta(a, b))
+    } else {
+      exp(lbeta(a, b + n[bb]) - lbeta(a, b))
+    }
+  }
   out
 }
 
@@ -743,15 +780,16 @@ add_prevalence_predictions <- function(data, model, min_prediction_coverage = 0.
 #' @param all_negative_min_tested Minimum tested count for an all-negative flag.
 #' @param all_negative_max_probability An all-negative month is flagged only when
 #'   the model makes zero positives at least this improbable. The probability is
-#'   `(1 - p_hat)^(tested / resid_dispersion)`: the binomial chance of no
-#'   positives with the tested count deflated by the dispersion, so that
-#'   overdispersed data, in which zeros are commoner, are not over-flagged. A row
-#'   the model did not assess is not evaluated. Data without `p_hat` fall back to
-#'   the count-only rule.
+#'   beta-binomial, with the run's overdispersion `resid_rho` from
+#'   [add_prevalence_predictions()]: extra month-to-month variation that grows
+#'   with the tested count, so small months are judged close to binomial and
+#'   large ones more leniently. Without `resid_rho` (runs made before it) it is
+#'   `(1 - p_hat)^(tested / resid_dispersion)`. A row the model did not assess is
+#'   not evaluated. Data without `p_hat` fall back to the count-only rule.
 #' @param all_positive_min_tested Minimum tested count for an all-positive flag.
 #' @param all_positive_max_probability Optional. When set, an all-positive
-#'   month is flagged only when the model makes it less likely than this:
-#'   `p_hat^(tested / resid_dispersion)`, the mirror of the all-negative rule.
+#'   month is flagged only when the model makes it less likely than this, with
+#'   the same beta-binomial probability as the all-negative rule.
 #'   A row the model did not assess is not evaluated. `NULL`, the default,
 #'   keeps the count-only rule.
 #' @param large_change_threshold Absolute month-to-month prevalence change threshold.
@@ -796,19 +834,21 @@ add_prevalence_qc_flags <- function(data,
   out$.count_ok <- !.row_count_invalid(out)
   # Chance of zero positives under the model. TRUE (always implausible) when
   # there is no model, which reproduces the count-only rule.
+  dispersion <- if ('resid_dispersion' %in% names(out)) out$resid_dispersion else 1
+  rho <- if ('resid_rho' %in% names(out)) out$resid_rho else NULL
   out$.zero_implausible <- if ('p_hat' %in% names(out)) {
-    dispersion <- if ('resid_dispersion' %in% names(out)) out$resid_dispersion else 1
     # Rows the model did not assess have no expectation: the flag is NA, not evaluated.
     # With no assessed row at all (model unavailable) the rule is simply off: FALSE.
-    implausible <- (1 - out$p_hat)^(out$tested / dispersion) < all_negative_max_probability
+    implausible <- .extreme_count_probability(out$p_hat, out$tested, rho, dispersion, FALSE) <
+      all_negative_max_probability
     if (all(is.na(out$p_hat))) dplyr::coalesce(implausible, FALSE) else implausible
   } else {
     TRUE
   }
   # The same for every test being positive, when a probability cutoff is set.
   out$.all_positive_implausible <- if (!is.null(all_positive_max_probability) && 'p_hat' %in% names(out)) {
-    dispersion <- if ('resid_dispersion' %in% names(out)) out$resid_dispersion else 1
-    implausible <- out$p_hat^(out$tested / dispersion) < all_positive_max_probability
+    implausible <- .extreme_count_probability(out$p_hat, out$tested, rho, dispersion, TRUE) <
+      all_positive_max_probability
     if (all(is.na(out$p_hat))) dplyr::coalesce(implausible, FALSE) else implausible
   } else {
     TRUE

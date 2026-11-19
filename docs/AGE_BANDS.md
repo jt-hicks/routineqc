@@ -107,7 +107,7 @@ tested-above-attendance flag.
 
 The profile also judges every test being positive from 5 tested instead of 30,
 and only where the model makes it less likely than 1 in 1,000
-(`p_hat^(tested / dispersion)`), as the all-negative rule already does. On real
+(beta-binomial, with the run's `resid_rho`), as the all-negative rule does. On real
 first-ANC data, nearly every all-positive month from 20 tested was already a
 positivity outlier, while hundreds from 5 to 19 tested were not flagged at
 all; at expected positivity near 5%, five of five positive has a chance of

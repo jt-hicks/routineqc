@@ -145,7 +145,7 @@
   omit <- switch(
     o$omit_through,
     none = 'no flagged counts omitted',
-    authorized = 'only counts authorized for exclusion (impossible values) omitted',
+    authorized = 'only impossible values omitted',
     critical = 'counts behind critical flags omitted',
     high = 'counts behind critical and high-priority flags omitted',
     medium = 'counts behind critical, high and medium-priority flags omitted',
@@ -269,4 +269,132 @@
     plotly::layout(xaxis = list(title = 'Change in positivity (percentage points)'),
                    yaxis = list(title = '')) %>%
     plotly::style(textposition = 'none')
+}
+
+# Where each reported count goes under one scenario: kept, omitted by QC (by
+# the highest priority among the flags that put it in doubt; impossible values
+# separately), or invalid. With an imputation, omitted and invalid counts are
+# split into imputed and left missing. Months missing before QC are counted
+# apart: they were never reported. `field` is 'tested' or 'positive'.
+.impact_count_flow <- function(applied, geography, scenario, field = 'tested',
+                               priority = .default_qc_priority(), imputed = NULL) {
+  scn <- applied[[scenario]]
+  key <- .unit_key(geography$level)
+  in_geo <- if (is.null(key) || is.null(geography$unit)) rep(TRUE, nrow(scn)) else
+    as.character(scn[[key]]) %in% geography$unit
+  by_band <- isTRUE(attr(scn, 'by_age_band'))
+  state <- scn[[paste0('scn_', field, '_state')]]
+  sc <- scn[in_geo, , drop = FALSE]
+  state <- state[in_geo]
+  # The reason a count was omitted: impossible values first, then the highest
+  # priority among the flags at or under the cutoff that target this count.
+  priority <- utils::modifyList(.default_qc_priority(), .if_null(priority, list()))
+  targets <- c(.qc_flag_targets, if (by_band) .qc_band_flag_targets)
+  levels <- .qc_priority_levels
+  best <- rep(length(levels) + 1L, nrow(sc))
+  for (k in names(targets)) {
+    col <- paste0('flag_', k)
+    if (!field %in% targets[[k]] || !col %in% names(sc)) next
+    on <- dplyr::coalesce(as.logical(sc[[col]]), FALSE)
+    best[on] <- pmin(best[on], .flag_priority_rank(k, priority))
+  }
+  impossible <- 'flag_exclude_authorized' %in% names(sc) & dplyr::coalesce(as.logical(sc$flag_exclude_authorized), FALSE)
+  reason <- ifelse(impossible, 'Omitted: impossible values',
+                   ifelse(best <= length(levels), paste0('Omitted: ', levels[pmin(best, length(levels))], ' flag'),
+                          'Omitted: other'))
+  outcome <- dplyr::case_when(
+    state == 'observed' ~ 'Kept',
+    state == 'qc_omitted' ~ reason,
+    state == 'invalid' ~ 'Invalid count',
+    state == 'missing' ~ 'Missing before QC',
+    TRUE ~ 'Facility not eligible'
+  )
+  value <- suppressWarnings(as.numeric(sc[[field]]))
+  out <- dplyr::tibble(outcome = outcome, value = ifelse(is.na(value), 0, value)) %>%
+    dplyr::group_by(outcome) %>%
+    dplyr::summarise(records = dplyr::n(), total = sum(value), .groups = 'drop')
+  order <- c('Kept', 'Omitted: impossible values', paste0('Omitted: ', levels, ' flag'), 'Omitted: other',
+             'Invalid count', 'Facility not eligible', 'Missing before QC')
+  out <- out[order(match(out$outcome, order)), , drop = FALSE]
+  out$imputed <- NA_integer_
+  if (!is.null(imputed) && scenario %in% names(imputed)) {
+    obj <- imputed[[scenario]]
+    tg <- obj$targets
+    need <- tg[[paste0('need_', field)]] & !tg$absent_report
+    status <- tg[[paste0(field, '_status')]]
+    rows <- obj$scn[tg$row, , drop = FALSE]
+    geo <- if (is.null(key) || is.null(geography$unit)) rep(TRUE, nrow(rows)) else
+      as.character(rows[[key]]) %in% geography$unit
+    done <- need & geo & status %in% 'imputed'
+    total_done <- sum(done)
+    # Imputed counts are spread over the omitted and invalid outcomes in
+    # proportion: the imputation records the count, not the reason.
+    removed <- !out$outcome %in% c('Kept', 'Missing before QC', 'Facility not eligible')
+    if (any(removed) && sum(out$records[removed]) > 0) {
+      share <- out$records[removed] / sum(out$records[removed])
+      out$imputed[removed] <- round(total_done * share)
+    }
+  }
+  attr(out, 'field') <- field
+  out
+}
+
+.plot_impact_flow <- function(flow, scenario) {
+  reported <- flow[flow$outcome != 'Missing before QC', , drop = FALSE]
+  if (nrow(reported) == 0L) return(plotly::plotly_empty())
+  field <- attr(flow, 'field')
+  source_label <- paste0(if (field == 'tested') 'Tested' else 'Positive', ' counts reported (',
+                         format(sum(reported$records), big.mark = ','), ')')
+  colors <- c(Kept = '#4c78a8', `Omitted: impossible values` = '#b2182b', `Omitted: critical flag` = '#b2182b',
+              `Omitted: high flag` = '#e66101', `Omitted: medium flag` = '#d4a017', `Omitted: low flag` = '#5e81ac',
+              `Omitted: other` = '#9aa0a6', `Invalid count` = '#7f0000', `Facility not eligible` = '#bdbdbd')
+  labels <- c(source_label, paste0(reported$outcome, ' (', format(reported$records, big.mark = ',', trim = TRUE), ')'))
+  node_colors <- c('#7f7f7f', unname(colors[reported$outcome]))
+  src <- rep(0L, nrow(reported))
+  tgt <- seq_len(nrow(reported))
+  val <- reported$records
+  link_colors <- paste0(substr(node_colors[-1], 1, 7), '66')
+  has_imp <- any(!is.na(reported$imputed))
+  if (has_imp) {
+    removed <- which(!is.na(reported$imputed))
+    imp_total <- sum(reported$imputed[removed])
+    miss_total <- sum(reported$records[removed]) - imp_total
+    labels <- c(labels, paste0('Imputed (', format(imp_total, big.mark = ','), ')'),
+                paste0('Left missing (', format(miss_total, big.mark = ','), ')'))
+    node_colors <- c(node_colors, '#7b5ea7', '#d9d9d9')
+    imp_node <- length(labels) - 2L
+    miss_node <- length(labels) - 1L
+    for (i in removed) {
+      src <- c(src, i, i)
+      tgt <- c(tgt, imp_node, miss_node)
+      val <- c(val, reported$imputed[i], reported$records[i] - reported$imputed[i])
+      link_colors <- c(link_colors, '#7b5ea766', '#bdbdbd66')
+    }
+  }
+  plotly::plot_ly(
+    type = 'sankey', arrangement = 'snap', valueformat = ',d',
+    node = list(label = labels, color = node_colors, pad = 14, thickness = 16,
+                line = list(color = 'white', width = 0.5)),
+    link = list(source = src, target = tgt, value = val, color = link_colors)
+  ) %>%
+    plotly::layout(title = list(text = paste0('Where the reported ', if (field == 'tested') 'tested' else 'positive',
+                                              ' counts go under ', scenario), x = 0, font = list(size = 14)),
+                   margin = list(t = 40, l = 10, r = 10, b = 10), font = list(size = 12))
+}
+
+# The scenario summary with readable column names.
+.impact_summary_table <- function(s) {
+  names_map <- c(
+    scenario = 'Scenario', positivity_reported = 'Positivity, reported', positivity_filtered = 'Positivity, filtered',
+    change_pp = 'Change (pp)', positivity_imputed = 'Positivity, imputed', change_imputed_pp = 'Change, imputed (pp)',
+    ci_low = 'Imputed 95% low', ci_high = 'Imputed 95% high', tested_reported = 'Tested, reported',
+    tested_retained = 'Tested, kept', share_tested_retained = 'Share of tested kept',
+    share_tested_imputed = 'Share of tested imputed', pairs_reported = 'Records with positivity, reported',
+    pairs_retained = 'Records with positivity, kept', facilities = 'Facilities',
+    omitted_by_qc = 'Counts omitted by QC or invalid', missing_before_qc = 'Counts missing before QC'
+  )
+  keep <- intersect(names(names_map), names(s))
+  out <- s[keep]
+  names(out) <- unname(names_map[keep])
+  out
 }

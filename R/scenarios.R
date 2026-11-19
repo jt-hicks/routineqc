@@ -31,8 +31,10 @@
   attending_negative = 'attending',
   tested_gt_attending = 'coverage',
   tested_gt_attending_major = 'coverage',
-  coverage_low = 'coverage',
-  coverage_very_low = 'coverage',
+  # Low coverage is what a coverage estimate measures, not an error in it:
+  # omitting those months would raise the estimate by selection. Review only.
+  coverage_low = character(),
+  coverage_very_low = character(),
   band_sum_partial_tested = 'tested',
   band_sum_partial_positive = 'positive',
   band_sum_partial_attending = 'attending',

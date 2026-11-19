@@ -25,7 +25,7 @@
 .qc_action_label <- function(x) {
   labels <- c(
     retain = 'Retain',
-    exclude_core_invalid = 'Authorized exclusion',
+    exclude_core_invalid = 'Excluded: impossible values',
     review_core_invalid = 'Review: invalid tested/positive counts',
     review_multiple_signals = 'Review: multiple evidence domains',
     review_attendance = 'Review: attendance',
@@ -88,7 +88,7 @@
     shiny::tags$h4('How QC actions are assigned'),
     shiny::p(
       'Each row is evaluated for factual evidence first. The selected action policy ',
-      'then maps that evidence to retention, review, or authorized exclusion.'
+      'then maps that evidence to retention, review, or exclusion of impossible values.'
     ),
     shiny::div(
       class = 'qc-flow-grid',
@@ -273,7 +273,7 @@
   .validate_required_columns(data, c('tested', 'positive', 'flag_exclude_authorized'))
   values <- .before_after_prevalence(data)
   dat <- dplyr::tibble(
-    state = c('Source data', 'After authorized exclusions'),
+    state = c('Source data', 'After excluding impossible values'),
     prevalence = c(values$before, values$after)
   )
   plotly::plot_ly(
@@ -283,7 +283,7 @@
     hovertemplate = '%{text}<extra></extra>'
   ) %>%
     plotly::layout(
-      title = list(text = 'Prevalence after authorized exclusions'),
+      title = list(text = 'Prevalence after excluding impossible values'),
       xaxis = list(title = NULL), yaxis = list(title = 'Prevalence', tickformat = '.1%'),
       margin = list(t = 55)
     )
@@ -549,7 +549,7 @@
       is.na(summary$prevalence_before_qc), 'NA',
       sprintf('%.2f%%', 100 * summary$prevalence_before_qc)
     ),
-    '<br>Rows with authorized exclusion: ', summary$authorized_exclusion_rows
+    '<br>Rows with impossible values: ', summary$authorized_exclusion_rows
   )
   y_title <- switch(metric, prevalence = 'District prevalence', tested = 'Total number tested',
                     coverage = 'District testing coverage')

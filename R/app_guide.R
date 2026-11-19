@@ -160,7 +160,12 @@
   catalog$priority_fixed <- catalog$key %in% c(.qc_always_critical, 'count_invalid_value')
   catalog$counts_in_doubt <- vapply(catalog$key, function(k) {
     t <- .qc_flag_targets[[k]]
-    if (is.null(t)) 'the invalid count only' else paste(t, collapse = ' and ')
+    band <- .qc_band_flag_targets[[k]]
+    if (!is.null(band)) return(paste(paste(band, collapse = ' and '), '(estimates by age group only)'))
+    if (k %in% names(.qc_flag_targets) && length(t) == 0L) return('none: review only')
+    if (is.null(t)) {
+      if (k == 'count_invalid_value') 'the invalid count only' else 'none: review only'
+    } else paste(t, collapse = ' and ')
   }, character(1))
   catalog$authorizes_exclusion <- catalog$key %in% .qc_always_critical
   catalog$domain <- factor(catalog$domain, levels = c('Count consistency', 'Prevalence', 'Tested volume',

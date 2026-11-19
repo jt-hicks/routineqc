@@ -55,6 +55,14 @@
   example "other age group as expected"). Function arguments and flag names
   are unchanged.
 
+- The all-negative and all-positive rules use a beta-binomial probability with
+  a new run-wide overdispersion, `resid_rho` (manifest
+  `prevalence_overdispersion_rho`), instead of deflating the tested count by
+  `resid_dispersion`. Overdispersion now grows with the tested count, so small
+  months are no longer judged about 2.4 times too leniently. On first-ANC data
+  this adds about 430 all-positive flags at 5 to 19 tested and about 40
+  all-negative flags. Runs saved before keep their flags.
+
 ### Dashboard: age groups
 
 - One **Age group** setting beside the run picker, shown for age-disaggregated
@@ -72,6 +80,15 @@
 - The District grid draws one line per age group for each facility.
 - The Review queue sub-tab is retired (its records are the Explore data
   table); the Diagnostics run-wide scatters move to Run details > Model checks.
+- Filter impact: a count-level flow shows, for the scenario over time, where
+  every reported tested or positive count goes: kept, omitted (by the highest
+  priority among the flags that put it in doubt, with impossible values apart)
+  or invalid, and after an imputation run, imputed or left missing. The summary
+  table has readable columns, and "authorized exclusion" reads "impossible
+  values" throughout the dashboard.
+- Low and very low testing coverage are review only: they no longer omit the
+  coverage pair, which raised coverage estimates under stricter scenarios by
+  leaving out the low-coverage months. Tested above attendance still omits it.
 - Fixed: "Share of records flagged" divided flagged records by facility-months,
   overstating it for age-disaggregated data.
 

@@ -85,15 +85,30 @@ On 452,755 ANC facility-months the dispersion was 3.47, and the unscaled rule
 flagged 3.3% of assessed rows at tested >= 20 against a nominal 0.006%, rising to
 14% at 200 or more tested.
 
-The all-negative rule uses the same dispersion. A month with no positives is
-flagged only when `(1 - p_hat)^(tested / resid_dispersion)`, the chance of zero
-positives with the tested count deflated by the dispersion, is below
-`all_negative_max_probability`. Fifty negative tests are unremarkable where the
-model expects 2% positivity and implausible where it expects 20%. This
-expression is a heuristic: deflating the exponent by the dispersion is a
-plausible adjustment, not a calibrated probability. It awaits calibration
-against labelled data, and the default threshold of 0.001 should not be read
-as a false-positive rate.
+The extra variation is not the same for every month: it grows with the tested
+count. `resid_rho` describes it as a beta-binomial intra-month correlation, so
+that a month of `n` tested has overdispersion `1 + (n - 1) * rho`. It is a
+moment estimate, `sum(r^2 - 1) / sum(tested - 1)` over rows with more than one
+tested and `|r| < 5`, and the manifest records it as
+`prevalence_overdispersion_rho`. On first-ANC data from one zone, rho was 0.037
+against a run-wide dispersion of 2.8: about 1.15 at 5 tested, 1.7 at 20, 2.8
+at 50 and 4.6 at 100.
+
+The all-negative and all-positive rules use it. A month with no positives (or
+only positives) is flagged only when its beta-binomial chance under the model,
+with that rho, is below `all_negative_max_probability` (or
+`all_positive_max_probability`). Fifty negative tests are unremarkable where the
+model expects 2% positivity and implausible where it expects 20%. Runs made
+before `resid_rho` used `(1 - p_hat)^(tested / resid_dispersion)`, which
+deflates every month by the run-wide dispersion and so was about 2.4 times too
+lenient for months of 5 to 9 tested. The probability is model-based, not
+calibrated against labelled data, and the default threshold of 0.001 should not
+be read as a false-positive rate.
+
+The residual rule still divides by the run-wide dispersion, so it is likely too
+lenient for small months and too strict for large ones. A size-aware residual
+is a known limitation, not yet adopted, because it would change every
+prevalence flag.
 
 ## Coverage
 

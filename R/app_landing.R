@@ -209,7 +209,7 @@
     catalog <- catalog_r()
     meanings <- c(
       critical = paste0('Impossible counts: more positives than tests, negative counts, ',
-                        'or counts flagged for authorized exclusion.'),
+                        'or positives with no tests.'),
       high = 'Urgent review of strong or combined signals.',
       medium = paste0('Statistical anomalies \u2014 unusual counts relative to modelled ',
                       'expectation or the facility\u2019s own history.'),

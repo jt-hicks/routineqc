@@ -26,7 +26,7 @@ utils::globalVariables(c(
   'multiple_signal_issue', 'n_any_qc_issue', 'n_month',
   'n_qc_signal_domains', 'next_extreme', 'next_month_date',
   'next_month_is_adjacent', 'p', 'p_hat',
-  'pct_any_qc_issue', 'pearson_resid', 'pearson_resid_scaled', 'positive', 'resid_dispersion',
+  'pct_any_qc_issue', 'pearson_resid', 'pearson_resid_scaled', 'positive', 'resid_dispersion', 'resid_rho',
   'prev_extreme', 'prev_lag', 'prev_month_date', 'prev_month_is_adjacent',
   'parent', 'pct_all', 'prevalence', 'prevalence_issue',
   'previous_month_is_adjacent', 'proportion', 'proportion_over_threshold',

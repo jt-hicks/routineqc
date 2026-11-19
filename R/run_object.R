@@ -227,6 +227,11 @@ fingerprint_qc_input <- function(data, schema_version = .qc_fingerprint_schema_v
     } else {
       NA_real_
     },
+    prevalence_overdispersion_rho = if ('resid_rho' %in% names(data_flagged)) {
+      data_flagged$resid_rho[[1]]
+    } else {
+      NA_real_
+    },
     config = unclass(config),
     provenance = provenance
   )

@@ -87,8 +87,10 @@
       'hypothetical and is applied to a copy of the data: no observation, flag or stored action is changed. ',
       'Positivity is always total positives over total tested for records where both counts are usable, never ',
       'an average of facility percentages. The geography follows the selection in Explore data. ',
-      'All facilities are included regardless of reporting history. Each scenario omits only affected counts ',
-      'in flagged facility-months according to its priority and authorized-exclusion rules.'
+      'All facilities are included regardless of reporting history. Each scenario omits only the counts a flag ',
+      'puts in doubt, in the flagged facility-months, according to the flag\'s priority; impossible values are ',
+      'omitted in every scenario except none. Low testing coverage is review only: omitting it would raise a ',
+      'coverage estimate by selection.'
     ),
     shiny::strong(shiny::textOutput('fi_geography', inline = TRUE)),
     shiny::uiOutput('fi_age_note'),
@@ -131,6 +133,19 @@
     ),
     shiny::uiOutput('fi_imputation_note'),
     plotly::plotlyOutput('fi_series', height = '380px'),
+    shiny::fluidRow(
+      shiny::column(9, plotly::plotlyOutput('fi_flow', height = '360px')),
+      shiny::column(
+        3,
+        shiny::radioButtons('fi_flow_field', 'Counts', choices = c('Tested' = 'tested', 'Positive' = 'positive'),
+                            selected = 'tested'),
+        shiny::helpText('Each reported count of the selected geography, kept or omitted under the scenario ',
+                        'shown over time. An omitted count is placed under the highest priority among the flags ',
+                        'that put it in doubt. After an imputation run, omitted counts split into imputed and ',
+                        'left missing.'),
+        shiny::tableOutput('fi_flow_table')
+      )
+    ),
     shiny::fluidRow(
       shiny::column(6, plotly::plotlyOutput('fi_strictness', height = '320px')),
       shiny::column(6, plotly::plotlyOutput('fi_change', height = '320px'))
@@ -482,6 +497,16 @@
   output$fi_series <- plotly::renderPlotly({
     .plot_impact_series(results_r(), input$fi_scenario, .value_or(input$fi_metric, 'positivity'))
   })
+  flow_r <- shiny::reactive(.impact_count_flow(applied_r(), geography_r(), input$fi_scenario,
+                                                .value_or(input$fi_flow_field, 'tested'), priority_r(),
+                                                imputed_now()))
+  output$fi_flow <- plotly::renderPlotly(.plot_impact_flow(flow_r(), input$fi_scenario))
+  output$fi_flow_table <- shiny::renderTable({
+    f <- flow_r()
+    out <- dplyr::tibble(Outcome = f$outcome, Records = format(f$records, big.mark = ','))
+    if (any(!is.na(f$imputed))) out$Imputed <- ifelse(is.na(f$imputed), '', format(f$imputed, big.mark = ','))
+    out
+  })
   output$fi_strictness <- plotly::renderPlotly(.plot_impact_strictness(summary_r()))
   output$fi_change <- plotly::renderPlotly(.plot_impact_change(summary_r()))
   output$fi_retention <- plotly::renderPlotly(.plot_impact_retention(summary_r()))
@@ -495,13 +520,13 @@
     .plot_impact_units(.impact_unit_changes(applied_r(), input$fi_scenario))
   })
   output$fi_table <- DT::renderDT({
-    s <- summary_r()
-    s <- s[, setdiff(names(s), c('facilities_eligible', 'removed_with_facility')), drop = FALSE]
+    s <- .impact_summary_table(summary_r())
     DT::datatable(s, rownames = FALSE, options = list(scrollX = TRUE, dom = 't')) %>%
-      DT::formatPercentage(intersect(c('positivity_reported', 'positivity_filtered', 'positivity_imputed',
-                                       'share_tested_retained', 'ci_low', 'ci_high',
-                                       'share_tested_imputed'), names(s)), 2) %>%
-      DT::formatRound(intersect(c('change_pp', 'change_imputed_pp'), names(s)), 2)
+      DT::formatPercentage(intersect(c('Positivity, reported', 'Positivity, filtered', 'Positivity, imputed',
+                                       'Share of tested kept', 'Imputed 95% low', 'Imputed 95% high',
+                                       'Share of tested imputed'), names(s)), 2) %>%
+      DT::formatRound(intersect(c('Change (pp)', 'Change, imputed (pp)'), names(s)), 2) %>%
+      DT::formatRound(intersect(c('Tested, reported', 'Tested, kept'), names(s)), 0)
   })
   output$fi_rule_list <- shiny::renderUI({
     scenarios <- .impact_scenarios()

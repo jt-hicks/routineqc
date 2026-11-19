@@ -39,17 +39,18 @@ least \code{resid_large_n}.}
 
 \item{all_negative_max_probability}{An all-negative month is flagged only when
 the model makes zero positives at least this improbable. The probability is
-\code{(1 - p_hat)^(tested / resid_dispersion)}: the binomial chance of no
-positives with the tested count deflated by the dispersion, so that
-overdispersed data, in which zeros are commoner, are not over-flagged. A row
-the model did not assess is not evaluated. Data without \code{p_hat} fall back to
-the count-only rule.}
+beta-binomial, with the run's overdispersion \code{resid_rho} from
+\code{\link[=add_prevalence_predictions]{add_prevalence_predictions()}}: extra month-to-month variation that grows
+with the tested count, so small months are judged close to binomial and
+large ones more leniently. Without \code{resid_rho} (runs made before it) it is
+\code{(1 - p_hat)^(tested / resid_dispersion)}. A row the model did not assess is
+not evaluated. Data without \code{p_hat} fall back to the count-only rule.}
 
 \item{all_positive_min_tested}{Minimum tested count for an all-positive flag.}
 
 \item{all_positive_max_probability}{Optional. When set, an all-positive
-month is flagged only when the model makes it less likely than this:
-\code{p_hat^(tested / resid_dispersion)}, the mirror of the all-negative rule.
+month is flagged only when the model makes it less likely than this, with
+the same beta-binomial probability as the all-negative rule.
 A row the model did not assess is not evaluated. \code{NULL}, the default,
 keeps the count-only rule.}
 

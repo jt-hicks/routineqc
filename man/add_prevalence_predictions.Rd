@@ -16,7 +16,7 @@ rows successfully assessed falls below this value.}
 }
 \value{
 The input data with prediction columns appended, including
-\code{pearson_resid}, \code{resid_dispersion}, and \code{pearson_resid_scaled}.
+\code{pearson_resid}, \code{resid_dispersion}, \code{pearson_resid_scaled} and \code{resid_rho}.
 }
 \description{
 Appends fitted prevalence and residual diagnostics from a fitted GAM.
@@ -30,4 +30,8 @@ size, and increasingly so at high tested counts. \code{resid_dispersion} is the
 Pearson chi-square over residual degrees of freedom of the fit, floored at 1,
 and \code{pearson_resid_scaled} divides the residual by its square root. The
 residual rule in \code{\link[=add_prevalence_qc_flags]{add_prevalence_qc_flags()}} uses the scaled residual.
+\code{resid_rho} is the overdispersion as a beta-binomial intra-month correlation:
+a moment estimate, \code{sum(r^2 - 1) / sum(tested - 1)} over rows with more than
+one tested and \verb{|r| < 5}. The all-positive and all-negative rules use it, so
+their chance of a month grows with the tested count.
 }

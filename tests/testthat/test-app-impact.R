@@ -43,3 +43,36 @@ test_that("unit changes rank by absolute change and plots build", {
     expect_false(grepl('at least [0-9]+ months', rule))
   }
 })
+
+testthat::test_that('the count flow accounts for every reported count under a scenario', {
+  run <- dashboard_fixture()$qc
+  data <- run$data_flagged
+  applied <- routineqc:::.impact_apply(data, routineqc:::.impact_scenarios(), run$config$priority)
+  geo <- list(level = 'national', unit = NULL)
+  for (field in c('tested', 'positive')) {
+    flow <- routineqc:::.impact_count_flow(applied, geo, 'moderate', field, run$config$priority)
+    testthat::expect_equal(sum(flow$records), nrow(data))
+    state <- applied$moderate[[paste0('scn_', field, '_state')]]
+    testthat::expect_equal(flow$records[flow$outcome == 'Kept'], sum(state == 'observed'))
+    omitted <- sum(flow$records[startsWith(flow$outcome, 'Omitted')])
+    testthat::expect_equal(omitted, sum(state == 'qc_omitted'))
+    testthat::expect_s3_class(routineqc:::.plot_impact_flow(flow, 'moderate'), 'plotly')
+  }
+  # Stricter scenarios omit at least as many counts.
+  strict <- routineqc:::.impact_count_flow(applied, geo, 'very_strict', 'tested', run$config$priority)
+  moderate <- routineqc:::.impact_count_flow(applied, geo, 'moderate', 'tested', run$config$priority)
+  testthat::expect_lte(strict$records[strict$outcome == 'Kept'], moderate$records[moderate$outcome == 'Kept'])
+  table <- routineqc:::.impact_summary_table(routineqc:::.impact_summary(applied, geo))
+  testthat::expect_true(all(c('Scenario', 'Positivity, filtered', 'Share of tested kept') %in% names(table)))
+})
+
+testthat::test_that('low testing coverage is review only and does not raise coverage by selection', {
+  data <- tibble::tibble(
+    facility_id = 'F1', month_date = as.Date('2024-01-01') + 0:3 * 31, tested = c(50, 50, 10, 50),
+    positive = 5, attending = 50, attendance_definition = 'first ANC', flag_coverage_low = c(FALSE, FALSE, TRUE, FALSE),
+    flag_coverage_very_low = c(FALSE, FALSE, TRUE, FALSE)
+  )
+  scn <- routineqc::apply_qc_scenario(data, routineqc::qc_scenario('all', omit_through = 'low'))
+  testthat::expect_false(any(scn$scn_omit_coverage))
+  testthat::expect_identical(routineqc:::.qc_flag_targets$coverage_low, character())
+})

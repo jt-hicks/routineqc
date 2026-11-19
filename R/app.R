@@ -507,7 +507,7 @@ filter_qc_review <- function(data,
         plotly::plotlyOutput('district_summary_plot', height = '320px'),
         shiny::helpText(
           'District total summed across all reporting facilities, from the source ',
-          'data before authorized exclusions. The measure follows the selection above.'
+          'data before impossible values are excluded. The measure follows the selection above.'
         ),
         shiny::uiOutput('district_flag_key'),
         shiny::uiOutput('district_plot_ui')
